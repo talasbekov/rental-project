@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'booking_bot.bookings',
     'booking_bot.payments',
     'rest_framework',
+    'drf_spectacular',
     'django_filters',
     # 'rest_framework.authtoken', # Replaced by SimpleJWT
     'booking_bot.whatsapp_bot',
@@ -163,3 +164,63 @@ TWILIO_WHATSAPP_NUMBER = 'whatsapp:+14155238886' # Placeholder (Twilio Sandbox n
 
 # URL of this site, used by the bot to call its own API
 SITE_URL = 'http://localhost:8000' # Change for production
+
+# drf-spectacular settings
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'WhatsApp Housing Booking Bot API',
+    'DESCRIPTION': 'API for managing housing bookings, users, and properties, integrated with a WhatsApp bot.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False, # Schema is served by SpectacularAPIView
+    'SWAGGER_UI_DIST': 'SIDECAR',
+    'SWAGGER_UI_FAVICON_HREF': 'SIDECAR',
+    'REDOC_DIST': 'SIDECAR',
+}
+
+# LOGGING CONFIGURATION
+# Basic configuration to output to console.
+# More advanced configurations can include file handlers, log rotation, etc.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False, # Keep Django's default loggers
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO', # Output INFO and above (WARNING, ERROR, CRITICAL) to console
+            'class': 'logging.StreamHandler', # Output to stderr
+            'formatter': 'simple',
+        },
+        # Example of a file handler (optional, can be added later if needed)
+        # 'file': {
+        #     'level': 'DEBUG',
+        #     'class': 'logging.FileHandler',
+        #     'filename': BASE_DIR / 'debug.log',
+        #     'formatter': 'verbose',
+        # },
+    },
+    'root': { # Catch all logger (if not specified elsewhere)
+        'handlers': ['console'], # Output to console by default
+        'level': 'WARNING', # Default level for root if not overridden by app loggers
+    },
+    'loggers': {
+        'django': { # Django's own logs
+            'handlers': ['console'],
+            'level': 'INFO', # Or 'WARNING' in production
+            'propagate': False, # Don't pass to root logger if handled here
+        },
+        'booking_bot': { # Our app's specific logs (covers all modules within booking_bot)
+            'handlers': ['console'], # Or ['console', 'file']
+            'level': 'INFO', # Capture INFO level messages from our app
+            'propagate': False,
+        },
+        # Can define for specific apps like 'booking_bot.whatsapp_bot' if needed
+    }
+}

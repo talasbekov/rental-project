@@ -82,12 +82,8 @@ WSGI_APPLICATION = 'booking_bot.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'rentaldb',
-        'USER': 'postgres',
-        'PASSWORD': 'taraz',
-        'HOST': 'localhost',
-        'PORT': '5432',
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 
@@ -126,17 +122,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-TEMPLATE_DIR = BASE_DIR / "templates"
-STATIC_DIR   = BASE_DIR / "static"
-MEDIA_DIR    = BASE_DIR / "media"
-
-MEDIA_ROOT = MEDIA_DIR
-MEDIA_URL  = "/media/"
-
-# статика
-STATIC_URL        = "/static/"
-STATICFILES_DIRS  = [ STATIC_DIR ]                     # ищем здесь
-STATIC_ROOT       = BASE_DIR / "staticfiles"
+STATIC_URL = 'static/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

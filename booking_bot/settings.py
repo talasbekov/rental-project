@@ -43,7 +43,8 @@ INSTALLED_APPS = [
     'booking_bot.bookings',
     'booking_bot.payments',
     'rest_framework',
-    'rest_framework.authtoken',
+    'django_filters',
+    # 'rest_framework.authtoken', # Replaced by SimpleJWT
     'booking_bot.whatsapp_bot',
 ]
 
@@ -135,11 +136,30 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
     ]
+}
+
+# Django REST Framework Simple JWT settings
+SIMPLE_JWT = {
+    # Options:
+    # 'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5),
+    # 'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    # 'ROTATE_REFRESH_TOKENS': False,
+    # 'BLACKLIST_AFTER_ROTATION': True,
+    # 'UPDATE_LAST_LOGIN': False,
+    # ... many more settings
 }
 
 # Twilio Configuration (replace with actual credentials, preferably from environment variables)
 TWILIO_ACCOUNT_SID = 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'  # Placeholder
 TWILIO_AUTH_TOKEN = 'your_auth_token_xxxxxxxxxxxxxxx'      # Placeholder
 TWILIO_WHATSAPP_NUMBER = 'whatsapp:+14155238886' # Placeholder (Twilio Sandbox number)
+
+# Add these to your settings.py and provide actual values (preferably via env vars):
+# KASPI_API_KEY = 'your_kaspi_api_key'
+# KASPI_MERCHANT_ID = 'your_kaspi_merchant_id'
+# KASPI_API_BASE_URL = 'https://api.kaspi.kz/v2/' # Example
+
+# URL of this site, used by the bot to call its own API
+SITE_URL = 'http://localhost:8000' # Change for production

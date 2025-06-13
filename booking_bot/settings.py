@@ -25,8 +25,11 @@ SECRET_KEY = 'django-insecure-^18w8^kyktt4q14w%c4tci%w(8po97jj2pd&3(#hv(dyn3hznv
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
-
+ALLOWED_HOSTS = [
+    '127.0.0.1',
+    'localhost',
+    '.ngrok-free.app',
+]
 
 # Application definition
 
@@ -36,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'drf_spectacular_sidecar',
     'django.contrib.staticfiles',
     'booking_bot.core',
     'booking_bot.users',
@@ -89,6 +93,8 @@ DATABASES = {
     }
 }
 
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -138,7 +144,8 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ]
+    ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema'
 }
 
 # Django REST Framework Simple JWT settings
@@ -152,10 +159,11 @@ SIMPLE_JWT = {
     # ... many more settings
 }
 
-# Twilio Configuration (replace with actual credentials, preferably from environment variables)
-TWILIO_ACCOUNT_SID = 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'  # Placeholder
-TWILIO_AUTH_TOKEN = 'your_auth_token_xxxxxxxxxxxxxxx'      # Placeholder
-TWILIO_WHATSAPP_NUMBER = 'whatsapp:+14155238886' # Placeholder (Twilio Sandbox number)
+WHATSAPP_GRAPH_VERSION   = "v17.0"
+WHATSAPP_PHONE_NUMBER_ID = "105123456789012"
+WHATSAPP_ACCESS_TOKEN    = "EAAJ…"
+WHATSAPP_VERIFY_TOKEN    = "my_webhook_verify_token"
+
 
 # Add these to your settings.py and provide actual values (preferably via env vars):
 # KASPI_API_KEY = 'your_kaspi_api_key'
@@ -171,7 +179,7 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'API for managing housing bookings, users, and properties, integrated with a WhatsApp bot.',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False, # Schema is served by SpectacularAPIView
-    'SWAGGER_UI_DIST': 'SIDECAR',
+    'SWAGGER_UI_DIST': 'CDN',
     'SWAGGER_UI_FAVICON_HREF': 'SIDECAR',
     'REDOC_DIST': 'SIDECAR',
 }

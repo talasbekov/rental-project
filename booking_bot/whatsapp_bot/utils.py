@@ -1,4 +1,4 @@
-from django.conf import settings
+from .. import settings
 from twilio.rest import Client
 import logging
 

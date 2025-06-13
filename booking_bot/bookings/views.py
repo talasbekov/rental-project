@@ -4,12 +4,14 @@ from rest_framework.response import Response
 from .models import Booking, Property
 from .serializers import BookingSerializer
 from rest_framework.permissions import IsAuthenticated
+from drf_spectacular.openapi import AutoSchema
 # TODO: Add custom permission to ensure only booking owner or admin can cancel/modify
 
 class BookingViewSet(viewsets.ModelViewSet):
     queryset = Booking.objects.all()
     serializer_class = BookingSerializer
     permission_classes = [IsAuthenticated] # Ensure user is authenticated
+    schema = AutoSchema()
 
     def perform_create(self, serializer):
         property_obj = serializer.validated_data['property']

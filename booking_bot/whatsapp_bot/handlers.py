@@ -106,7 +106,7 @@ def handle_known_user(user_profile, incoming_message_body, twilio_messaging_resp
     elif command == '/search':
         api_params = parse_search_params(params_text)
         try:
-            response = requests.get(get_api_url('listings/properties/'), params=api_params)
+            response = requests.get(get_api_url('properties/'), params=api_params)
             response.raise_for_status(); properties = response.json()
             if properties:
                 reply = "Found properties:\n";
@@ -120,7 +120,7 @@ def handle_known_user(user_profile, incoming_message_body, twilio_messaging_resp
         property_id_str = params_text.strip()
         if not property_id_str.isdigit(): twilio_messaging_response.message("Usage: /view <property_id>"); return
         try:
-            response = requests.get(get_api_url(f'listings/properties/{property_id_str}/'))
+            response = requests.get(get_api_url(f'properties/{property_id_str}/'))
             response.raise_for_status(); prop = response.json()
             reply = (f"ID: {prop['id']} Name: {prop['name']} Desc: {prop['description']}\n"
                      f"Addr: {prop['address']} Rooms: {prop['number_of_rooms']}, Area: {prop['area']}m²\n"

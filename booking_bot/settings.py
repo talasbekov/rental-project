@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'django_filters',
     # 'rest_framework.authtoken', # Replaced by SimpleJWT
     'booking_bot.whatsapp_bot',
+    'telegram_bot',
 ]
 
 MIDDLEWARE = [
@@ -173,9 +174,13 @@ WHATSAPP_VERIFY_TOKEN    = "my_webhook_verify_token"
 # URL of this site, used by the bot to call its own API
 SITE_URL = 'http://localhost:8000' # Change for production
 
+# Telegram Bot Token
+TELEGRAM_BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE"
+TELEGRAM_WEBHOOK_PATH = "/telegram/webhook/" # Or your chosen path, ensure it matches urls.py
+
 # drf-spectacular settings
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'WhatsApp Housing Booking Bot API',
+    'TITLE': 'Housing Booking Bot API',
     'DESCRIPTION': 'API for managing housing bookings, users, and properties, integrated with a WhatsApp bot.',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False, # Schema is served by SpectacularAPIView

@@ -1,0 +1,11 @@
+django
+djangorestframework
+djangorestframework-simplejwt
+psycopg2-binary # Or your preferred DB connector if not sqlite
+gunicorn
+python-telegram-bot
+requests
+drf-spectacular
+drf_spectacular_sidecar
+django-filter
+twilio

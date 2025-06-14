@@ -13,6 +13,7 @@ urlpatterns = [
 
     # WhatsApp bot webhook path
     path('whatsapp/', include('booking_bot.whatsapp_bot.urls')),
+    path('telegram/', include('booking_bot.telegram_bot.urls')), # New line for Telegram bot
 
     # drf-spectacular URLs
     path('api/v1/schema/', SpectacularAPIView.as_view(), name='schema'),

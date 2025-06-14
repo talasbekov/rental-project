@@ -1,12 +1,29 @@
 from rest_framework import serializers
 from .models import Booking
+from booking_bot.listings.models import Property # Import Property for nested serializer
 from datetime import date
 
+# Simple serializer for nested property details
+class PropertyMiniSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Property
+        fields = ['id', 'name']
+
 class BookingSerializer(serializers.ModelSerializer):
+    property_details = PropertyMiniSerializer(source='property', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
     class Meta:
         model = Booking
-        fields = '__all__'
-        read_only_fields = ('total_price', 'status', 'user') # User will be set from request, status initial
+        fields = [
+            'id', 'property', 'property_details', 'user', 'start_date',
+            'end_date', 'total_price', 'status', 'status_display',
+            'kaspi_payment_id', 'created_at', 'updated_at'
+        ]
+        read_only_fields = (
+            'user', 'total_price', 'status', 'status_display',
+            'property_details', 'kaspi_payment_id', 'created_at', 'updated_at'
+        )
 
     def validate(self, data):
         """

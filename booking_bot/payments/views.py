@@ -12,6 +12,15 @@ from booking_bot.users.models import UserProfile
 # For now, we'll mock it or log instead of sending actual messages if utils isn't ready
 from booking_bot.whatsapp_bot.handlers import clear_user_state
 
+# Add necessary imports:
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated # Or custom permission for bot/service
+# Booking model already imported: from booking_bot.bookings.models import Booking
+from .kaspi_service import initiate_payment as kaspi_initiate_payment_service, KaspiPaymentError
+# from django.shortcuts import get_object_or_404 # If using this
+
 
 logger = logging.getLogger(__name__)
 
@@ -156,3 +165,57 @@ def kaspi_payment_webhook(request):
 
 #     def __str__(self):
 #         return f"Payment {self.kaspi_payment_id} for Booking {self.booking.id} - {self.status}"
+
+
+class KaspiInitiatePaymentView(APIView):
+    permission_classes = [IsAuthenticated] # Ensure only authenticated users/services can call this
+
+    def post(self, request, *args, **kwargs):
+        booking_id = request.data.get('booking_id')
+        # amount = request.data.get('amount') # Amount can be fetched from booking
+
+        if not booking_id:
+            return Response({'error': 'Booking ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            booking = Booking.objects.get(id=booking_id, user=request.user) # Ensure user owns booking
+        except Booking.DoesNotExist:
+            return Response({'error': 'Booking not found or access denied.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if booking.status not in ['pending', 'pending_payment', 'payment_failed']: # Check current status
+             return Response({'error': f'Booking status is "{booking.get_status_display()}", cannot initiate payment.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            payment_info = kaspi_initiate_payment_service(
+                booking_id=booking.id,
+                amount=float(booking.total_price), # Ensure amount is float
+                description=f"Payment for Booking ID {booking.id} - Property {booking.property.name if booking.property else 'N/A'}"
+            )
+
+            if payment_info and payment_info.get('checkout_url') and payment_info.get('payment_id'):
+                booking.kaspi_payment_id = payment_info['payment_id']
+                booking.status = 'pending_payment' # Set status
+                booking.save()
+
+                logger.info(f"Kaspi payment initiated for Booking ID {booking.id}. Kaspi ID: {payment_info['payment_id']}")
+                return Response({
+                    'checkout_url': payment_info['checkout_url'],
+                    'kaspi_payment_id': payment_info['payment_id'],
+                    'booking_id': booking.id
+                }, status=status.HTTP_200_OK)
+            else:
+                logger.error(f"Kaspi service failed to return checkout_url or payment_id for Booking ID {booking.id}. Response: {payment_info}")
+                # Optionally set booking status to payment_failed here if appropriate
+                # booking.status = 'payment_failed'
+                # booking.save()
+                return Response({'error': 'Payment initiation failed with Kaspi service.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        except KaspiPaymentError as e:
+            logger.error(f"KaspiPaymentError for Booking ID {booking.id}: {e}", exc_info=True)
+            booking.status = 'payment_failed' # Set status on error from Kaspi
+            booking.save()
+            return Response({'error': f'Kaspi payment error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            logger.error(f"Unexpected error initiating payment for Booking ID {booking.id}: {e}", exc_info=True)
+            # Consider if status should be 'payment_failed' here
+            return Response({'error': 'An unexpected server error occurred.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

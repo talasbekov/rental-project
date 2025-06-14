@@ -35,3 +35,16 @@ class UserSerializer(serializers.ModelSerializer):
     #         if profile_serializer.is_valid(raise_exception=True):
     #             profile_serializer.save()
     #     return instance
+
+
+class TelegramUserSerializer(serializers.Serializer):
+    telegram_chat_id = serializers.CharField(max_length=255)
+    first_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    last_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True, allow_null=True)
+
+    def validate_telegram_chat_id(self, value):
+        # Basic validation, can be expanded (e.g. check if numeric)
+        if not value:
+            raise serializers.ValidationError("Telegram chat ID cannot be empty.")
+        return value

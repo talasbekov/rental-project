@@ -6,6 +6,8 @@ from .serializers import BookingSerializer
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.openapi import AutoSchema
 # TODO: Add custom permission to ensure only booking owner or admin can cancel/modify
+from rest_framework import generics # Added for ListAPIView
+
 
 class BookingViewSet(viewsets.ModelViewSet):
     queryset = Booking.objects.all()
@@ -57,3 +59,12 @@ class BookingViewSet(viewsets.ModelViewSet):
                 return Booking.objects.all()
             return Booking.objects.filter(user=user)
         return Booking.objects.none() # Should not happen if IsAuthenticated is effective
+
+
+class UserBookingsListView(generics.ListAPIView):
+    serializer_class = BookingSerializer # Assuming BookingSerializer shows enough detail
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Return bookings for the current authenticated user, ordered by creation date descending
+        return Booking.objects.filter(user=self.request.user).order_by('-created_at')

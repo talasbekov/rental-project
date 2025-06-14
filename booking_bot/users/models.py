@@ -11,6 +11,8 @@ class UserProfile(models.Model):
     role = models.CharField(max_length=20, choices=USER_ROLE_CHOICES, default='user')
     phone_number = models.CharField(max_length=20, blank=True, null=True)
     whatsapp_state = models.JSONField(null=True, blank=True)
+    telegram_chat_id = models.CharField(max_length=255, unique=True, null=True, blank=True, db_index=True)
+    telegram_state = models.JSONField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.user.username} - {self.get_role_display()}"

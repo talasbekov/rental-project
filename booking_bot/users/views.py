@@ -14,6 +14,19 @@ from .serializers import UserSerializer, UserProfileSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 # For a custom login view:
 from django.contrib.auth import authenticate # We still need this for custom view
+# Add these imports
+from .serializers import UserSerializer, UserProfileSerializer, TelegramUserSerializer # Add TelegramUserSerializer
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+from django.contrib.auth.models import User
+from .models import UserProfile
+from django.db import transaction
+import logging # Recommended to add logger for views
+
+logger = logging.getLogger(__name__) # Recommended: get a logger for the view
+
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -51,3 +64,58 @@ def login_view(request):
 # e.g., path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
 # path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 # This custom login_view provides similar functionality for access/refresh tokens.
+
+
+class TelegramRegisterLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        serializer = TelegramUserSerializer(data=request.data)
+        if serializer.is_valid():
+            validated_data = serializer.validated_data
+            telegram_chat_id = str(validated_data['telegram_chat_id']) # Ensure it's a string
+
+            try:
+                with transaction.atomic():
+                    user_profile, created = UserProfile.objects.get_or_create(
+                        telegram_chat_id=telegram_chat_id,
+                        defaults={
+                            'user': User.objects.create_user(
+                                username=f"telegram_{telegram_chat_id}",
+                                first_name=validated_data.get('first_name', ''),
+                                last_name=validated_data.get('last_name', '')
+                            ),
+                            'phone_number': validated_data.get('phone_number'),
+                            'role': 'user' # Default role
+                        }
+                    )
+
+                    if not created: # User profile existed, update details if provided
+                        user = user_profile.user
+                        if validated_data.get('first_name') and user.first_name != validated_data.get('first_name'):
+                            user.first_name = validated_data.get('first_name')
+                        if validated_data.get('last_name') and user.last_name != validated_data.get('last_name'):
+                            user.last_name = validated_data.get('last_name')
+                        user.save()
+                        if validated_data.get('phone_number') and user_profile.phone_number != validated_data.get('phone_number'):
+                            user_profile.phone_number = validated_data.get('phone_number')
+                            user_profile.save()
+                    else: # New user and profile created
+                        user = user_profile.user
+                        user.set_unusable_password() # No password needed for bot users
+                        user.save()
+
+                refresh = RefreshToken.for_user(user_profile.user)
+                return Response({
+                    'refresh': str(refresh),
+                    'access': str(refresh.access_token),
+                    'user_id': user_profile.user.id,
+                    'profile_id': user_profile.id,
+                    'created': created
+                }, status=status.HTTP_200_OK)
+
+            except Exception as e:
+                logger.error(f"Error in TelegramRegisterLoginView: {e}", exc_info=True)
+                return Response({'error': 'Server error during registration/login.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

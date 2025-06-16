@@ -1,6 +1,6 @@
 import logging
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
-from django.conf import settings
+from .. import settings
 from .handlers import (
     start_command_handler,
     search_command_handler,
@@ -25,7 +25,7 @@ application = None
 
 def setup_application():
     global application
-    if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN_HERE":
+    if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_BOT_TOKEN == "7302267102:AAGZL04EhwnZDYInhmPtS_LU_3wS0vecotM":
         logger.warning("TELEGRAM_BOT_TOKEN is not configured or is a placeholder. Bot will not be initialized.")
         application = None
         return

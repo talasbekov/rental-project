@@ -51,7 +51,7 @@ INSTALLED_APPS = [
     'django_filters',
     # 'rest_framework.authtoken', # Replaced by SimpleJWT
     'booking_bot.whatsapp_bot',
-    'telegram_bot',
+    'booking_bot.telegram_bot',
 ]
 
 MIDDLEWARE = [
@@ -172,10 +172,11 @@ WHATSAPP_VERIFY_TOKEN    = "my_webhook_verify_token"
 # KASPI_API_BASE_URL = 'https://api.kaspi.kz/v2/' # Example
 
 # URL of this site, used by the bot to call its own API
-SITE_URL = 'http://localhost:8000' # Change for production
+SITE_URL = 'https://21b1-147-30-84-118.ngrok-free.app' # Change for production
+API_BASE = 'https://21b1-147-30-84-118.ngrok-free.app/api/v1'
 
 # Telegram Bot Token
-TELEGRAM_BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE"
+TELEGRAM_BOT_TOKEN = "7302267102:AAGZL04EhwnZDYInhmPtS_LU_3wS0vecotM"
 TELEGRAM_WEBHOOK_PATH = "/telegram/webhook/" # Or your chosen path, ensure it matches urls.py
 
 # drf-spectacular settings

@@ -1,37 +1,60 @@
 import json
 import logging
-from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse
+import requests
+from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
-import telegram # python-telegram-bot library
-from django.apps import apps # To access AppConfig
+
+from booking_bot.telegram_bot.handlers import (
+    start_command_handler, menu_command_handler, help_command_handler,
+    text_message_handler, callback_query_handler, date_input_handler
+)
 
 logger = logging.getLogger(__name__)
+BOT_BASE = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}"
+
+
+def _answer_callback(query_id):
+    try:
+        requests.post(f"{BOT_BASE}/answerCallbackQuery", json={"callback_query_id": query_id}, timeout=5)
+    except Exception:
+        logger.exception("Failed to answer callback")
+
 
 @csrf_exempt
-async def telegram_webhook(request):
-    bot_config = apps.get_app_config('telegram_bot') # Use the app name 'telegram_bot'
-    application = bot_config.bot_application
+def telegram_webhook(request):
+    if request.method != "POST":
+        return HttpResponseBadRequest()
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return HttpResponseBadRequest()
 
-    if not application:
-        logger.error("Telegram application not initialized in AppConfig.")
-        return JsonResponse({'status': 'error', 'message': 'Bot not configured'}, status=500)
+    # callback_query
+    if "callback_query" in data:
+        cq = data["callback_query"]
+        _answer_callback(cq["id"])
+        chat_id = cq["message"]["chat"]["id"]
+        msg_id = cq["message"]["message_id"]
+        callback_query_handler(chat_id, cq.get("data", ""), msg_id)
+        return JsonResponse({"ok": True})
 
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body.decode('utf-8'))
-            update = telegram.Update.de_json(data, application.bot) # Get bot instance from application
+    # message
+    if "message" in data:
+        msg = data["message"]
+        chat_id = msg["chat"]["id"]
+        text = msg.get("text", "").strip()
+        if text.startswith("/start"):
+            start_command_handler(chat_id)
+        elif text.startswith("/menu"):
+            menu_command_handler(chat_id)
+        elif text.startswith("/help"):
+            help_command_handler(chat_id)
+        elif text.isdigit():
+            text_message_handler(chat_id, text)
+        else:
+            # возможно ввод даты
+            date_input_handler(chat_id, text)
+        return JsonResponse({"ok": True})
 
-            # Dispatch the update to the PTB application
-            # This is how you feed an update received externally (e.g., via Django)
-            # into the python-telegram-bot processing queue.
-            await application.process_update(update)
-
-            return JsonResponse({'status': 'ok'})
-        except json.JSONDecodeError:
-            logger.error("Telegram webhook: Invalid JSON received.")
-            return HttpResponseBadRequest('Invalid JSON')
-        except Exception as e:
-            logger.error(f"Error in Telegram webhook processing: {e}", exc_info=True)
-            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-    return HttpResponse("Method not allowed", status=405)
+    return JsonResponse({"ok": True})

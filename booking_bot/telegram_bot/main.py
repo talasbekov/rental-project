@@ -3,15 +3,18 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from .. import settings
 from .handlers import (
     start_command_handler,
-    search_command_handler,
-    search_region_callback_handler,
-    search_rooms_callback_handler,
-    search_class_callback_handler,
-    book_property_callback_handler,
-    date_input_handler, # Add date_input_handler
-    my_bookings_command_handler, # Added
-    cancel_booking_callback_handler # Added
-) # Import new handlers
+    callback_query_handler, # Central callback dispatcher
+    date_input_handler,
+    # help_command_handler, # Invoked via callback_query_handler
+    # search_command_handler, # Deprecated by inline menu
+    # my_bookings_command_handler, # Deprecated by inline menu
+    # Specific callback handlers below are deprecated by central callback_query_handler
+    # search_region_callback_handler,
+    # search_rooms_callback_handler,
+    # search_class_callback_handler,
+    # book_property_callback_handler,
+    # cancel_booking_callback_handler
+)
 
 # Enable logging for python-telegram-bot
 logging.basicConfig(
@@ -42,14 +45,22 @@ def setup_application():
 
     # Register handlers
     application.add_handler(CommandHandler("start", start_command_handler))
-    application.add_handler(CommandHandler("search", search_command_handler))
-    application.add_handler(CallbackQueryHandler(search_region_callback_handler, pattern='^search_region_'))
-    application.add_handler(CallbackQueryHandler(search_rooms_callback_handler, pattern='^search_rooms_'))
-    application.add_handler(CallbackQueryHandler(search_class_callback_handler, pattern='^search_class_'))
-    application.add_handler(CallbackQueryHandler(book_property_callback_handler, pattern='^book_property_'))
+    # application.add_handler(CommandHandler("search", search_command_handler)) # Deprecated
+
+    # Deprecated specific callback handlers, replaced by the central one below
+    # application.add_handler(CallbackQueryHandler(search_region_callback_handler, pattern='^search_region_'))
+    # application.add_handler(CallbackQueryHandler(search_rooms_callback_handler, pattern='^search_rooms_'))
+    # application.add_handler(CallbackQueryHandler(search_class_callback_handler, pattern='^search_class_'))
+    # application.add_handler(CallbackQueryHandler(book_property_callback_handler, pattern='^book_property_'))
+    # application.add_handler(CallbackQueryHandler(cancel_booking_callback_handler, pattern='^cancel_booking_'))
+
+    # Add the central callback handler
+    application.add_handler(CallbackQueryHandler(callback_query_handler))
+
+    # MessageHandler for date input during booking flow (text_message_handler was removed from handlers.py)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, date_input_handler))
-    application.add_handler(CommandHandler("my_bookings", my_bookings_command_handler))
-    application.add_handler(CallbackQueryHandler(cancel_booking_callback_handler, pattern='^cancel_booking_'))
+
+    # application.add_handler(CommandHandler("my_bookings", my_bookings_command_handler)) # Deprecated
     # Add other handlers (MessageHandler, ConversationHandler, etc.) here as needed
 
     logger.info("Telegram Bot Application initialized with handlers.")

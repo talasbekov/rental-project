@@ -13,7 +13,7 @@ class PropertyFilter(django_filters.FilterSet):
         # Define fields and their default lookup_expr if not 'exact'
         # For choice fields, 'exact' is the default and usually what's needed.
         fields = {
-            'region': ['exact'], # Filter by region key e.g. 'yesil'
+            'district': ['exact'], # Filter by district ID
             'number_of_rooms': ['exact'],
             'property_class': ['exact'], # Filter by class key e.g. 'economy'
             'status': ['exact'], # Filter by status key e.g. 'available'

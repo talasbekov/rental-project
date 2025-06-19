@@ -184,7 +184,7 @@ def callback_query_handler(chat_id, data, message_id):
             # IMPORTANT: The API endpoint /properties/ and its filtering capabilities
             # might need to be updated to support city_id, district_id, rooms, property_class.
             url = f"{settings.API_BASE}/properties/" # Assuming API_BASE is correct
-            logger.info(f"Searching properties with params: {params}")"
+            logger.info(f"Searching properties with params: {params}")
             resp = requests.get(url, params=params, timeout=10)
             resp.raise_for_status()
             apartments = resp.json()

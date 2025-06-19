@@ -9,6 +9,7 @@ from booking_bot.telegram_bot.handlers import (
     start_command_handler, help_command_handler, callback_query_handler, date_input_handler
 )
 
+
 logger = logging.getLogger(__name__)
 BOT_BASE = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}"
 
@@ -47,6 +48,9 @@ def telegram_webhook(request):
             start_command_handler(chat_id)
         elif text.startswith("/menu"):
             start_command_handler(chat_id)
+        elif text.startswith("/help"):
+            help_command_handler(chat_id)
+            help_command_handler(chat_id)
         elif text.startswith("/help"):
             help_command_handler(chat_id)
         else:

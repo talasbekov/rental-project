@@ -81,6 +81,3 @@ def setup_application():
 #         await app.start()
 #         # Keep the bot running until interrupted
 #         # await app.updater.idle() # This is for older versions or specific run modes
-# if __name__ == '__main__':
-#     import asyncio
-#     asyncio.run(main())

@@ -12,13 +12,16 @@ class PropertyMiniSerializer(serializers.ModelSerializer):
 class BookingSerializer(serializers.ModelSerializer):
     property_details = PropertyMiniSerializer(source='property', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    # Add telegram_chat_id for write operations, not part of the model instance representation
+    telegram_chat_id = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = Booking
         fields = [
             'id', 'property', 'property_details', 'user', 'start_date',
             'end_date', 'total_price', 'status', 'status_display',
-            'kaspi_payment_id', 'created_at', 'updated_at'
+            'kaspi_payment_id', 'created_at', 'updated_at',
+            'telegram_chat_id' # Add to fields list
         ]
         read_only_fields = (
             'user', 'total_price', 'status', 'status_display',
@@ -28,14 +31,8 @@ class BookingSerializer(serializers.ModelSerializer):
     def validate(self, data):
         """
         Check that start_date is before end_date.
-        Check that property is available (basic check, can be more complex).
         """
         if 'start_date' in data and 'end_date' in data:
             if data['start_date'] >= data['end_date']:
                 raise serializers.ValidationError("End date must be after start date.")
-
-        # More complex availability checks might query existing bookings for the property
-        # For now, this is a basic validation.
         return data
-
-    # create method will be handled in the view to set user and calculate price

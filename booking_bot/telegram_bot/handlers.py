@@ -1,6 +1,7 @@
 import logging
 import requests
 from datetime import datetime
+from django.contrib.auth.models import User # Make sure this import is added if not already present at the top of the file
 from .. import settings
 
 from booking_bot.users.models import UserProfile
@@ -22,7 +23,24 @@ AVAILABLE_CLASSES = [('economy', 'Economy'), ('comfort', 'Comfort'), ('premium',
 
 
 def _get_profile(chat_id):
-    profile, _ = UserProfile.objects.get_or_create(telegram_chat_id=str(chat_id))
+    chat_id_str = str(chat_id)
+    try:
+        profile = UserProfile.objects.get(telegram_chat_id=chat_id_str)
+    except UserProfile.DoesNotExist:
+        # Create a new Django User
+        # Ensure username is unique; using chat_id should be safe
+        user_username = f"telegram_{chat_id_str}"
+        user, created = User.objects.get_or_create(username=user_username)
+
+        # If the user was just created, you might want to set a default unusable password
+        # or other fields if necessary, though for bot interaction, username might be enough.
+        # For example:
+        if created:
+            user.set_unusable_password()
+            user.save()
+
+        # Create the UserProfile linked to this User
+        profile = UserProfile.objects.create(user=user, telegram_chat_id=chat_id_str)
     return profile
 
 
@@ -258,13 +276,12 @@ def date_input_handler(chat_id, text):
             'property_id': state['property_id'],
             'start_date': state['start_date'],
             'end_date': text,
+            'telegram_chat_id': str(chat_id) # Add telegram_chat_id
         }
-        headers = {}
-        if getattr(profile, 'jwt', None):
-            headers['Authorization'] = f"Bearer {profile.jwt}"
+        headers = {} # JWT part removed for now
 
         try:
-            resp = requests.post(f"{settings.API_BASE}/api/bookings/", json=data, headers=headers, timeout=5)
+            resp = requests.post(f"{settings.API_BASE}/bookings/", json=data, headers=headers, timeout=5)
             resp.raise_for_status()
             booking = resp.json()
         except Exception:

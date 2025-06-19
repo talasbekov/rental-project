@@ -1,6 +1,6 @@
 import logging
 import requests
-from django.conf import settings
+from .. import settings
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackContext
 from booking_bot.users.models import UserProfile

@@ -1,7 +1,7 @@
 import json
 import logging
 import requests
-from django.http import JsonResponse, HttpResponseBadRequest
+from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 
@@ -23,6 +23,8 @@ def _answer_callback(query_id):
 
 @csrf_exempt
 def telegram_webhook(request):
+    if request.method == 'GET':
+        return HttpResponse("Webhook up and running")
     if request.method != "POST":
         return HttpResponseBadRequest()
     try:

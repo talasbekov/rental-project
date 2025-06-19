@@ -264,7 +264,7 @@ def date_input_handler(chat_id, text):
             headers['Authorization'] = f"Bearer {profile.jwt}"
 
         try:
-            resp = requests.post(f"{settings.API_BASE}/api/bookings/", json=data, headers=headers, timeout=5)
+            resp = requests.post(f"{settings.API_BASE}/bookings/", json=data, headers=headers, timeout=5)
             resp.raise_for_status()
             booking = resp.json()
         except Exception:
@@ -291,7 +291,7 @@ def list_bookings_handler(chat_id):
         headers['Authorization'] = f"Bearer {profile.jwt}"
 
     try:
-        resp = requests.get(f"{settings.API_BASE}/api/bookings/", headers=headers, timeout=5)
+        resp = requests.get(f"{settings.API_BASE}/bookings/", headers=headers, timeout=5)
         resp.raise_for_status()
         bookings = resp.json()
     except Exception:
@@ -320,7 +320,7 @@ def _handle_cancel_booking(chat_id, booking_id):
         headers['Authorization'] = f"Bearer {profile.jwt}"
 
     try:
-        resp = requests.delete(f"{settings.API_BASE}/api/bookings/{booking_id}/", headers=headers, timeout=5)
+        resp = requests.delete(f"{settings.API_BASE}/bookings/{booking_id}/", headers=headers, timeout=5)
         resp.raise_for_status()
     except requests.exceptions.HTTPError as e:
         logger.error("Cancel error", exc_info=True)

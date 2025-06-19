@@ -1,18 +1,22 @@
+from django.contrib.auth import get_user_model
 from rest_framework import viewsets, status, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import Booking, Property
 from .serializers import BookingSerializer
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from drf_spectacular.openapi import AutoSchema
 # TODO: Add custom permission to ensure only booking owner or admin can cancel/modify
 from rest_framework import generics # Added for ListAPIView
 
+from .. import settings
+
+User = get_user_model()
 
 class BookingViewSet(viewsets.ModelViewSet):
     queryset = Booking.objects.all()
     serializer_class = BookingSerializer
-    permission_classes = [IsAuthenticated] # Ensure user is authenticated
+    permission_classes = [AllowAny] # Ensure user is authenticated
     schema = AutoSchema()
 
     def perform_create(self, serializer):
@@ -25,11 +29,18 @@ class BookingViewSet(viewsets.ModelViewSet):
             raise serializers.ValidationError("Booking duration must be at least 1 day.")
 
         total_price = duration * property_obj.price_per_day
+        print(self.request)
 
+        if self.request.user.is_authenticated:
+            user = self.request.user
+        else:
+            user = User.objects.get(username=settings.BOT_SERVICE_USERNAME)
+
+        print(self.request.user)
         # Set user to current authenticated user
-        serializer.save(user=self.request.user, total_price=total_price, status='pending')
+        serializer.save(user=user, total_price=total_price, status='pending')
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated]) # Add more specific permission later
+    @action(detail=True, methods=['post']) # Add more specific permission later
     def cancel(self, request, pk=None):
         booking = self.get_object()
 

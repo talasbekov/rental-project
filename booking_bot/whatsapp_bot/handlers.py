@@ -6,7 +6,7 @@ from booking_bot.bookings.models import Booking
 from booking_bot.payments import initiate_payment as kaspi_initiate_payment, KaspiPaymentError
 import logging
 import requests
-from django.conf import settings
+from .. import settings
 from datetime import datetime, date, timedelta
 from django.db import transaction, IntegrityError
 

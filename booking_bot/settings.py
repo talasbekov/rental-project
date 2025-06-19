@@ -131,8 +131,6 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
-
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
@@ -172,12 +170,12 @@ WHATSAPP_VERIFY_TOKEN    = "my_webhook_verify_token"
 # KASPI_API_BASE_URL = 'https://api.kaspi.kz/v2/' # Example
 
 # URL of this site, used by the bot to call its own API
-SITE_URL = 'https://21b1-147-30-84-118.ngrok-free.app' # Change for production
-API_BASE = 'https://21b1-147-30-84-118.ngrok-free.app/api/v1'
+SITE_URL = 'https://d83c-147-30-84-118.ngrok-free.app' # Change for production
+API_BASE = 'https://d83c-147-30-84-118.ngrok-free.app/api/v1'
 
 # Telegram Bot Token
-TELEGRAM_BOT_TOKEN = "7302267102:AAGZL04EhwnZDYInhmPtS_LU_3wS0vecotM"
-TELEGRAM_WEBHOOK_PATH = "/telegram/webhook/" # Or your chosen path, ensure it matches urls.py
+TELEGRAM_BOT_TOKEN = "7302267102:AAGTSKRPiGWNweB-8-E1sAS6ls-UINwP4is"
+BOT_SERVICE_USERNAME = 'bot_user'
 
 # drf-spectacular settings
 SPECTACULAR_SETTINGS = {

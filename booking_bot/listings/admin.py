@@ -1,5 +1,16 @@
 from django.contrib import admin
-from .models import Property, PropertyPhoto
+from .models import Property, PropertyPhoto, City, District
+
+@admin.register(City)
+class CityAdmin(admin.ModelAdmin):
+    list_display = ('name',)
+    search_fields = ('name',)
+
+@admin.register(District)
+class DistrictAdmin(admin.ModelAdmin):
+    list_display = ('name', 'city')
+    search_fields = ('name', 'city__name')
+    list_filter = ('city',)
 
 class PropertyPhotoInline(admin.TabularInline):
     model = PropertyPhoto

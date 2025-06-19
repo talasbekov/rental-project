@@ -6,8 +6,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 
 from booking_bot.telegram_bot.handlers import (
-    start_command_handler, help_command_handler,
-    callback_query_handler, date_input_handler
+    start_command_handler, help_command_handler, callback_query_handler, date_input_handler
 )
 
 
@@ -48,11 +47,12 @@ def telegram_webhook(request):
         if text.startswith("/start"):
             start_command_handler(chat_id)
         elif text.startswith("/menu"):
+            start_command_handler(chat_id)
+        elif text.startswith("/help"):
+            help_command_handler(chat_id)
             help_command_handler(chat_id)
         elif text.startswith("/help"):
             help_command_handler(chat_id)
-        # elif text.isdigit():
-        #     help_command_handler(chat_id, text)
         else:
             # возможно ввод даты
             date_input_handler(chat_id, text)

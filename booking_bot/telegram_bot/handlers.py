@@ -21,15 +21,75 @@ AVAILABLE_ROOMS = ['1', '2', '3', '4+'] # Kept for now, could be dynamic later
 AVAILABLE_CLASSES = [('economy', 'Economy'), ('comfort', 'Comfort'), ('premium', 'Premium')] # Kept for now
 
 
-def _get_profile(chat_id):
-    profile, _ = UserProfile.objects.get_or_create(telegram_chat_id=str(chat_id))
+def _get_profile(chat_id, first_name=None, last_name=None):
+    payload = {'telegram_chat_id': str(chat_id)}
+    if first_name:
+        payload['first_name'] = first_name
+    if last_name:
+        payload['last_name'] = last_name
+
+    profile = None  # Initialize profile to None
+
+    try:
+        # Ensure API_BASE is configured, e.g., http://localhost:8000/api/v1
+        api_url = f"{settings.API_BASE}/users/telegram-register-login/"
+        logger.info(f"Attempting to register/login user via API: {api_url} with payload: {payload}")
+        response = requests.post(api_url, json=payload, timeout=10)
+
+        if response.status_code in [200, 201]:
+            data = response.json()
+            access_token = data.get('access')
+            if access_token:
+                # UserProfile should be created or updated by the API view
+                profile = UserProfile.objects.get(telegram_chat_id=str(chat_id))
+                if profile.telegram_state is None:
+                    profile.telegram_state = {}
+                profile.telegram_state['jwt_access_token'] = access_token
+                profile.save()
+                logger.info(f"Successfully retrieved and stored access token for chat_id: {chat_id}")
+            else:
+                logger.error(f"API call successful but no access token in response for chat_id: {chat_id}. Response: {data}")
+                # Try to get/create profile anyway
+                profile, _ = UserProfile.objects.get_or_create(telegram_chat_id=str(chat_id))
+        else:
+            logger.error(f"API call failed for chat_id: {chat_id}. Status: {response.status_code}, Response: {response.text}")
+            # Fallback to get_or_create if API fails
+            profile, _ = UserProfile.objects.get_or_create(telegram_chat_id=str(chat_id))
+            logger.info(f"Fallback: Ensured profile exists for chat_id {chat_id} after API failure.")
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"RequestException during API call for chat_id {chat_id}: {e}", exc_info=True)
+        # Fallback to get_or_create if request fails
+        profile, _ = UserProfile.objects.get_or_create(telegram_chat_id=str(chat_id))
+        logger.info(f"Fallback: Ensured profile exists for chat_id {chat_id} after RequestException.")
+    except UserProfile.DoesNotExist:
+        logger.error(f"UserProfile.DoesNotExist for chat_id {chat_id} after successful API call. This should not happen if API works correctly.")
+        # This is a problematic state, but we try to create it one last time.
+        profile, _ = UserProfile.objects.get_or_create(telegram_chat_id=str(chat_id))
+    except Exception as e:
+        logger.error(f"An unexpected error occurred in _get_profile for chat_id {chat_id}: {e}", exc_info=True)
+        # Fallback to get_or_create for any other unhandled exception
+        profile, _ = UserProfile.objects.get_or_create(telegram_chat_id=str(chat_id))
+        logger.info(f"Fallback: Ensured profile exists for chat_id {chat_id} after an unexpected error.")
+
+    # If profile is still None here, it means all attempts failed, which is highly unlikely with fallbacks.
+    # However, as a last resort, ensure a profile object is returned.
+    if profile is None:
+        logger.warning(f"Profile was still None after all attempts in _get_profile for chat_id {chat_id}. Creating one now.")
+        profile, _ = UserProfile.objects.get_or_create(telegram_chat_id=str(chat_id))
+
     return profile
 
 
-def start_command_handler(chat_id):
-    profile = _get_profile(chat_id)
-    profile.telegram_state = {}
-    profile.save()
+def start_command_handler(chat_id, first_name=None, last_name=None):
+    profile = _get_profile(chat_id, first_name=first_name, last_name=last_name)
+    # Initialize telegram_state if it's None (it might be already set by _get_profile with token)
+    if profile.telegram_state is None:
+        profile.telegram_state = {}
+    # Preserve existing keys like jwt_access_token if they exist
+    # For a fresh start, we might want to clear other keys, but let's be conservative
+    # profile.telegram_state.update({}) # No, this would overwrite the token
+    profile.save() # Save is important if telegram_state was initialized or if _get_profile made changes that weren't saved
     text = "Привет! Я ЖильеGO — помогу быстро найти и забронировать квартиру на сутки."
     keyboard = [
         [{"text": "Поиск квартир", "callback_data": "main_menu|search"}],
@@ -237,13 +297,20 @@ def date_input_handler(chat_id, text):
             'property_id': state['property_id'],
             'start_date': state['start_date'],
             'end_date': text,
+            # No 'telegram_id' here, user is identified by JWT token
         }
+
         headers = {}
-        if getattr(profile, 'jwt', None):
-            headers['Authorization'] = f"Bearer {profile.jwt}"
+        # Retrieve token from telegram_state where it's stored by _get_profile
+        jwt_token = profile.telegram_state.get('jwt_access_token')
+        if jwt_token:
+            headers['Authorization'] = f'Bearer {jwt_token}'
+        else:
+            logger.warning(f"JWT token not found in telegram_state for chat_id {chat_id}. Booking request will likely fail.")
 
         try:
-            resp = requests.post(f"{settings.API_BASE}/bookings/", json=data, headers=headers, timeout=5)
+            logger.info(f"Sending booking request to {settings.API_BASE}/bookings/ with data: {data} and headers: {headers}")
+            resp = requests.post(f"{settings.API_BASE}/bookings/", json=data, headers=headers, timeout=10) # Increased timeout slightly
             resp.raise_for_status()
             booking = resp.json()
         except Exception:
@@ -266,11 +333,15 @@ def date_input_handler(chat_id, text):
 def list_bookings_handler(chat_id):
     profile = _get_profile(chat_id)
     headers = {}
-    if getattr(profile, 'jwt', None):
-        headers['Authorization'] = f"Bearer {profile.jwt}"
+    jwt_token = profile.telegram_state.get('jwt_access_token')
+    if jwt_token:
+        headers['Authorization'] = f'Bearer {jwt_token}'
+    else:
+        logger.warning(f"JWT token not found for chat_id {chat_id} when listing bookings.")
+        # Optionally, send a message to the user that they might need to /start again if this is unexpected.
 
     try:
-        resp = requests.get(f"{settings.API_BASE}/bookings/", headers=headers, timeout=5)
+        resp = requests.get(f"{settings.API_BASE}/bookings/", headers=headers, timeout=10) # Increased timeout slightly
         resp.raise_for_status()
         bookings = resp.json()
     except Exception:
@@ -295,11 +366,15 @@ def list_bookings_handler(chat_id):
 def _handle_cancel_booking(chat_id, booking_id):
     profile = _get_profile(chat_id)
     headers = {}
-    if getattr(profile, 'jwt', None):
-        headers['Authorization'] = f"Bearer {profile.jwt}"
+    jwt_token = profile.telegram_state.get('jwt_access_token')
+    if jwt_token:
+        headers['Authorization'] = f'Bearer {jwt_token}'
+    else:
+        logger.warning(f"JWT token not found for chat_id {chat_id} when cancelling booking {booking_id}.")
+        # Optionally, send a message to the user.
 
     try:
-        resp = requests.delete(f"{settings.API_BASE}/bookings/{booking_id}/", headers=headers, timeout=5)
+        resp = requests.delete(f"{settings.API_BASE}/bookings/{booking_id}/", headers=headers, timeout=10) # Increased timeout slightly
         resp.raise_for_status()
     except requests.exceptions.HTTPError as e:
         logger.error("Cancel error", exc_info=True)

@@ -32,7 +32,7 @@ def _get_profile(chat_id, first_name=None, last_name=None):
 
     try:
         # Ensure API_BASE is configured, e.g., http://localhost:8000/api/v1
-        api_url = f"{settings.API_BASE}/users/telegram-register-login/"
+        api_url = f"{settings.API_BASE}/telegram_auth/register_or_login/" # MODIFIED
         logger.info(f"Attempting to register/login user via API: {api_url} with payload: {payload}")
         response = requests.post(api_url, json=payload, timeout=10)
 

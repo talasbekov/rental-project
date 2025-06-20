@@ -10,6 +10,8 @@ class PropertyMiniSerializer(serializers.ModelSerializer):
         fields = ['id', 'name']
 
 class BookingSerializer(serializers.ModelSerializer):
+    # бот будет слать сюда telegram_id
+    telegram_id = serializers.IntegerField(write_only=True)
     property_details = PropertyMiniSerializer(source='property', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
 
@@ -18,7 +20,7 @@ class BookingSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'property', 'property_details', 'user', 'start_date',
             'end_date', 'total_price', 'status', 'status_display',
-            'kaspi_payment_id', 'created_at', 'updated_at'
+            'kaspi_payment_id', 'created_at', 'updated_at', 'telegram_id'
         ]
         read_only_fields = (
             'user', 'total_price', 'status', 'status_display',

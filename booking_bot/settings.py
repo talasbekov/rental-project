@@ -81,6 +81,8 @@ TEMPLATES = [
     },
 ]
 
+
+
 WSGI_APPLICATION = 'booking_bot.wsgi.application'
 
 
@@ -170,8 +172,14 @@ WHATSAPP_VERIFY_TOKEN    = "my_webhook_verify_token"
 # KASPI_API_BASE_URL = 'https://api.kaspi.kz/v2/' # Example
 
 # URL of this site, used by the bot to call its own API
-SITE_URL = 'https://d83c-147-30-84-118.ngrok-free.app' # Change for production
-API_BASE = 'https://d83c-147-30-84-118.ngrok-free.app/api/v1'
+SITE_URL = 'https://9f82-147-30-84-118.ngrok-free.app' # Change for production
+API_BASE = 'https://9f82-147-30-84-118.ngrok-free.app/api/v1'
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://9f82-147-30-84-118.ngrok-free.app',
+    # or to trust any ngrok subdomain:
+    'https://*.ngrok-free.app',
+]
 
 # Telegram Bot Token
 TELEGRAM_BOT_TOKEN = "7302267102:AAGTSKRPiGWNweB-8-E1sAS6ls-UINwP4is"

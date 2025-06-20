@@ -39,17 +39,6 @@ def start_command_handler(chat_id):
     ]
     send_telegram_message(chat_id, text, {"inline_keyboard": keyboard})
 
-# --- menu_command_handler and text_message_handler are deprecated by button menu ---
-# def menu_command_handler(chat_id):
-#     text = (
-#         "🏠 Главное меню:\n"
-#         "1. Найти квартиру\n"
-#         "2. Мои бронирования\n"
-#         "3. Помощь\n\n"
-#         "Введите номер пункта."
-#     )
-#     send_telegram_message(chat_id, text)
-
 
 def help_command_handler(chat_id):
     text = (
@@ -61,16 +50,6 @@ def help_command_handler(chat_id):
         "3 — это сообщение помощи"
     )
     send_telegram_message(chat_id, text)
-
-# def text_message_handler(chat_id, text):
-#     if text == '1':
-#         _send_region_buttons(chat_id)
-#     elif text == '2':
-#         list_bookings_handler(chat_id)
-#     elif text == '3':
-#         help_command_handler(chat_id)
-#     else:
-#         send_telegram_message(chat_id, "Не понял. Введите /menu.")
 
 
 def _send_city_buttons(chat_id, message_id=None): # Renamed, message_id for potential edit

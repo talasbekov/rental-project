@@ -1,44 +1,53 @@
 from django.contrib.auth import get_user_model
-from rest_framework import viewsets, status, serializers
+from rest_framework import viewsets, status, serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Booking, Property
+from .models import Booking
 from .serializers import BookingSerializer
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from drf_spectacular.openapi import AutoSchema
 # TODO: Add custom permission to ensure only booking owner or admin can cancel/modify
 from rest_framework import generics # Added for ListAPIView
 
-from .. import settings
+from ..users.models import UserProfile
 
 User = get_user_model()
 
 class BookingViewSet(viewsets.ModelViewSet):
     queryset = Booking.objects.all()
     serializer_class = BookingSerializer
-    permission_classes = [AllowAny] # Ensure user is authenticated
-    schema = AutoSchema()
+    permission_classes = [AllowAny]   # любой может POST-ить
 
     def perform_create(self, serializer):
-        property_obj = serializer.validated_data['property']
-        start_date = serializer.validated_data['start_date']
-        end_date = serializer.validated_data['end_date']
+        tg_id = self.request.data.get('telegram_id')
+        if not tg_id:
+            raise drf_serializers.ValidationError({'telegram_id': 'This field is required.'})
 
-        duration = (end_date - start_date).days
-        if duration <= 0: # Should be caught by serializer validation, but double check
-            raise serializers.ValidationError("Booking duration must be at least 1 day.")
+        # 1) find or create the profile
+        profile, created = UserProfile.objects.get_or_create(
+            telegram_id=tg_id,
+            defaults={
+                # if it's new, we also need a User instance
+                'user': User.objects.create(
+                    username=f"tg_{tg_id}"
+                )
+            }
+        )
 
-        total_price = duration * property_obj.price_per_day
-        print(self.request)
+        # вычисляем цену
+        prop = serializer.validated_data['property']
+        sd = serializer.validated_data['start_date']
+        ed = serializer.validated_data['end_date']
+        duration = (ed - sd).days
+        if duration <= 0:
+            raise drf_serializers.ValidationError("Booking duration must be at least 1 day.")
+        total_price = duration * prop.price_per_day
 
-        if self.request.user.is_authenticated:
-            user = self.request.user
-        else:
-            user = User.objects.get(username=settings.BOT_SERVICE_USERNAME)
-
-        print(self.request.user)
-        # Set user to current authenticated user
-        serializer.save(user=user, total_price=total_price, status='pending')
+        # сохраняем бронь: сразу привязываем профиль
+        serializer.save(
+            user=profile,
+            total_price=total_price,
+            status='pending'
+        )
 
     @action(detail=True, methods=['post']) # Add more specific permission later
     def cancel(self, request, pk=None):

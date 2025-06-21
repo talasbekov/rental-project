@@ -172,8 +172,8 @@ WHATSAPP_VERIFY_TOKEN    = "my_webhook_verify_token"
 # KASPI_API_BASE_URL = 'https://api.kaspi.kz/v2/' # Example
 
 # URL of this site, used by the bot to call its own API
-SITE_URL = 'https://9f82-147-30-84-118.ngrok-free.app' # Change for production
-API_BASE = 'https://9f82-147-30-84-118.ngrok-free.app/api/v1'
+SITE_URL = 'https://8471-5-34-33-130.ngrok-free.app' # Change for production
+API_BASE = 'https://8471-5-34-33-130.ngrok-free.app/api/v1'
 
 CSRF_TRUSTED_ORIGINS = [
     'https://9f82-147-30-84-118.ngrok-free.app',

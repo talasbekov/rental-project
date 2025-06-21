@@ -77,33 +77,28 @@ class TelegramRegisterLoginView(APIView):
 
             try:
                 with transaction.atomic():
-                    user_profile, created = UserProfile.objects.get_or_create(
-                        telegram_chat_id=telegram_chat_id,
+                    # 1) Ensure the User exists (lookup by a unique username derived from telegram_chat_id)
+                    user, user_created = User.objects.get_or_create(
+                        username=f"telegram_{telegram_chat_id}",
                         defaults={
-                            'user': User.objects.create_user(
-                                username=f"telegram_{telegram_chat_id}",
-                                first_name=validated_data.get('first_name', ''),
-                                last_name=validated_data.get('last_name', '')
-                            ),
-                            'phone_number': validated_data.get('phone_number'),
-                            'role': 'user' # Default role
+                            'first_name': validated_data.get('first_name', ''),
+                            'last_name': validated_data.get('last_name', '')
                         }
                     )
+                    if user_created:
+                        user.set_unusable_password()
+                        user.save()
 
-                    if not created: # User profile existed, update details if provided
-                        user = user_profile.user
-                        if validated_data.get('first_name') and user.first_name != validated_data.get('first_name'):
-                            user.first_name = validated_data.get('first_name')
-                        if validated_data.get('last_name') and user.last_name != validated_data.get('last_name'):
-                            user.last_name = validated_data.get('last_name')
-                        user.save()
-                        if validated_data.get('phone_number') and user_profile.phone_number != validated_data.get('phone_number'):
-                            user_profile.phone_number = validated_data.get('phone_number')
-                            user_profile.save()
-                    else: # New user and profile created
-                        user = user_profile.user
-                        user.set_unusable_password() # No password needed for bot users
-                        user.save()
+                    # 2) Now create or update the UserProfile, using the FK 'user' as the lookup
+                    profile_defaults = {
+                        'telegram_chat_id': telegram_chat_id,
+                        'phone_number': validated_data.get('phone_number'),
+                        'role': 'user',
+                    }
+                    user_profile, profile_created = UserProfile.objects.update_or_create(
+                        user=user,
+                        defaults=profile_defaults
+                    )
 
                 refresh = RefreshToken.for_user(user_profile.user)
                 return Response({
@@ -111,7 +106,7 @@ class TelegramRegisterLoginView(APIView):
                     'access': str(refresh.access_token),
                     'user_id': user_profile.user.id,
                     'profile_id': user_profile.id,
-                    'created': created
+                    'created': profile_created
                 }, status=status.HTTP_200_OK)
 
             except Exception as e:

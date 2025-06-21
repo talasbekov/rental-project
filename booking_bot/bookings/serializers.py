@@ -10,7 +10,6 @@ class PropertyMiniSerializer(serializers.ModelSerializer):
 
 class BookingSerializer(serializers.ModelSerializer):
     # Write-only fields clients POST:
-    telegram_id = serializers.IntegerField(write_only=True)
     property_id = serializers.PrimaryKeyRelatedField(
         source='property',
         queryset=Property.objects.all(),
@@ -34,7 +33,6 @@ class BookingSerializer(serializers.ModelSerializer):
             'status', 'status_display',
             'kaspi_payment_id',
             'created_at', 'updated_at',
-            'telegram_id'      # clients POST this
         ]
         read_only_fields = (
             'user', 'total_price', 'status', 'status_display',

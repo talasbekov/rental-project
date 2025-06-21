@@ -165,4 +165,4 @@ class PaymentsWebhookTest(TestCase):
 # - Error handling within the success block (e.g., UserProfile.DoesNotExist).
 # - What happens if kaspi_payment_id is missing from the payload.
 # - Test with alternative booking lookup (e.g., if Kaspi returns your internal booking ID).
-```
+

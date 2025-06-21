@@ -18,25 +18,35 @@ class BookingViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
-        # User is now self.request.user due to IsAuthenticated permission class
-        # No need to manually fetch or create UserProfile based on telegram_id here for booking creation,
-        # as the user should already exist and be authenticated.
+        import logging
+        logger = logging.getLogger(__name__)
 
-        # вычисляем цену
+        logger.info(f"Creating booking for user: {self.request.user}")
+        logger.info(f"Validated data: {serializer.validated_data}")
+
+        # Получаем property из validated_data
         prop = serializer.validated_data['property']
         sd = serializer.validated_data['start_date']
         ed = serializer.validated_data['end_date']
+
+        logger.info(f"Property: {prop}, Start: {sd}, End: {ed}")
+
+        # Вычисляем продолжительность и цену
         duration = (ed - sd).days
         if duration <= 0:
             raise drf_serializers.ValidationError("Booking duration must be at least 1 day.")
-        total_price = duration * prop.price_per_day
 
-        # сохраняем бронь: сразу привязываем аутентифицированного пользователя
-        serializer.save(
-            user=self.request.user, # CHANGED from profile to self.request.user
+        total_price = duration * prop.price_per_day
+        logger.info(f"Duration: {duration} days, Total price: {total_price}")
+
+        # Сохраняем бронь с аутентифицированным пользователем
+        booking = serializer.save(
+            user=self.request.user,
             total_price=total_price,
             status='pending'
         )
+        logger.info(f"Booking created successfully: {booking.id}")
+        return booking
 
     @action(detail=True, methods=['post']) # Add more specific permission later
     def cancel(self, request, pk=None):

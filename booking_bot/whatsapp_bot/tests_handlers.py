@@ -104,4 +104,4 @@ class HandlersRoomSelectionTest(TestCase):
         handle_known_user(self.user_profile, selected_region_text, response_twiml)
 
         mock_send_room_count_selection.assert_called_once_with(self.user_profile, response_twiml, selected_region_text)
-```
+

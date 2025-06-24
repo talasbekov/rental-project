@@ -90,18 +90,30 @@ def start_command_handler(chat_id, first_name=None, last_name=None):
 
     text = "Привет! Я ЖильеGO — помогу быстро найти и забронировать квартиру на сутки."
 
-    keyboard = [
+    # Base menu for all users
+    keyboard_buttons = [
         [{"text": "🔍 Поиск квартир", "callback_data": "main_search"}],
         [{"text": "📋 Мои бронирования", "callback_data": "main_bookings"}],
         [{"text": "📊 Статус текущей брони", "callback_data": "main_current"}],
         [{"text": "❓ Помощь", "callback_data": "main_help"}],
     ]
 
-    # Add admin menu for admins
-    if profile.role in ['admin', 'super_admin']:
-        keyboard.append([{"text": "🔧 Админ панель", "callback_data": "admin_menu"}])
+    if profile.role == 'admin' or profile.role == 'super_admin':
+        # Common for Admin and Superuser
+        keyboard_buttons.append([{"text": "➕ Добавить квартиру", "callback_data": "admin_add_property"}])
+        # Retain Admin Panel for other admin functions like "Мои квартиры"
+        keyboard_buttons.append([{"text": "🔧 Админ-функции", "callback_data": "admin_menu"}])
 
-    send_telegram_message(chat_id, text, {"inline_keyboard": keyboard})
+
+    if profile.role == 'super_admin':
+        # Superuser specific
+        # Assuming 'admin_stats' from show_admin_menu is the detailed statistics.
+        # Or we might need a new callback for super_admin level statistics if it's different.
+        # For now, let's use 'admin_stats' and it can be refined later.
+        keyboard_buttons.append([{"text": "📈 Статистика (Суперадмин)", "callback_data": "admin_stats"}])
+        # Note: "Управление админами" is inside "Админ-функции" (admin_menu)
+
+    send_telegram_message(chat_id, text, {"inline_keyboard": keyboard_buttons})
 
 
 def help_command_handler(chat_id):

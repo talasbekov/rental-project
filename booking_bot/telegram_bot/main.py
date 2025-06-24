@@ -41,6 +41,17 @@ def setup_application():
     # application.add_handler(CommandHandler("my_bookings", my_bookings_command_handler)) # Deprecated
     # Add other handlers (MessageHandler, ConversationHandler, etc.) here as needed
 
+    # Set bot commands for the menu button
+    # We run this asynchronously to avoid blocking the setup
+    async def set_commands(app):
+        await app.bot.set_my_commands([
+            ("start", "Главное меню"),
+        ])
+        logger.info("Bot commands set for the menu button.")
+
+    application.job_queue.run_once(lambda _: set_commands(application), 0)
+
+
     logger.info("Telegram Bot Application initialized with handlers.")
     return application
 

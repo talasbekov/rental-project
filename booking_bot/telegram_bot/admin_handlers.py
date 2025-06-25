@@ -1,6 +1,6 @@
 import logging
 from datetime import date, timedelta
-from django.db.models import Sum, Count, Avg, Q
+from django.db.models import Sum, Count, Avg, Q, F
 from io import StringIO
 import csv
 

@@ -1,25 +1,26 @@
 import json
 import logging
+import re
+
 from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 
 from booking_bot.telegram_bot.handlers import (
-    start_command_handler, help_command_handler, callback_query_handler,
-    date_input_handler, show_user_bookings, process_review_request
+    start_command_handler, help_command_handler,
+    show_user_bookings, message_handler, date_input_handler,
 )
-from booking_bot.telegram_bot.utils import answer_callback_query
+
 
 logger = logging.getLogger(__name__)
 
 
 @csrf_exempt
 def telegram_webhook(request):
-    """Handle incoming updates from Telegram"""
+    """Handle incoming updates from Telegram (ReplyKeyboardMarkup only)."""
     if request.method == 'GET':
         return HttpResponse("Telegram webhook is running")
-
-    if request.method != "POST":
+    if request.method != 'POST':
         return HttpResponseBadRequest("Method not allowed")
 
     try:
@@ -29,78 +30,47 @@ def telegram_webhook(request):
         logger.error("Invalid JSON in webhook request")
         return HttpResponseBadRequest("Invalid JSON")
 
-    try:
-        # Handle callback queries (button presses)
-        if "callback_query" in data:
-            callback_query = data["callback_query"]
-            callback_id = callback_query["id"]
-            chat_id = callback_query["message"]["chat"]["id"]
-            message_id = callback_query["message"]["message_id"]
-            callback_data = callback_query.get("data", "")
+    # Мы больше не используем Inline-кнопки, так что игнорируем callback_query
+    # и сразу обрабатываем только "message"
+    if "message" in data:
+        message = data["message"]
+        chat_id = message["chat"]["id"]
+        from_user = message.get("from", {})
+        first_name = from_user.get("first_name")
+        last_name = from_user.get("last_name")
 
-            # Answer callback query to remove loading state
-            answer_callback_query(callback_id)
+        # Если текст пришёл
+        if "text" in message:
+            text = message["text"].strip()
 
-            # Get user info
-            from_user = callback_query.get("from", {})
-            first_name = from_user.get("first_name")
-            last_name = from_user.get("last_name")
+            # Сначала — системные команды
+            if text.startswith("/start"):
+                start_command_handler(chat_id, first_name, last_name)
+            elif text.startswith("/help"):
+                help_command_handler(chat_id)
+            elif text.startswith("/menu"):
+                start_command_handler(chat_id, first_name, last_name)
+            elif text.startswith("/bookings"):
+                show_user_bookings(chat_id, 'active')
+            elif text.startswith("/history"):
+                show_user_bookings(chat_id, 'completed')
 
-            # Handle the callback
-            callback_query_handler(chat_id, callback_data, message_id)
+            # Затем — быстрый ввод дат: формат "DD.MM.YYYY" или кнопки "Сегодня", "Завтра"
+            elif re.match(r'^\d{2}\.\d{2}\.\d{4}$', text) \
+                 or text.startswith("Сегодня") \
+                 or text.startswith("Завтра"):
+                date_input_handler(chat_id, text)
 
-            return JsonResponse({"ok": True})
+            # Всё остальное — в message_handler (нажатия на Reply-кнопки и пр.)
+            else:
+                message_handler(chat_id, text)
 
-        # Handle regular messages
-        elif "message" in data:
-            message = data["message"]
-            chat_id = message["chat"]["id"]
+        # Если нам понадобится обрабатывать фото (например, для отзывов) —
+        # можно здесь же добавить ветку с вызовом нужного хендлера.
+        return JsonResponse({"ok": True})
 
-            # Get user info
-            from_user = message.get("from", {})
-            first_name = from_user.get("first_name")
-            last_name = from_user.get("last_name")
-
-            # Handle different message types
-            if "text" in message:
-                text = message["text"].strip()
-
-                # Handle commands
-                if text.startswith("/start"):
-                    start_command_handler(chat_id, first_name, last_name)
-                elif text.startswith("/help"):
-                    help_command_handler(chat_id)
-                elif text.startswith("/menu"):
-                    start_command_handler(chat_id, first_name, last_name)
-                elif text.startswith("/bookings"):
-                    show_user_bookings(chat_id, 'active')
-                elif text.startswith("/history"):
-                    show_user_bookings(chat_id, 'completed')
-                elif text.startswith("/details_"):
-                    # Handle booking details command
-                    try:
-                        booking_id = int(text.split("_")[1])
-                        show_booking_details(chat_id, booking_id)
-                    except (IndexError, ValueError):
-                        pass
-                else:
-                    # Handle regular text (e.g., date input)
-                    date_input_handler(chat_id, text)
-
-            # Handle photo messages (for reviews)
-            elif "photo" in message:
-                handle_photo_message(chat_id, message)
-
-            return JsonResponse({"ok": True})
-
-        # Handle other update types if needed
-        else:
-            logger.info(f"Unhandled update type: {data}")
-            return JsonResponse({"ok": True})
-
-    except Exception as e:
-        logger.error(f"Error processing webhook: {e}", exc_info=True)
-        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+    # Всё остальное (стики, документы и т.п.) — просто отвечаем OK
+    return JsonResponse({"ok": True})
 
 
 def show_booking_details(chat_id, booking_id):

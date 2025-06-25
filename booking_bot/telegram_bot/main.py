@@ -4,7 +4,7 @@ from .. import settings
 from .handlers import (
     start_command_handler,
     callback_query_handler,
-    date_input_handler,
+    date_input_handler, help_command_handler, message_handler,
 )
 
 # Enable logging for python-telegram-bot
@@ -19,39 +19,33 @@ application = None
 
 def setup_application():
     global application
-    if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_BOT_TOKEN == "7302267102:AAGZL04EhwnZDYInhmPtS_LU_3wS0vecotM":
-        logger.warning("TELEGRAM_BOT_TOKEN is not configured or is a placeholder. Bot will not be initialized.")
-        application = None
+    if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_BOT_TOKEN.startswith('PLACEHOLDER'):
+        logger.warning("TELEGRAM_BOT_TOKEN not configured; bot will not start.")
         return
 
-    logger.info("Initializing Telegram Bot Application...")
-    application_builder = Application.builder().token(settings.TELEGRAM_BOT_TOKEN)
+    builder = Application.builder().token(settings.TELEGRAM_BOT_TOKEN)
+    application = builder.build()
 
-    application = application_builder.build()
+    # Commands
+    application.add_handler(CommandHandler('start', start_command_handler))
+    application.add_handler(CommandHandler('help', lambda update,ctx: help_command_handler(update.effective_chat.id)))
 
-    # Register handlers
-    application.add_handler(CommandHandler("start", start_command_handler))
-
-    # Add the central callback handler
+    # Inline callbacks
     application.add_handler(CallbackQueryHandler(callback_query_handler))
 
-    # MessageHandler for date input during booking flow (text_message_handler was removed from handlers.py)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, date_input_handler))
+    # Date inputs (strict date format)
+    application.add_handler(MessageHandler(filters.Regex(r'^\d{2}\.\d{2}\.\d{4}$') & ~filters.COMMAND,
+                                           lambda update,ctx: date_input_handler(update.effective_chat.id, update.message.text)))
+    # All other text → message_handler
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+                                           lambda update,ctx: message_handler(update.effective_chat.id, update.message.text)))
 
-    # application.add_handler(CommandHandler("my_bookings", my_bookings_command_handler)) # Deprecated
-    # Add other handlers (MessageHandler, ConversationHandler, etc.) here as needed
+    # Set commands
+    async def set_cmds(app):
+        await app.bot.set_my_commands([('start','Главное меню'),('help','Помощь')])
+        logger.info("Commands set")
+    application.job_queue.run_once(lambda ctx: set_cmds(application), 0)
 
-    # Set bot commands for the menu button
-    # We run this asynchronously to avoid blocking the setup
-    async def set_commands(app):
-        await app.bot.set_my_commands([
-            ("start", "Главное меню"),
-        ])
-        logger.info("Bot commands set for the menu button.")
-
-    application.job_queue.run_once(lambda _: set_commands(application), 0)
-
-
-    logger.info("Telegram Bot Application initialized with handlers.")
+    logger.info("Bot initialized")
     return application
 

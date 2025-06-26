@@ -37,12 +37,22 @@ def message_handler(chat_id, text, update=None, context=None):
     if update and update.message and update.message.photo:
         if handle_photo_upload(chat_id, update, context):
             return
+        elif text.startswith("/debug_photos"):
+            parts = text.split()
+            if len(parts) > 1:
+                try:
+                    prop_id = int(parts[1])
+                    debug_property_photos(chat_id, prop_id)
+                except ValueError:
+                    send_telegram_message(chat_id, "Неверный ID объекта")
+            else:
+                send_telegram_message(chat_id, "Использование: /debug_photos <ID>")
 
     if handle_add_property_start(chat_id, text):
         return
 
     # Ловим варианты «Отмена», «Отменить» и «Главное меню»
-    if text in ("❌ Отмена", "❌ Отменить", "🏠 Главное меню"):
+    if text in ("❌ Отмена", "❌ Отменить", "🏠 Главное меню", "🔄 Новый поиск"):
         start_command_handler(chat_id)
         return
 
@@ -194,11 +204,12 @@ def select_rooms(chat_id, profile, text):
     send_telegram_message(chat_id, f"Количество комнат: {text}\nИщу варианты...")
     show_search_results(chat_id, profile, offset=0)
 
+
 @log_handler
 def show_search_results(chat_id, profile, offset=0):
     """Show search results with unified Reply-клавиатуру (включая «Забронировать»)."""
     sd = profile.telegram_state or {}
-    # … тот же код проверки параметров и запроса …
+
     query = Property.objects.filter(
         district__city_id=sd.get('city_id'),
         district_id=sd.get('district_id'),
@@ -206,6 +217,7 @@ def show_search_results(chat_id, profile, offset=0):
         number_of_rooms=sd.get('rooms'),
         status='available'
     ).order_by('price_per_day')
+
     total = query.count()
     if total == 0:
         kb = [[KeyboardButton("🔄 Новый поиск")], [KeyboardButton("🏠 Главное меню")]]
@@ -224,10 +236,42 @@ def show_search_results(chat_id, profile, offset=0):
 
     prop = query[offset]
 
-    # отправляем фото (если есть)
+    # Собираем фотографии с проверкой
     photos = PropertyPhoto.objects.filter(property=prop)[:6]
-    if photos:
-        send_photo_group(chat_id, [p.image_url for p in photos])
+    photo_urls = []
+
+    for photo in photos:
+        if photo.image_url:
+            # Это внешний URL
+            photo_urls.append(photo.image_url)
+        elif photo.image:
+            # Это загруженный файл - формируем полный URL
+            try:
+                # Получаем базовый URL сайта
+                from django.conf import settings
+
+                # Формируем полный URL
+                if hasattr(settings, 'SITE_URL') and settings.SITE_URL:
+                    # Если есть настройка SITE_URL
+                    full_url = f"{settings.SITE_URL.rstrip('/')}{photo.image.url}"
+                else:
+                    # Fallback - используем относительный путь и добавляем домен
+                    # Нужно получить домен из request или настроек
+                    domain = getattr(settings, 'DOMAIN', 'https://yourdomain.com')
+                    full_url = f"{domain.rstrip('/')}{photo.image.url}"
+
+                photo_urls.append(full_url)
+                logger.info(f"Generated full URL: {full_url}")
+
+            except Exception as e:
+                logger.warning(f"Error getting photo URL: {e}")
+
+    # Отправляем фото только если есть валидные URL
+    if photo_urls:
+        logger.info(f"Sending {len(photo_urls)} photos for property {prop.id}")
+        send_photo_group(chat_id, photo_urls)
+    else:
+        logger.info(f"No photos found for property {prop.id}")
 
     # собираем текст карточки
     stats = Review.objects.filter(property=prop).aggregate(avg=Avg('rating'), cnt=Count('id'))
@@ -270,6 +314,47 @@ def show_search_results(chat_id, profile, offset=0):
         text,
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
     )
+
+@log_handler
+def debug_property_photos(chat_id, property_id):
+    """Отладочная функция для проверки фотографий объекта"""
+    try:
+        prop = Property.objects.get(id=property_id)
+        photos = PropertyPhoto.objects.filter(property=prop)
+
+        debug_text = f"*Отладка фотографий для {prop.name}*\n\n"
+        debug_text += f"Всего фото: {photos.count()}\n\n"
+
+        for i, photo in enumerate(photos, 1):
+            debug_text += f"Фото {i}:\n"
+            debug_text += f"- ID: {photo.id}\n"
+
+            if photo.image_url:
+                debug_text += f"- URL: {photo.image_url}\n"
+                # Проверяем доступность URL
+                try:
+                    import requests
+                    response = requests.head(photo.image_url, timeout=3)
+                    debug_text += f"- Статус URL: {response.status_code}\n"
+                except Exception as e:
+                    debug_text += f"- Ошибка URL: {str(e)}\n"
+
+            if photo.image:
+                debug_text += f"- Файл: {photo.image.name}\n"
+                try:
+                    debug_text += f"- URL файла: {photo.image.url}\n"
+                except Exception as e:
+                    debug_text += f"- Ошибка файла: {str(e)}\n"
+
+            debug_text += "\n"
+
+        send_telegram_message(chat_id, debug_text)
+
+    except Property.DoesNotExist:
+        send_telegram_message(chat_id, "Объект не найден")
+    except Exception as e:
+        logger.error(f"Debug error: {e}")
+        send_telegram_message(chat_id, f"Ошибка отладки: {str(e)}")
 
 
 @log_handler

@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/5.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
-
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -58,6 +58,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'booking_bot.middleware.CSRFExemptMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -175,13 +176,20 @@ WHATSAPP_VERIFY_TOKEN    = "my_webhook_verify_token"
 # KASPI_API_BASE_URL = 'https://api.kaspi.kz/v2/' # Example
 
 # URL of this site, used by the bot to call its own API
-SITE_URL = 'https://e3ff-46-34-194-76.ngrok-free.app' # Change for production
-API_BASE = 'https://e3ff-46-34-194-76.ngrok-free.app/api/v1'
+NGROK_URL = os.environ.get('NGROK_URL', 'https://e3ff-46-34-194-76.ngrok-free.app')
+DOMAIN = NGROK_URL
+SITE_URL = NGROK_URL # Change for production
+API_BASE = f'{NGROK_URL}/api/v1'
 
 CSRF_TRUSTED_ORIGINS = [
-    'https://e3ff-46-34-194-76.ngrok-free.app',
+    NGROK_URL,
     # or to trust any ngrok subdomain:
     'https://*.ngrok-free.app',
+]
+
+# Отключаем CSRF для webhook (если нужно)
+CSRF_EXEMPT_URLS = [
+    r'^/telegram/webhook/$',
 ]
 
 # Telegram Bot Token

@@ -64,7 +64,22 @@ class PropertyPhoto(models.Model):
     image_url = models.URLField(blank=True, null=True)
 
     def __str__(self):
-        return f"Photo for {self.property.name}"
+        if self.image_url:
+            return f"Photo URL for {self.property.name}: {self.image_url}"
+        elif self.image:
+            return f"Photo file for {self.property.name}: {self.image.name}"
+        return f"Empty photo for {self.property.name}"
+
+    def get_photo_url(self):
+        """Получить URL фотографии (приоритет - image_url, затем image)"""
+        if self.image_url:
+            return self.image_url
+        elif self.image:
+            return self.image.url
+        return None
+
+    class Meta:
+        ordering = ['id']
 
 # Reviews Section
 

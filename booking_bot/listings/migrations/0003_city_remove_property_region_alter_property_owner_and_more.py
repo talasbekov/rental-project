@@ -40,7 +40,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='property',
             name='status',
-            field=models.CharField(choices=[('available', 'Available / Свободна'), ('booked', 'Booked / Забронирована'), ('occupied', 'Occupied / Занята'), ('maintenance', 'Maintenance / На обслуживании')], default='available', max_length=20),
+            field=models.CharField(choices=[('Свободна', 'Available / Свободна'), ('booked', 'Booked / Забронирована'), ('occupied', 'Occupied / Занята'), ('maintenance', 'Maintenance / На обслуживании')], default='available', max_length=20),
         ),
         migrations.CreateModel(
             name='District',

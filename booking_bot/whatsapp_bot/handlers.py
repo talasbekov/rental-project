@@ -208,12 +208,12 @@ def display_available_apartments(user_profile, twilio_messaging_response, user_s
 
     # Assuming Property model has 'region' (CharField) and 'number_of_rooms' (PositiveIntegerField)
     # And PropertyPhoto related_name is 'photos'
-    # And Property 'status' is 'available'
+    # And Property 'status' is 'Свободна'
     try:
         apartments_query = Property.objects.filter(
             region=region,
             number_of_rooms=rooms,
-            status='available'
+            status='Свободна'
         ).order_by('id') # Consistent ordering for pagination
 
         apartments_page = list(apartments_query[offset : offset + PAGE_SIZE])
@@ -387,7 +387,7 @@ def handle_known_user(user_profile, incoming_message_body, twilio_messaging_resp
                     id=apartment_id,
                     region=data.get('region'),
                     number_of_rooms=int(data.get('rooms', -1)), # Use -1 or handle error if 'rooms' is missing/invalid
-                    status='available'
+                    status='Свободна'
                 ).exists()
                 if not is_valid_fallback:
                     twilio_messaging_response.message(f"Invalid ID: '{apartment_id_str}'. Please type one of the IDs shown or restart search.")

@@ -34,7 +34,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='property',
             name='status',
-            field=models.CharField(choices=[('available', 'Available'), ('booked', 'Booked'), ('maintenance', 'Maintenance')], default='available', max_length=20),
+            field=models.CharField(choices=[('Свободна', 'Available'), ('booked', 'Booked'), ('maintenance', 'Maintenance')], default='available', max_length=20),
         ),
         migrations.CreateModel(
             name='PropertyPhoto',

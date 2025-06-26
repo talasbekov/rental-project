@@ -16,7 +16,7 @@ class PropertyFilter(django_filters.FilterSet):
             'district': ['exact'], # Filter by district ID
             'number_of_rooms': ['exact'],
             'property_class': ['exact'], # Filter by class key e.g. 'economy'
-            'status': ['exact'], # Filter by status key e.g. 'available'
+            'status': ['exact'], # Filter by status key e.g. 'Свободна'
             'price_per_day': ['gte', 'lte'],
             # area is handled by area_min, area_max above
         }

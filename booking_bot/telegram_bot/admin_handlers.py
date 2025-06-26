@@ -470,7 +470,7 @@ def show_admin_menu(chat_id):
     ]
     if profile.role == 'super_admin':
         keyboard.append([KeyboardButton("👥 Управление админами")])
-    keyboard.append([KeyboardButton("◀️ Главное меню")])
+    keyboard.append([KeyboardButton("🧭 Главное меню")])
     send_telegram_message(
         chat_id,
         text,
@@ -494,7 +494,7 @@ def show_admin_properties(chat_id):
             chat_id,
             "У вас пока нет квартир.",
             reply_markup=ReplyKeyboardMarkup(
-                [[KeyboardButton("➕ Добавить квартиру")], [KeyboardButton("◀️ Главное меню")]],
+                [[KeyboardButton("➕ Добавить квартиру")], [KeyboardButton("🧭 Главное меню")]],
                 resize_keyboard=True
             ).to_dict()
         )
@@ -502,13 +502,13 @@ def show_admin_properties(chat_id):
     # Формируем текст
     lines = ["🏠 *Ваши квартиры:*\n"]
     for prop in props:
-        lines.append(f"• {prop.name} — {prop.district.city.name}, {prop.district.name} — {prop.price_per_day} ₸/сутки")
+        lines.append(f"• {prop.name} — {prop.district.city.name}, {prop.district.name} — {prop.price_per_day} ₸/сутки — {prop.status}")
     text = "\n".join(lines)
     # Кнопки
     buttons = [
         [KeyboardButton("➕ Добавить квартиру")],
         [KeyboardButton("📊 Статистика")],
-        [KeyboardButton("◀️ Главное меню")]
+        [KeyboardButton("🧭 Главное меню")]
     ]
     send_telegram_message(
         chat_id,
@@ -548,7 +548,7 @@ def show_detailed_statistics(chat_id, period='month'):
         [KeyboardButton("Неделя") , KeyboardButton("Месяц")],
         [KeyboardButton("Квартал"), KeyboardButton("Год")],
         [KeyboardButton("📥 Скачать CSV")],
-        [KeyboardButton("◀️ Главное меню")]
+        [KeyboardButton("🧭 Главное меню")]
     ]
     send_telegram_message(
         chat_id,
@@ -598,7 +598,7 @@ def show_property_management(chat_id, property_id):
         [KeyboardButton("Изменить цену")],
         [KeyboardButton("Изменить описание")],
         [KeyboardButton("Управление фото")],
-        [KeyboardButton("◀️ Главное меню")]
+        [KeyboardButton("🧭 Главное меню")]
     ]
     send_telegram_message(chat_id, text,
         reply_markup=ReplyKeyboardMarkup(buttons,resize_keyboard=True).to_dict()
@@ -623,7 +623,7 @@ def show_super_admin_menu(chat_id):
         [KeyboardButton("Управление админами")],
         [KeyboardButton("Статистика по городам")],
         [KeyboardButton("Общая статистика")],
-        [KeyboardButton("◀️ Главное меню")]
+        [KeyboardButton("🧭 Главное меню")]
     ]
     send_telegram_message(chat_id, text,
         reply_markup=ReplyKeyboardMarkup(buttons,resize_keyboard=True).to_dict()

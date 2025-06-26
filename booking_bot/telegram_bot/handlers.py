@@ -52,7 +52,7 @@ def message_handler(chat_id, text, update=None, context=None):
         return
 
     # Ловим варианты «Отмена», «Отменить» и «Главное меню»
-    if text in ("❌ Отмена", "❌ Отменить", "🏠 Главное меню", "🔄 Новый поиск"):
+    if text in ("❌ Отмена", "❌ Отменить", "🧭 Главное меню", "🔄 Новый поиск"):
         start_command_handler(chat_id)
         return
 
@@ -215,12 +215,12 @@ def show_search_results(chat_id, profile, offset=0):
         district_id=sd.get('district_id'),
         property_class=sd.get('property_class'),
         number_of_rooms=sd.get('rooms'),
-        status='available'
+        status='Свободна'
     ).order_by('price_per_day')
 
     total = query.count()
     if total == 0:
-        kb = [[KeyboardButton("🔄 Новый поиск")], [KeyboardButton("🏠 Главное меню")]]
+        kb = [[KeyboardButton("🔄 Новый поиск")], [KeyboardButton("🧭 Главное меню")]]
         send_telegram_message(
             chat_id,
             "По заданным параметрам ничего не нашлось.",
@@ -257,7 +257,7 @@ def show_search_results(chat_id, profile, offset=0):
                 else:
                     # Fallback - используем относительный путь и добавляем домен
                     # Нужно получить домен из request или настроек
-                    domain = getattr(settings, 'DOMAIN', 'https://yourdomain.com')
+                    domain = getattr(settings, 'DOMAIN', settings.DOMAIN)
                     full_url = f"{domain.rstrip('/')}{photo.image.url}"
 
                 photo_urls.append(full_url)
@@ -289,7 +289,7 @@ def show_search_results(chat_id, profile, offset=0):
     keyboard = []
 
     # Кнопка брони
-    if prop.status == 'available':
+    if prop.status == 'Свободна':
         keyboard.append([KeyboardButton(f"📅 Забронировать {prop.id}")])
 
     # Кнопка отзывов
@@ -306,7 +306,7 @@ def show_search_results(chat_id, profile, offset=0):
         keyboard.append(nav)
 
     # Новый поиск / главное меню
-    keyboard.append([KeyboardButton("🔄 Новый поиск"), KeyboardButton("🏠 Главное меню")])
+    keyboard.append([KeyboardButton("🔄 Новый поиск"), KeyboardButton("🧭 Главное меню")])
 
     # Единожды отправляем карточку + ВСЕ кнопки
     send_telegram_message(
@@ -391,11 +391,11 @@ def show_property_card(chat_id, property_obj):
     if stats['avg']:
         text += f"⭐ Рейтинг: {stats['avg']:.1f}/5 ({stats['cnt']} отзывов)\n"
     buttons = []
-    if property_obj.status == 'available':
+    if property_obj.status == 'Свободна':
         buttons.append([KeyboardButton(f"📅 Забронировать {property_obj.id}")])
     if stats['cnt'] > 0:
         buttons.append([KeyboardButton(f"💬 Отзывы {property_obj.id}")])
-    buttons.append([KeyboardButton("🏠 Главное меню")])
+    buttons.append([KeyboardButton("🧭 Главное меню")])
     send_telegram_message(chat_id, text,
                            reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True, input_field_placeholder="Действие").to_dict())
 
@@ -403,7 +403,7 @@ def show_property_card(chat_id, property_obj):
 def handle_booking_start(chat_id, property_id):
     profile = _get_profile(chat_id)
     try:
-        prop = Property.objects.get(id=property_id, status='available')
+        prop = Property.objects.get(id=property_id, status='Свободна')
     except Property.DoesNotExist:
         send_telegram_message(chat_id, "Квартира не найдена или уже забронирована.")
         return
@@ -612,7 +612,7 @@ def show_user_bookings(chat_id, booking_type='active'):
         title = "📋 *История бронирований*"
     if not bookings:
         text = f"{title}\n\nУ вас пока нет {'активных' if booking_type=='active' else 'завершенных'} бронирований."
-        kb = [[KeyboardButton("🏠 Главное меню")]]
+        kb = [[KeyboardButton("🧭 Главное меню")]]
         send_telegram_message(chat_id, text,
                                reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict())
         return
@@ -624,7 +624,7 @@ def show_user_bookings(chat_id, booking_type='active'):
             f"📅 {b.start_date.strftime('%d.%m')} - {b.end_date.strftime('%d.%m.%Y')}\n"
             f"💰 {b.total_price} ₸\n\n"
         )
-    kb = [[KeyboardButton("🏠 Главное меню")]]
+    kb = [[KeyboardButton("🧭 Главное меню")]]
     send_telegram_message(chat_id, text,
                            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict())
 
@@ -643,7 +643,7 @@ def show_property_reviews(chat_id, property_id, offset=0):
         kb = []
         if offset+5 < reviews.count():
             kb.append([KeyboardButton("➡️ Дальше")])
-        kb.append([KeyboardButton("🏠 Главное меню")])
+        kb.append([KeyboardButton("🧭 Главное меню")])
         send_telegram_message(chat_id, text,
                                reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict())
     except Property.DoesNotExist:

@@ -24,16 +24,16 @@ class District(models.Model):
 
 class Property(models.Model):
     PROPERTY_CLASS_CHOICES = [
-        ('economy', 'Economy / Комфорт'), # Adjusted display value slightly
+        ('comfort', 'Комфорт / Комфорт'), # Adjusted display value slightly
         ('business', 'Business / Бизнес'),
         ('luxury', 'Luxury / Премиум'),
     ]
     # REGION_CHOICES removed, replaced by ForeignKey to District
     STATUS_CHOICES = [
-        ('available', 'Available / Свободна'),
-        ('booked', 'Booked / Забронирована'),
-        ('occupied', 'Occupied / Занята'), # Changed 'maintenance' to 'occupied' for clarity
-        ('maintenance', 'Maintenance / На обслуживании'), # Added maintenance back as a separate status
+        ('Свободна', 'Available / Свободна'),
+        ('Забронирована', 'Booked / Забронирована'),
+        ('Занята', 'Occupied / Занята'), # Changed 'maintenance' to 'occupied' for clarity
+        ('На обслуживании', 'Maintenance / На обслуживании'), # Added maintenance back as a separate status
     ]
     name = models.CharField(max_length=255)
     description = models.TextField()
@@ -41,9 +41,9 @@ class Property(models.Model):
     district = models.ForeignKey(District, on_delete=models.SET_NULL, null=True, related_name='properties') # Link to new District model
     number_of_rooms = models.PositiveIntegerField()
     area = models.DecimalField(max_digits=8, decimal_places=2, help_text="Area in square meters")
-    property_class = models.CharField(max_length=20, choices=PROPERTY_CLASS_CHOICES, default='economy')
+    property_class = models.CharField(max_length=20, choices=PROPERTY_CLASS_CHOICES, default='comfort')
     # region field removed
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Свободна')
 
     # Encrypted fields
     key_safe_code = models.CharField(max_length=50, null=True, blank=True)

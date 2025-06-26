@@ -99,6 +99,9 @@ DATABASES = {
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
@@ -172,11 +175,11 @@ WHATSAPP_VERIFY_TOKEN    = "my_webhook_verify_token"
 # KASPI_API_BASE_URL = 'https://api.kaspi.kz/v2/' # Example
 
 # URL of this site, used by the bot to call its own API
-SITE_URL = 'https://345d-46-34-194-66.ngrok-free.app' # Change for production
-API_BASE = 'https://345d-46-34-194-66.ngrok-free.app/api/v1'
+SITE_URL = 'https://e3ff-46-34-194-76.ngrok-free.app' # Change for production
+API_BASE = 'https://e3ff-46-34-194-76.ngrok-free.app/api/v1'
 
 CSRF_TRUSTED_ORIGINS = [
-    'https://345d-46-34-194-66.ngrok-free.app',
+    'https://e3ff-46-34-194-76.ngrok-free.app',
     # or to trust any ngrok subdomain:
     'https://*.ngrok-free.app',
 ]

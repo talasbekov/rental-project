@@ -1,9 +1,12 @@
 import logging
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
+
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, CallbackContext
+
+from .utils import send_telegram_message
 from .. import settings
 from .handlers import (
     start_command_handler,
-    callback_query_handler,
     date_input_handler, help_command_handler, message_handler,
 )
 
@@ -17,6 +20,28 @@ logger = logging.getLogger(__name__)
 # Global application instance
 application = None
 
+def telegram_message_handler(update: Update, context: CallbackContext):
+    """Основной обработчик телеграм сообщений."""
+    try:
+        chat_id = update.effective_chat.id
+
+        # Обработка текстовых сообщений
+        if update.message and update.message.text:
+            text = update.message.text
+            message_handler(chat_id, text, update, context)
+
+        # Обработка фотографий
+        elif update.message and update.message.photo:
+            # Для фото передаем пустой текст, но передаем update и context
+            message_handler(chat_id, "", update, context)
+
+        else:
+            send_telegram_message(chat_id, "Пожалуйста, отправьте текст или фотографию.")
+
+    except Exception as e:
+        logger.error(f"Error in telegram handler: {e}", exc_info=True)
+        send_telegram_message(update.effective_chat.id, "Произошла ошибка. Попробуйте /start")
+
 def setup_application():
     global application
     if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_BOT_TOKEN.startswith('PLACEHOLDER'):
@@ -27,18 +52,15 @@ def setup_application():
     application = builder.build()
 
     # Commands
-    application.add_handler(CommandHandler('start', start_command_handler))
+    application.add_handler(CommandHandler('start', lambda update, ctx: start_command_handler(
+        update.effective_chat.id,
+        update.effective_user.first_name,
+        update.effective_user.last_name
+    )))
     application.add_handler(CommandHandler('help', lambda update,ctx: help_command_handler(update.effective_chat.id)))
 
-    # Inline callbacks
-    application.add_handler(CallbackQueryHandler(callback_query_handler))
-
-    # Date inputs (strict date format)
-    application.add_handler(MessageHandler(filters.Regex(r'^\d{2}\.\d{2}\.\d{4}$') & ~filters.COMMAND,
-                                           lambda update,ctx: date_input_handler(update.effective_chat.id, update.message.text)))
-    # All other text → message_handler
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
-                                           lambda update,ctx: message_handler(update.effective_chat.id, update.message.text)))
+    # УБИРАЕМ дублирующиеся обработчики и оставляем только один основной
+    application.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, telegram_message_handler))
 
     # Set commands
     async def set_cmds(app):
@@ -48,4 +70,3 @@ def setup_application():
 
     logger.info("Bot initialized")
     return application
-

@@ -10,7 +10,8 @@ from booking_bot.telegram_bot.handlers import (
     start_command_handler, help_command_handler,
     show_user_bookings, message_handler, date_input_handler,
 )
-
+# Добавляем импорт для обработки фото
+from booking_bot.telegram_bot.admin_handlers import handle_photo_upload
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,7 @@ def telegram_webhook(request):
         logger.error("Invalid JSON in webhook request")
         return HttpResponseBadRequest("Invalid JSON")
 
-    # Мы больше не используем Inline-кнопки, так что игнорируем callback_query
-    # и сразу обрабатываем только "message"
+    # Обрабатываем только "message"
     if "message" in data:
         message = data["message"]
         chat_id = message["chat"]["id"]
@@ -39,8 +39,61 @@ def telegram_webhook(request):
         first_name = from_user.get("first_name")
         last_name = from_user.get("last_name")
 
+        # Создаем mock-объекты для совместимости с telegram-бот библиотекой
+        class MockPhoto:
+            def __init__(self, photo_data):
+                self.file_id = photo_data.get("file_id")
+                self.file_size = photo_data.get("file_size", 0)
+                self.width = photo_data.get("width", 0)
+                self.height = photo_data.get("height", 0)
+
+        class MockUpdate:
+            def __init__(self, message_data):
+                self.message = MockMessage(message_data)
+
+        class MockMessage:
+            def __init__(self, message_data):
+                self.text = message_data.get("text")
+                # Преобразуем photo из списка словарей в список MockPhoto объектов
+                photo_data = message_data.get("photo", [])
+                self.photo = [MockPhoto(p) for p in photo_data] if photo_data else []
+
+        class MockContext:
+            def __init__(self):
+                self.bot = MockBot()
+
+        class MockBot:
+            def get_file(self, file_id):
+                # Простая реализация для получения файла
+                class MockFile:
+                    def __init__(self, file_id):
+                        self.file_id = file_id
+
+                    def download(self, custom_path):
+                        import requests
+                        bot_token = settings.TELEGRAM_BOT_TOKEN
+                        # Получаем путь к файлу
+                        get_file_url = f"https://api.telegram.org/bot{bot_token}/getFile"
+                        response = requests.get(get_file_url, params={"file_id": file_id})
+                        if response.status_code == 200:
+                            file_path = response.json()["result"]["file_path"]
+                            download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+                            # Скачиваем файл
+                            file_response = requests.get(download_url)
+                            with open(custom_path, 'wb') as f:
+                                f.write(file_response.content)
+
+                return MockFile(file_id)
+
+        update_obj = MockUpdate(message)
+        context_obj = MockContext()
+
+        # Если есть фото
+        if "photo" in message:
+            # Обрабатываем фото
+            message_handler(chat_id, "", update_obj, context_obj)
         # Если текст пришёл
-        if "text" in message:
+        elif "text" in message:
             text = message["text"].strip()
 
             # Сначала — системные команды
@@ -57,16 +110,14 @@ def telegram_webhook(request):
 
             # Затем — быстрый ввод дат: формат "DD.MM.YYYY" или кнопки "Сегодня", "Завтра"
             elif re.match(r'^\d{2}\.\d{2}\.\d{4}$', text) \
-                 or text.startswith("Сегодня") \
-                 or text.startswith("Завтра"):
+                    or text.startswith("Сегодня") \
+                    or text.startswith("Завтра"):
                 date_input_handler(chat_id, text)
 
             # Всё остальное — в message_handler (нажатия на Reply-кнопки и пр.)
             else:
-                message_handler(chat_id, text)
+                message_handler(chat_id, text, update_obj, context_obj)
 
-        # Если нам понадобится обрабатывать фото (например, для отзывов) —
-        # можно здесь же добавить ветку с вызовом нужного хендлера.
         return JsonResponse({"ok": True})
 
     # Всё остальное (стики, документы и т.п.) — просто отвечаем OK

@@ -5,143 +5,41 @@ from django.db import transaction
 from django.db.models import Count, Avg
 from telegram import ReplyKeyboardMarkup, KeyboardButton
 
+from .constants import STATE_MAIN_MENU, STATE_AWAITING_CHECK_IN, STATE_AWAITING_CHECK_OUT, STATE_CONFIRM_BOOKING, \
+    STATE_SELECT_CITY, STATE_SELECT_DISTRICT, STATE_SELECT_CLASS, STATE_SELECT_ROOMS, STATE_SHOWING_RESULTS, \
+    log_handler, _get_or_create_local_profile, _get_profile, start_command_handler
 from .. import settings
 from booking_bot.users.models import UserProfile
 from booking_bot.listings.models import City, District, Property, PropertyPhoto, Review
 from booking_bot.bookings.models import Booking
 from booking_bot.payments import initiate_payment as kaspi_initiate_payment, KaspiPaymentError
 from .utils import send_telegram_message, send_photo_group
+# Admin handlers import
+from .admin_handlers import (
+    show_admin_properties,
+    show_detailed_statistics,
+    show_super_admin_menu,
+    handle_add_property_start,
+    handle_photo_upload,  # Новый импорт
+    export_statistics_csv
+)
 
 logger = logging.getLogger(__name__)
 
-# States
-STATE_MAIN_MENU = 'main_menu'
-STATE_SELECT_CITY = 'select_city'
-STATE_SELECT_DISTRICT = 'select_district'
-STATE_SELECT_CLASS = 'select_class'
-STATE_SELECT_ROOMS = 'select_rooms'
-STATE_SHOWING_RESULTS = 'showing_results'
-STATE_AWAITING_CHECK_IN = 'awaiting_check_in'
-STATE_AWAITING_CHECK_OUT = 'awaiting_check_out'
-STATE_CONFIRM_BOOKING = 'confirm_booking'
-STATE_AWAITING_REVIEW_TEXT = 'awaiting_review_text'
-
-# Admin states
-STATE_ADMIN_MENU = 'admin_menu'
-STATE_ADMIN_ADD_PROPERTY = 'admin_add_property'
-STATE_ADMIN_VIEW_STATS = 'admin_view_stats'
-
-
-def log_handler(func):
-    def wrapper(*args, **kwargs):
-        # args[0] обычно — chat_id или update, args[1] — text или context
-        func_name = func.__name__
-        logger.info(f"CALL  {func_name} args={args} kwargs={kwargs}")
-        return func(*args, **kwargs)
-    return wrapper
 
 @log_handler
-def _get_or_create_local_profile(chat_id):
-    # получаем или создаём запись в своей БД, не трогая API
-    profile, created = UserProfile.objects.get_or_create(telegram_chat_id=str(chat_id))
-    return profile
-
-@log_handler
-def _get_profile(chat_id, first_name=None, last_name=None, force_remote=False):
-    # если не надо обращаться к удалённому API — просто вернём локальный профиль
-    if not force_remote:
-        profile, _ = UserProfile.objects.get_or_create(telegram_chat_id=str(chat_id))
-        return profile
-
-    payload = {'telegram_chat_id': str(chat_id)}
-    if first_name:
-        payload['first_name'] = first_name
-    if last_name:
-        payload['last_name'] = last_name
-    try:
-        api_url = f"{settings.API_BASE}/telegram_auth/register_or_login/"
-        logger.info(f"Attempting to register/login user via API: {api_url}")
-        response = requests.post(api_url, json=payload, timeout=10)
-        if response.status_code in (200, 201):
-            data = response.json()
-            access_token = data.get('access')
-            profile = UserProfile.objects.get(telegram_chat_id=str(chat_id))
-            if profile.telegram_state is None:
-                profile.telegram_state = {}
-            if access_token:
-                profile.telegram_state['jwt_access_token'] = access_token
-                profile.save()
-                logger.info(f"Stored JWT token for chat {chat_id}")
-        else:
-            profile, _ = UserProfile.objects.get_or_create(telegram_chat_id=str(chat_id))
-    except Exception:
-        profile, _ = UserProfile.objects.get_or_create(telegram_chat_id=str(chat_id))
-    return profile
-
-@log_handler
-def start_command_handler(chat_id, first_name=None, last_name=None):
-    """Handle /start: локально ищем профиль, если нет — регистрируемся через API."""
-    # 1) Попробовать получить локальный профиль
-    try:
-        profile = UserProfile.objects.get(telegram_chat_id=str(chat_id))
-        created = False
-    except UserProfile.DoesNotExist:
-        profile = UserProfile(telegram_chat_id=str(chat_id))
-        created = True
-
-    # 2) Если профиль новый, дергаем API и сохраняем токен
-    if created:
-        payload = {'telegram_chat_id': str(chat_id)}
-        if first_name:
-            payload['first_name'] = first_name
-        if last_name:
-            payload['last_name'] = last_name
-        try:
-            api_url = f"{settings.API_BASE}/telegram_auth/register_or_login/"
-            response = requests.post(api_url, json=payload, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            access_token = data.get('access')
-            profile.telegram_state = {}
-            if access_token:
-                profile.telegram_state['jwt_access_token'] = access_token
-        except Exception as e:
-            logger.error(f"Error registering user via API: {e}")
-        finally:
-            profile.save()
-
-    # 3) Сбросим состояние бота (кроме токена) и сохраним
-    jwt_token = (profile.telegram_state or {}).get('jwt_access_token')
-    profile.telegram_state = {'state': STATE_MAIN_MENU}
-    if jwt_token:
-        profile.telegram_state['jwt_access_token'] = jwt_token
-    profile.save()
-
-    # 4) Отправляем главное меню
-    text = "Привет! Я ЖильеGO — помогу быстро найти и забронировать квартиру на сутки."
-    keyboard = [
-        [KeyboardButton("🔍 Поиск квартир"), KeyboardButton("📋 Мои бронирования")],
-        [KeyboardButton("📊 Статус текущей брони"), KeyboardButton("❓ Помощь")],
-    ]
-    if profile.role in ('admin', 'super_admin'):
-        keyboard.append([KeyboardButton("➕ Добавить квартиру")])
-        keyboard.append([KeyboardButton("🔧 Админ-функции")])
-    if profile.role == 'super_admin':
-        keyboard.append([KeyboardButton("📈 Статистика (Суперадмин)")])
-
-    reply_markup = ReplyKeyboardMarkup(
-        keyboard=keyboard,
-        resize_keyboard=True,
-        input_field_placeholder="Что Вас интересует?"
-    ).to_dict()
-    send_telegram_message(chat_id, text, reply_markup=reply_markup)
-
-
-@log_handler
-def message_handler(chat_id, text):
+def message_handler(chat_id, text, update=None, context=None):
     profile = _get_or_create_local_profile(chat_id)
     state_data = profile.telegram_state or {}
     state = state_data.get('state', STATE_MAIN_MENU)
+
+    # Обработка фотографий (если есть)
+    if update and update.message and update.message.photo:
+        if handle_photo_upload(chat_id, update, context):
+            return
+
+    if handle_add_property_start(chat_id, text):
+        return
 
     # Ловим варианты «Отмена», «Отменить» и «Главное меню»
     if text in ("❌ Отмена", "❌ Отменить", "🏠 Главное меню"):
@@ -162,19 +60,38 @@ def message_handler(chat_id, text):
             send_telegram_message(chat_id, "Неверное действие.")
         return
 
-    # Main menu actions
     if state == STATE_MAIN_MENU:
+        # — Общие для всех —
         if text == "🔍 Поиск квартир":
             prompt_city(chat_id, profile)
+            return
         elif text == "📋 Мои бронирования":
             show_user_bookings(chat_id, 'completed')
+            return
         elif text == "📊 Статус текущей брони":
             show_user_bookings(chat_id, 'active')
+            return
         elif text == "❓ Помощь":
             help_command_handler(chat_id)
-        else:
-            send_telegram_message(chat_id, "Используйте кнопки или команду /start.")
-        return
+            return
+
+        # — Пункты для Admin и SuperAdmin —
+        if profile.role in ('admin', 'super_admin'):
+            if text == "➕ Добавить квартиру":
+                handle_add_property_start(chat_id)
+                return
+            # elif text == "📊 Статистика":
+            #     show_admin_statistics(chat_id)
+            #     return
+            elif text == "🏠 Мои квартиры":
+                show_admin_properties(chat_id)
+                return
+
+        # — Только для SuperAdmin —
+        if profile.role == 'super_admin':
+            if text == "👥 Управление админами":
+                show_super_admin_menu(chat_id)
+                return
 
     # City selection
     if state == STATE_SELECT_CITY:
@@ -662,14 +579,7 @@ def help_command_handler(chat_id):
     send_telegram_message(chat_id, text,
                            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True, input_field_placeholder="Что Вас интересует?").to_dict())
 
-# Admin handlers import
-from .admin_handlers import (
-    show_admin_properties,
-    show_detailed_statistics,
-    show_super_admin_menu,
-    handle_add_property_start,
-    export_statistics_csv
-)
+
 
 def date_input_handler(chat_id, text):
     """Dispatch date input to check-in or check-out handler based on state."""

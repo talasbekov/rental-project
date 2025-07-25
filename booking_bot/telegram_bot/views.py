@@ -1,8 +1,10 @@
+import hashlib
+import hmac
 import json
 import logging
 import re
 
-from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse
+from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse, HttpResponseForbidden
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 
@@ -16,8 +18,14 @@ from booking_bot.telegram_bot.admin_handlers import handle_photo_upload
 logger = logging.getLogger(__name__)
 
 
+def verify_webhook_signature(request):
+    return request.headers.get('X-Telegram-Bot-Api-Secret-Token') == settings.WEBHOOK_SECRET
+
+
 @csrf_exempt
 def telegram_webhook(request):
+    if not verify_webhook_signature(request):
+        return HttpResponseForbidden()
     """Handle incoming updates from Telegram (ReplyKeyboardMarkup only)."""
     if request.method == 'GET':
         return HttpResponse("Telegram webhook is running")

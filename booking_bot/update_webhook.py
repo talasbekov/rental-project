@@ -6,7 +6,7 @@ import requests
 BOT_TOKEN = "7302267102:AAGTSKRPiGWNweB-8-E1sAS6ls-UINwP4is"
 
 # Ваш ngrok URL (замените на актуальный!)
-NGROK_URL = "https://e3ff-46-34-194-76.ngrok-free.app"  # получите из ngrok
+NGROK_URL = "https://c1dae9e5294a.ngrok-free.app"  # получите из ngrok
 
 # URL webhook
 WEBHOOK_URL = f"{NGROK_URL}/telegram/webhook/"

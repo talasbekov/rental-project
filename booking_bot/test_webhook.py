@@ -3,7 +3,7 @@
 import requests
 import json
 
-NGROK_URL = "https://e3ff-46-34-194-76.ngrok-free.app"
+NGROK_URL = "https://c1dae9e5294a.ngrok-free.app"
 WEBHOOK_URL = f"{NGROK_URL}/telegram/webhook/"
 
 # Тестовое сообщение от Telegram

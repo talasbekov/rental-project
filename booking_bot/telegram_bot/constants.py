@@ -1,5 +1,6 @@
 import logging
 import requests
+from django.contrib.auth import get_user_model
 from telegram import KeyboardButton, ReplyKeyboardMarkup
 
 from .utils import send_telegram_message
@@ -43,10 +44,32 @@ def log_handler(func):
         return func(*args, **kwargs)
     return wrapper
 
+User = get_user_model()
+
 @log_handler
-def _get_or_create_local_profile(chat_id):
-    # получаем или создаём запись в своей БД, не трогая API
-    profile, created = UserProfile.objects.get_or_create(telegram_chat_id=str(chat_id))
+def _get_or_create_local_profile(chat_id: int):
+    # 1) Сначала убедимся, что есть User
+    username = f"telegram_{chat_id}"
+    user, user_created = User.objects.get_or_create(
+        username=username,
+        defaults={
+            'first_name': '',
+            'last_name': '',
+        }
+    )
+    if user_created:
+        user.set_unusable_password()
+        user.save()
+
+    # 2) Потом уже профиль, привязанный к этому user
+    profile, profile_created = UserProfile.objects.get_or_create(
+        user=user,
+        defaults={
+            'telegram_chat_id': str(chat_id),
+            'role': 'user',
+            # сюда можно добавить phone_number или другие поля по необходимости
+        }
+    )
     return profile
 
 @log_handler

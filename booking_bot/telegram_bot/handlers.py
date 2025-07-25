@@ -135,8 +135,13 @@ def message_handler(chat_id, text, update=None, context=None):
 # Helper flows
 @log_handler
 def prompt_city(chat_id, profile):
+    # Инициализируем telegram_state если он None
+    if profile.telegram_state is None:
+        profile.telegram_state = {}
+
     profile.telegram_state.update({'state': STATE_SELECT_CITY})
     profile.save()
+
     cities = City.objects.all().order_by('name')
     kb = [[KeyboardButton(c.name)] for c in cities]
     markup = ReplyKeyboardMarkup(

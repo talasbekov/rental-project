@@ -539,31 +539,46 @@ def handle_checkout_input(chat_id, text):
     send_telegram_message(chat_id, text_msg, reply_markup=reply_markup)
 
 
+# Обновленная функция handle_payment_confirmation в telegram_bot/handlers.py
+
 @log_handler
 def handle_payment_confirmation(chat_id):
+    """Обработка подтверждения платежа через Kaspi"""
     profile = _get_profile(chat_id)
     sd = profile.telegram_state or {}
+
+    # Получаем данные бронирования
     property_id = sd.get('booking_property_id')
     check_in_str = sd.get('check_in_date')
     check_out_str = sd.get('check_out_date')
     total_price = sd.get('total_price')
+
+    # Проверяем наличие всех необходимых данных
     if not all([property_id, check_in_str, check_out_str, total_price]):
-        send_telegram_message(chat_id, "Ошибка: недостаточно данных для бронирования.")
+        send_telegram_message(chat_id, "❌ Ошибка: недостаточно данных для бронирования.")
         return
+
     try:
+        # Получаем объект недвижимости
         prop = Property.objects.get(id=property_id)
         check_in = date.fromisoformat(check_in_str)
         check_out = date.fromisoformat(check_out_str)
+
+        # Проверяем доступность дат
         conflicts = Booking.objects.filter(
             property=prop,
-            status__in=['pending_payment','confirmed'],
+            status__in=['pending_payment', 'confirmed'],
             start_date__lt=check_out,
             end_date__gt=check_in
         ).exists()
+
         if conflicts:
-            send_telegram_message(chat_id, "К сожалению, эти даты уже забронированы.")
+            send_telegram_message(chat_id, "❌ К сожалению, эти даты уже забронированы.")
             return
+
+        # Создаем бронирование в транзакции
         with transaction.atomic():
+            # Создаем бронирование со статусом ожидания оплаты
             booking = Booking.objects.create(
                 user=profile.user,
                 property=prop,
@@ -572,32 +587,160 @@ def handle_payment_confirmation(chat_id):
                 total_price=total_price,
                 status='pending_payment'
             )
-            logger.info(f"Created booking {booking.id}")
-            payment_info = kaspi_initiate_payment(
-                booking_id=booking.id,
-                amount=float(total_price),
-                description=f"Бронирование {prop.name}"
+
+            logger.info(f"Создано бронирование {booking.id} для пользователя {profile.user.username}")
+
+            # Отправляем сообщение о начале процесса оплаты
+            send_telegram_message(
+                chat_id,
+                "⏳ Создаем платеж...\n"
+                "Пожалуйста, подождите..."
             )
-            if payment_info and payment_info.get('checkout_url'):
-                pid = payment_info.get('payment_id')
-                if pid:
-                    booking.kaspi_payment_id = pid
-                    booking.save()
-                text = (
-                    f"✅ Бронирование создано!\nНомер брони: #{booking.id}\n\n"
-                    f"Оплатите: {payment_info['checkout_url']}"
+
+            try:
+                # Инициируем платеж через Kaspi
+                payment_info = kaspi_initiate_payment(
+                    booking_id=booking.id,
+                    amount=float(total_price),
+                    description=f"Бронирование {prop.name} с {check_in.strftime('%d.%m.%Y')} по {check_out.strftime('%d.%m.%Y')}"
                 )
-                send_telegram_message(chat_id, text)
-                profile.telegram_state = {}
-                profile.save()
-            else:
-                raise KaspiPaymentError("Не удалось получить ссылку для оплаты")
-    except KaspiPaymentError as e:
-        logger.error(f"Kaspi error: {e}")
-        send_telegram_message(chat_id, "Ошибка при создании платежа. Попробуйте позже.")
+
+                if payment_info and payment_info.get('checkout_url'):
+                    # Сохраняем ID платежа
+                    kaspi_payment_id = payment_info.get('payment_id')
+                    if kaspi_payment_id:
+                        booking.kaspi_payment_id = kaspi_payment_id
+                        booking.save()
+
+                    # Формируем сообщение с ссылкой на оплату
+                    checkout_url = payment_info['checkout_url']
+
+                    # В режиме разработки автоматически эмулируем успешную оплату
+                    if settings.DEBUG:
+                        # Эмулируем задержку обработки платежа
+                        import time
+                        time.sleep(2)
+
+                        # Автоматически подтверждаем бронирование
+                        booking.status = 'confirmed'
+                        booking.save()
+
+                        # Отправляем информацию о бронировании
+                        send_booking_confirmation(chat_id, booking)
+
+                        # Очищаем состояние
+                        profile.telegram_state = {}
+                        profile.save()
+
+                        logger.info(f"Бронирование {booking.id} автоматически подтверждено (DEBUG режим)")
+                    else:
+                        # В продакшене отправляем ссылку на оплату
+                        text = (
+                            f"✅ Бронирование создано!\n"
+                            f"📋 Номер брони: #{booking.id}\n\n"
+                            f"💳 Для завершения бронирования оплатите:\n"
+                            f"{checkout_url}\n\n"
+                            f"⏰ Ссылка действительна 15 минут"
+                        )
+
+                        # Кнопки
+                        kb = [
+                            [KeyboardButton("📊 Мои бронирования")],
+                            [KeyboardButton("🧭 Главное меню")]
+                        ]
+
+                        send_telegram_message(
+                            chat_id,
+                            text,
+                            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
+                        )
+
+                        # Очищаем состояние
+                        profile.telegram_state = {}
+                        profile.save()
+
+                        logger.info(f"Отправлена ссылка на оплату для бронирования {booking.id}")
+
+                else:
+                    # Не удалось получить ссылку на оплату
+                    raise KaspiPaymentError("Не удалось получить ссылку для оплаты")
+
+            except KaspiPaymentError as e:
+                # Откатываем бронирование при ошибке платежа
+                booking.status = 'payment_failed'
+                booking.save()
+
+                logger.error(f"Ошибка Kaspi для бронирования {booking.id}: {e}")
+
+                send_telegram_message(
+                    chat_id,
+                    "❌ Ошибка при создании платежа.\n"
+                    "Попробуйте позже или обратитесь в поддержку.\n\n"
+                    f"Код ошибки: {booking.id}"
+                )
+
+    except Property.DoesNotExist:
+        send_telegram_message(chat_id, "❌ Квартира не найдена.")
     except Exception as e:
-        logger.error(f"Booking error: {e}")
-        send_telegram_message(chat_id, "Произошла ошибка при создании бронирования.")
+        logger.error(f"Ошибка при создании бронирования: {e}", exc_info=True)
+        send_telegram_message(
+            chat_id,
+            "❌ Произошла ошибка при создании бронирования.\n"
+            "Попробуйте позже или обратитесь в поддержку."
+        )
+
+
+def send_booking_confirmation(chat_id, booking):
+    """Отправляет подтверждение бронирования с деталями"""
+    property_obj = booking.property
+
+    # Формируем текст подтверждения
+    text = (
+        f"✅ *Оплата подтверждена!*\n\n"
+        f"🎉 Ваше бронирование успешно оформлено!\n\n"
+        f"📋 *Детали бронирования:*\n"
+        f"Номер брони: #{booking.id}\n"
+        f"Квартира: {property_obj.name}\n"
+        f"Адрес: {property_obj.address}\n"
+        f"Заезд: {booking.start_date.strftime('%d.%m.%Y')}\n"
+        f"Выезд: {booking.end_date.strftime('%d.%m.%Y')}\n"
+        f"Стоимость: {booking.total_price:,.0f} ₸\n\n"
+    )
+
+    # Добавляем инструкции по заселению
+    if property_obj.entry_instructions:
+        text += f"📝 *Инструкции по заселению:*\n{property_obj.entry_instructions}\n\n"
+
+    # Добавляем коды доступа
+    if property_obj.digital_lock_code:
+        text += f"🔐 *Код от замка:* `{property_obj.digital_lock_code}`\n"
+    elif property_obj.key_safe_code:
+        text += f"🔑 *Код от сейфа с ключами:* `{property_obj.key_safe_code}`\n"
+
+    # Контакты владельца
+    if hasattr(property_obj.owner, 'profile') and property_obj.owner.profile.phone_number:
+        text += f"\n📞 *Контакт владельца:* {property_obj.owner.profile.phone_number}\n"
+
+    text += "\n💬 Желаем приятного отдыха!"
+
+    # Кнопки
+    kb = [
+        [KeyboardButton("📊 Мои бронирования")],
+        [KeyboardButton("🧭 Главное меню")]
+    ]
+
+    send_telegram_message(
+        chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
+    )
+
+    # Дополнительно можем отправить фото квартиры
+    photos = PropertyPhoto.objects.filter(property=property_obj)[:3]
+    if photos:
+        photo_urls = [p.get_photo_url() for p in photos if p.get_photo_url()]
+        if photo_urls:
+            send_photo_group(chat_id, photo_urls)
 
 @log_handler
 def show_user_bookings(chat_id, booking_type='active'):

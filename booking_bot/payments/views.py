@@ -17,6 +17,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated # Or custom permission for bot/service
+
+from . import kaspi_service
 # Booking model already imported: from booking_bot.bookings.models import Booking
 from .kaspi_service import initiate_payment as kaspi_initiate_payment_service, KaspiPaymentError
 # from django.shortcuts import get_object_or_404 # If using this
@@ -40,118 +42,287 @@ def send_whatsapp_message(phone_number, message_body):
     pass
 
 
+# Обновленная функция kaspi_payment_webhook в payments/views.py
+
 @csrf_exempt
 def kaspi_payment_webhook(request):
+    """
+    Обработка webhook от Kaspi о статусе платежа
+
+    Kaspi отправляет POST запрос с информацией о платеже
+    """
     if request.method == 'POST':
         try:
+            # Парсим JSON из тела запроса
             data = json.loads(request.body)
-            logger.info(f"Kaspi webhook received data: {data}")
+            logger.info(f"Kaspi webhook получен: {data}")
+
+            # Проверяем подпись (если Kaspi её отправляет)
+            signature = request.headers.get('X-Kaspi-Signature')
+            if signature and hasattr(kaspi_service, 'verify_webhook_signature'):
+                if not kaspi_service.verify_webhook_signature(data, signature):
+                    logger.error("Неверная подпись webhook от Kaspi")
+                    return JsonResponse({'status': 'error', 'message': 'Invalid signature'}, status=403)
+
         except json.JSONDecodeError:
-            logger.error("Kaspi webhook: Invalid JSON received.")
+            logger.error("Kaspi webhook: Неверный JSON")
             return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
 
-        # Extract identifiers and status - adjust keys based on actual Kaspi API
-        # Common practice is that Kaspi sends its own transaction ID back.
-        # We assume 'invoice_id' or 'order_id' might be what we passed to Kaspi.
-        # For this implementation, we'll rely on 'kaspi_payment_id' which we stored.
+        # Извлекаем данные о платеже
+        kaspi_payment_id = data.get('payment_id') or data.get('transactionId')
+        payment_status = data.get('status')
+        order_id = data.get('order_id') or data.get('orderId')
+        amount = data.get('amount')
 
-        kaspi_internal_id = data.get('transactionId') # This is what Kaspi's own service in kaspi_service.py returns as 'payment_id'
-        # our_booking_id_from_kaspi = data.get('orderId') # If Kaspi returns the ID we sent it
-        payment_status = data.get('status') # e.g., 'COMPLETED', 'FAILED', 'PAID', 'SUCCESS'
-
-        if not kaspi_internal_id:
-            logger.error(f"Kaspi webhook: 'transactionId' (kaspi_payment_id) not found in payload: {data}")
-            return JsonResponse({'status': 'error', 'message': "'transactionId' is required"}, status=400)
+        # Валидация обязательных полей
+        if not kaspi_payment_id:
+            logger.error("Kaspi webhook: отсутствует payment_id/transactionId")
+            return JsonResponse({'status': 'error', 'message': 'payment_id is required'}, status=400)
 
         if not payment_status:
-            logger.error(f"Kaspi webhook: 'status' not found in payload for kaspi_payment_id {kaspi_internal_id}: {data}")
-            return JsonResponse({'status': 'error', 'message': "'status' is required"}, status=400)
+            logger.error("Kaspi webhook: отсутствует status")
+            return JsonResponse({'status': 'error', 'message': 'status is required'}, status=400)
 
         try:
-            # Primary lookup using the kaspi_payment_id we stored
-            booking = Booking.objects.get(kaspi_payment_id=kaspi_internal_id)
-        except Booking.DoesNotExist:
-            logger.error(f"Kaspi webhook: Booking not found for kaspi_payment_id: {kaspi_internal_id}")
-            # Optionally, if Kaspi also returns the booking.id we sent as 'orderId' or similar:
-            # our_booking_id = data.get('orderId')
-            # if our_booking_id:
-            #     try:
-            #         booking = Booking.objects.get(id=our_booking_id)
-            #     except Booking.DoesNotExist:
-            #         logger.error(f"Kaspi webhook: Booking also not found for internal ID: {our_booking_id}")
-            #         return JsonResponse({'status': 'error', 'message': 'Booking not found'}, status=404)
-            # else:
-            return JsonResponse({'status': 'error', 'message': 'Booking not found with provided kaspi_payment_id'}, status=404)
-        except Exception as e: # Other potential errors during lookup
-            logger.error(f"Kaspi webhook: Error retrieving booking for kaspi_payment_id {kaspi_internal_id}: {e}", exc_info=True)
-            return JsonResponse({'status': 'error', 'message': 'Error retrieving booking'}, status=500)
+            # Ищем бронирование по kaspi_payment_id
+            booking = None
 
+            # Сначала пробуем найти по kaspi_payment_id
+            try:
+                booking = Booking.objects.get(kaspi_payment_id=kaspi_payment_id)
+                logger.info(f"Найдено бронирование {booking.id} по kaspi_payment_id")
+            except Booking.DoesNotExist:
+                # Если не нашли, пробуем по order_id (если он есть)
+                if order_id:
+                    try:
+                        booking = Booking.objects.get(id=int(order_id))
+                        # Сохраняем kaspi_payment_id для будущих запросов
+                        booking.kaspi_payment_id = kaspi_payment_id
+                        booking.save()
+                        logger.info(f"Найдено бронирование {booking.id} по order_id")
+                    except (Booking.DoesNotExist, ValueError):
+                        pass
 
-        # Process Payment Status (Kaspi's actual status values might differ)
-        # Based on kaspi_service.py, it seems 'SUCCESS' is used for successful payment.
-        if payment_status.upper() == 'SUCCESS': # Adjust to actual Kaspi status for success
-            if booking.status == 'confirmed':
-                logger.info(f"Kaspi webhook: Booking {booking.id} is already confirmed. Ignoring duplicate success notification.")
-            else:
-                booking.status = 'confirmed'
+            if not booking:
+                logger.error(f"Kaspi webhook: Бронирование не найдено для payment_id: {kaspi_payment_id}")
+                return JsonResponse({'status': 'error', 'message': 'Booking not found'}, status=404)
+
+            # Обрабатываем статус платежа
+            # Приводим статус к верхнему регистру для унификации
+            status_upper = payment_status.upper()
+
+            # Маппинг статусов Kaspi на наши статусы
+            status_mapping = {
+                'SUCCESS': 'confirmed',
+                'SUCCESSFUL': 'confirmed',
+                'COMPLETED': 'confirmed',
+                'PAID': 'confirmed',
+                'APPROVED': 'confirmed',
+                'FAILED': 'payment_failed',
+                'DECLINED': 'payment_failed',
+                'CANCELLED': 'cancelled',
+                'CANCELED': 'cancelled',
+                'EXPIRED': 'payment_failed',
+                'PENDING': 'pending_payment',
+                'PROCESSING': 'pending_payment'
+            }
+
+            new_status = status_mapping.get(status_upper)
+
+            if not new_status:
+                logger.warning(f"Неизвестный статус платежа от Kaspi: {payment_status}")
+                # Для неизвестных статусов оставляем текущий статус
+                return JsonResponse({'status': 'success', 'message': 'Status not processed'}, status=200)
+
+            # Обновляем статус только если он изменился
+            if booking.status != new_status:
+                old_status = booking.status
+                booking.status = new_status
                 booking.save()
-                logger.info(f"Booking {booking.id} confirmed via Kaspi webhook (kaspi_payment_id: {kaspi_internal_id}).")
 
+                logger.info(f"Статус бронирования {booking.id} изменен: {old_status} -> {new_status}")
+
+                # Отправляем уведомления при успешной оплате
+                if new_status == 'confirmed' and old_status != 'confirmed':
+                    try:
+                        # Получаем профиль пользователя
+                        user_profile = UserProfile.objects.get(user=booking.user)
+
+                        # Отправляем уведомление в Telegram
+                        if user_profile.telegram_chat_id:
+                            send_telegram_booking_confirmation(user_profile.telegram_chat_id, booking)
+                            logger.info(f"Отправлено подтверждение в Telegram для бронирования {booking.id}")
+
+                        # Отправляем уведомление в WhatsApp
+                        if user_profile.phone_number:
+                            send_whatsapp_booking_confirmation(user_profile.phone_number, booking)
+                            logger.info(f"Отправлено подтверждение в WhatsApp для бронирования {booking.id}")
+
+                        # Очищаем состояние пользователя в ботах
+                        if hasattr(user_profile, 'telegram_state'):
+                            user_profile.telegram_state = {}
+                            user_profile.save()
+
+                        if hasattr(user_profile, 'whatsapp_state'):
+                            user_profile.whatsapp_state = {}
+                            user_profile.save()
+
+                    except UserProfile.DoesNotExist:
+                        logger.error(f"UserProfile не найден для пользователя {booking.user.id}")
+                    except Exception as e:
+                        logger.error(f"Ошибка при отправке уведомлений для бронирования {booking.id}: {e}")
+
+                # Обработка неудачной оплаты
+                elif new_status == 'payment_failed':
+                    try:
+                        user_profile = UserProfile.objects.get(user=booking.user)
+
+                        # Уведомляем пользователя об ошибке
+                        error_message = data.get('error_message', 'Платеж не прошел')
+
+                        if user_profile.telegram_chat_id:
+                            send_telegram_payment_error(user_profile.telegram_chat_id, booking, error_message)
+
+                        if user_profile.phone_number:
+                            send_whatsapp_payment_error(user_profile.phone_number, booking, error_message)
+
+                    except Exception as e:
+                        logger.error(f"Ошибка при отправке уведомления об ошибке платежа: {e}")
+
+            else:
+                logger.info(f"Статус бронирования {booking.id} не изменился: {booking.status}")
+
+            # Логируем платеж
+            if amount:
                 try:
-                    user_profile = UserProfile.objects.get(user=booking.user)
-                    property_details = booking.property
-
-                    message_to_user = (
-                        f"Payment confirmed for your booking of '{property_details.name}'!\n"
-                        f"Booking ID: {booking.id}\n"
-                        f"Dates: {booking.start_date.strftime('%Y-%m-%d')} to {booking.end_date.strftime('%Y-%m-%d')}\n"
-                        f"Address: {property_details.address}\n"
+                    from booking_bot.payments.models import Payment
+                    Payment.objects.update_or_create(
+                        booking=booking,
+                        transaction_id=kaspi_payment_id,
+                        defaults={
+                            'amount': float(amount) / 100 if amount > 1000 else amount,
+                            # Конвертируем из тиынов если нужно
+                            'payment_method': 'kaspi',
+                            'status': new_status
+                        }
                     )
-
-                    access_info = property_details.digital_lock_code or property_details.key_safe_code
-                    if access_info:
-                        message_to_user += f"Access Code: {access_info}\n"
-
-                    if property_details.entry_instructions:
-                        message_to_user += f"Entry Instructions: {property_details.entry_instructions}"
-                    elif access_info: # Default instruction if specific one is missing but code exists
-                         message_to_user += "Use the access code on the door/key safe."
-                    else: # No code, no instructions
-                        message_to_user += "Please contact support for entry instructions if not provided separately."
-
-
-                    send_whatsapp_message(user_profile.phone_number, message_to_user)
-
-                    # Clear user's state in the bot after successful booking & notification
-                    clear_user_state(user_profile)
-                    logger.info(f"Sent confirmation WhatsApp to {user_profile.phone_number} and cleared state for booking {booking.id}.")
-
-                except UserProfile.DoesNotExist:
-                    logger.error(f"UserProfile not found for user {booking.user.id} associated with booking {booking.id}. Cannot send WhatsApp confirmation.")
                 except Exception as e:
-                    logger.error(f"Error sending WhatsApp confirmation or clearing state for booking {booking.id}: {e}", exc_info=True)
-                    # The booking is confirmed, but notification failed. This needs monitoring.
+                    logger.error(f"Ошибка при сохранении информации о платеже: {e}")
 
-        elif payment_status.upper() == 'FAILED': # Adjust to actual Kaspi status for failure
-            if booking.status != 'confirmed': # Don't revert a confirmed booking due to a late failure message
-                booking.status = 'payment_failed'
-                booking.save()
-                logger.warning(f"Booking {booking.id} payment failed via Kaspi webhook (kaspi_payment_id: {kaspi_internal_id}). Status set to 'payment_failed'.")
-                # Optionally, notify user of failure if desired (might be noisy if they retry)
-                # user_profile = UserProfile.objects.get(user=booking.user)
-                # send_whatsapp_message(user_profile.phone_number, f"Payment for booking ID {booking.id} ({booking.property.name}) failed. Please try booking again or contact support.")
-            else:
-                logger.warning(f"Kaspi webhook: Received FAILED status for already confirmed booking {booking.id}. Ignored.")
+            # Возвращаем успешный ответ Kaspi
+            return JsonResponse({
+                'status': 'success',
+                'message': 'Webhook processed',
+                'booking_id': booking.id,
+                'new_status': new_status
+            }, status=200)
 
-        else:
-            logger.info(f"Kaspi webhook: Received unhandled status '{payment_status}' for booking {booking.id} (kaspi_payment_id: {kaspi_internal_id}). Current booking status: {booking.status}.")
-            # Potentially handle other statuses if Kaspi has them (e.g., PENDING, TIMEOUT, etc.)
-
-        return JsonResponse({'status': 'success', 'message': 'Webhook processed'}, status=200)
+        except Exception as e:
+            logger.error(f"Ошибка при обработке Kaspi webhook: {e}", exc_info=True)
+            return JsonResponse({'status': 'error', 'message': 'Internal server error'}, status=500)
 
     else:
-        logger.warning("Kaspi webhook: Received non-POST request.")
-        return HttpResponse("Method not allowed", status=405)
+        # GET запрос - возвращаем информацию о webhook
+        return HttpResponse("Kaspi payment webhook endpoint", status=200)
+
+
+def send_telegram_booking_confirmation(telegram_chat_id, booking):
+    """Отправка подтверждения бронирования в Telegram"""
+    from booking_bot.telegram_bot.utils import send_telegram_message
+    from telegram import KeyboardButton, ReplyKeyboardMarkup
+
+    property_obj = booking.property
+
+    text = (
+        f"✅ *Оплата подтверждена!*\n\n"
+        f"🎉 Ваше бронирование успешно оформлено!\n\n"
+        f"📋 *Детали бронирования:*\n"
+        f"Номер брони: #{booking.id}\n"
+        f"Квартира: {property_obj.name}\n"
+        f"Адрес: {property_obj.address}\n"
+        f"Заезд: {booking.start_date.strftime('%d.%m.%Y')}\n"
+        f"Выезд: {booking.end_date.strftime('%d.%m.%Y')}\n"
+        f"Стоимость: {booking.total_price:,.0f} ₸\n\n"
+    )
+
+    if property_obj.entry_instructions:
+        text += f"📝 *Инструкции:*\n{property_obj.entry_instructions}\n\n"
+
+    if property_obj.digital_lock_code:
+        text += f"🔐 *Код замка:* `{property_obj.digital_lock_code}`\n"
+    elif property_obj.key_safe_code:
+        text += f"🔑 *Код сейфа:* `{property_obj.key_safe_code}`\n"
+
+    kb = [
+        [KeyboardButton("📊 Мои бронирования")],
+        [KeyboardButton("🧭 Главное меню")]
+    ]
+
+    send_telegram_message(
+        telegram_chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
+    )
+
+
+def send_telegram_payment_error(telegram_chat_id, booking, error_message):
+    """Отправка уведомления об ошибке платежа в Telegram"""
+    from booking_bot.telegram_bot.utils import send_telegram_message
+    from telegram import KeyboardButton, ReplyKeyboardMarkup
+
+    text = (
+        f"❌ *Ошибка оплаты*\n\n"
+        f"К сожалению, оплата бронирования #{booking.id} не прошла.\n"
+        f"Причина: {error_message}\n\n"
+        f"Попробуйте забронировать снова или обратитесь в поддержку."
+    )
+
+    kb = [
+        [KeyboardButton("🔍 Поиск квартир")],
+        [KeyboardButton("🧭 Главное меню")]
+    ]
+
+    send_telegram_message(
+        telegram_chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
+    )
+
+
+def send_whatsapp_booking_confirmation(phone_number, booking):
+    """Отправка подтверждения бронирования в WhatsApp"""
+    from booking_bot.whatsapp_bot.utils import send_whatsapp_message
+
+    property_obj = booking.property
+
+    message = (
+        f"✅ Оплата подтверждена!\n\n"
+        f"Бронирование #{booking.id}\n"
+        f"Квартира: {property_obj.name}\n"
+        f"Адрес: {property_obj.address}\n"
+        f"Заезд: {booking.start_date.strftime('%d.%m.%Y')}\n"
+        f"Выезд: {booking.end_date.strftime('%d.%m.%Y')}\n"
+    )
+
+    if property_obj.digital_lock_code:
+        message += f"\nКод замка: {property_obj.digital_lock_code}"
+    elif property_obj.key_safe_code:
+        message += f"\nКод сейфа: {property_obj.key_safe_code}"
+
+    send_whatsapp_message(phone_number, message)
+
+
+def send_whatsapp_payment_error(phone_number, booking, error_message):
+    """Отправка уведомления об ошибке платежа в WhatsApp"""
+    from booking_bot.whatsapp_bot.utils import send_whatsapp_message
+
+    message = (
+        f"❌ Ошибка оплаты бронирования #{booking.id}\n"
+        f"Причина: {error_message}\n"
+        f"Попробуйте забронировать снова."
+    )
+
+    send_whatsapp_message(phone_number, message)
 
 # Example of how you might have a simple Payment model if you weren't updating Booking directly
 # from django.db import models

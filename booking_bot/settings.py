@@ -17,7 +17,7 @@ def get_env(var_name: str, default=None, required: bool = False):
     return value
 
 # SECURITY
-SECRET_KEY = 'django-insecure-^18w8^kyktt4q14w%c4tci%w(8po97jj2pd&3(#hv(dyn3hznv'
+SECRET_KEY = get_env('DJANGO_SECRET_KEY', required=True)
 DEBUG = get_env('DJANGO_DEBUG', 'False').lower() == 'true'
 ALLOWED_HOSTS = get_env('DJANGO_ALLOWED_HOSTS', '').split(',')
 APPEND_SLASH = True
@@ -98,6 +98,9 @@ AUTH_PASSWORD_VALIDATORS = [
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = get_env('DJANGO_TIME_ZONE', 'UTC')
 USE_I18N = True
+
+# Для работы за reverse proxy
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_TZ = True
 
 # Static and media files
@@ -131,9 +134,32 @@ WEBHOOK_SECRET = get_env('WEBHOOK_SECRET', '')
 
 # Domain and URLs\NGRK
 NGROK_URL = get_env('NGROK_URL', '')
-DOMAIN = NGROK_URL
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
+# Обновим DOMAIN для HTTPS
+DOMAIN = 'https://jgo.kz' if not DEBUG else get_env('NGROK_URL', 'http://localhost:8000')
 SITE_URL = NGROK_URL
-API_BASE = f"{NGROK_URL}/api/v1"
+API_BASE = f"{DOMAIN}/api/v1"
+
+# Kaspi Payment Gateway Settings
+KASPI_API_KEY = get_env('KASPI_API_KEY', '')
+KASPI_MERCHANT_ID = get_env('KASPI_MERCHANT_ID', '')
+KASPI_SECRET_KEY = get_env('KASPI_SECRET_KEY', '')
+KASPI_API_BASE_URL = get_env('KASPI_API_BASE_URL', 'https://api.kaspi.kz/v2/')
+
+# Payment settings
+PAYMENT_SUCCESS_URL = f"{SITE_URL}/payments/success/"
+PAYMENT_FAIL_URL = f"{SITE_URL}/payments/fail/"
+PAYMENT_TIMEOUT_MINUTES = 15
+
+# Для разработки - автоматическое подтверждение платежей
+AUTO_CONFIRM_PAYMENTS = DEBUG  # True только в DEBUG режиме
 
 # CSRF settings
 raw_csrf = get_env('CSRF_TRUSTED_ORIGINS', default='')
@@ -172,4 +198,11 @@ LOGGING = {
         'django': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
         'booking_bot': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
     },
+}
+
+# В разделе LOGGING добавьте логгер для платежей
+LOGGING['loggers']['booking_bot.payments'] = {
+    'handlers': ['console'],
+    'level': 'INFO',
+    'propagate': False,
 }

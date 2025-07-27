@@ -1,3 +1,5 @@
+import re
+
 import requests
 import logging
 from django.conf import settings
@@ -6,6 +8,9 @@ logger = logging.getLogger(__name__)
 
 BOT_URL = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}"
 
+def escape_markdown(text: str) -> str:
+    """Экранирует символы, имеющие специальное значение в Markdown."""
+    return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
 def send_telegram_message(chat_id, text, reply_markup=None):
     """Send a text message via Telegram Bot API"""

@@ -7,5 +7,5 @@ staticfiles/
 media/
 db.sqlite3
 .env
-docs
+/docs
 docs/

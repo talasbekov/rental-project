@@ -13,7 +13,7 @@ from booking_bot.users.models import UserProfile
 from booking_bot.listings.models import City, District, Property, PropertyPhoto, Review
 from booking_bot.bookings.models import Booking
 from booking_bot.payments import initiate_payment as kaspi_initiate_payment, KaspiPaymentError
-from .utils import send_telegram_message, send_photo_group
+from .utils import send_telegram_message, send_photo_group, escape_markdown
 # Admin handlers import
 from .admin_handlers import (
     show_admin_properties,
@@ -700,8 +700,8 @@ def send_booking_confirmation(chat_id, booking):
         f"🎉 Ваше бронирование успешно оформлено!\n\n"
         f"📋 *Детали бронирования:*\n"
         f"Номер брони: #{booking.id}\n"
-        f"Квартира: {property_obj.name}\n"
-        f"Адрес: {property_obj.address}\n"
+        f"Квартира: {escape_markdown(property_obj.name)}\n"
+        f"Адрес: {escape_markdown(property_obj.address)}\n"
         f"Заезд: {booking.start_date.strftime('%d.%m.%Y')}\n"
         f"Выезд: {booking.end_date.strftime('%d.%m.%Y')}\n"
         f"Стоимость: {booking.total_price:,.0f} ₸\n\n"

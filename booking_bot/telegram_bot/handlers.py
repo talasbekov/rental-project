@@ -1,5 +1,4 @@
 import logging
-import requests
 from datetime import datetime, date, timedelta
 from django.db import transaction
 from django.db.models import Count, Avg
@@ -9,7 +8,6 @@ from .constants import STATE_MAIN_MENU, STATE_AWAITING_CHECK_IN, STATE_AWAITING_
     STATE_SELECT_CITY, STATE_SELECT_DISTRICT, STATE_SELECT_CLASS, STATE_SELECT_ROOMS, STATE_SHOWING_RESULTS, \
     log_handler, _get_or_create_local_profile, _get_profile, start_command_handler
 from .. import settings
-from booking_bot.users.models import UserProfile
 from booking_bot.listings.models import City, District, Property, PropertyPhoto, Review
 from booking_bot.bookings.models import Booking
 from booking_bot.payments import initiate_payment as kaspi_initiate_payment, KaspiPaymentError
@@ -17,11 +15,9 @@ from .utils import send_telegram_message, send_photo_group, escape_markdown
 # Admin handlers import
 from .admin_handlers import (
     show_admin_properties,
-    show_detailed_statistics,
     show_super_admin_menu,
     handle_add_property_start,
-    handle_photo_upload,  # Новый импорт
-    export_statistics_csv
+    handle_photo_upload,
 )
 
 logger = logging.getLogger(__name__)
@@ -158,6 +154,17 @@ def select_city(chat_id, profile, text):
         profile.telegram_state.update({'city_id': city.id, 'state': STATE_SELECT_DISTRICT})
         profile.save()
         districts = District.objects.filter(city=city).order_by('name')
+        if not districts.exists():
+            # Если районов нет, отправляем сообщение и предлагаем вернуться назад
+            send_telegram_message(
+                chat_id,
+                f"Город «{city.name}» пока не содержит районов.",
+                reply_markup=ReplyKeyboardMarkup(
+                    [[KeyboardButton("🧭 Главное меню")]],
+                    resize_keyboard=True
+                ).to_dict()
+            )
+            return
         kb = [[KeyboardButton(d.name)] for d in districts]
         markup = ReplyKeyboardMarkup(
             keyboard=kb,
@@ -165,6 +172,8 @@ def select_city(chat_id, profile, text):
             input_field_placeholder="Выберите район"
         ).to_dict()
         send_telegram_message(chat_id, f"Город: {city.name}\nВыберите район:", reply_markup=markup)
+
+
     except City.DoesNotExist:
         send_telegram_message(chat_id, "Неверный город. Попробуйте ещё раз.")
 

@@ -151,13 +151,13 @@ def start_command_handler(chat_id, first_name=None, last_name=None):
         [KeyboardButton("📊 Статус текущей брони"), KeyboardButton("❓ Помощь")],
     ]
 
+    # Если пользователь админ или супер‑админ — одна кнопка в основном меню
     if profile.role in ('admin', 'super_admin'):
-        keyboard.append([KeyboardButton("➕ Добавить квартиру")])
-        keyboard.append([KeyboardButton("📊 Статистика")])
-        keyboard.append([KeyboardButton("🏠 Мои квартиры")])
+        keyboard.append([KeyboardButton("🛠 Панель администратора")])
 
-    if profile.role == 'super_admin':
-        keyboard.append([KeyboardButton("👥 Управление админами")])
+    # Если хотите, чтобы админ всё равно видел свою кнопку "Мои квартиры" в главном меню,
+    # можно добавить ещё одну строку:
+    #     keyboard.append([KeyboardButton("🏠 Мои квартиры")])
 
     reply_markup = ReplyKeyboardMarkup(
         keyboard=keyboard,

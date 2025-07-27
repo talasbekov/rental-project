@@ -5,7 +5,8 @@ from datetime import date, timedelta
 from io import StringIO
 from typing import Optional
 
-from django.db.models import Sum, Count, Q, F
+from django.db.models import Sum, Count, Q, F, Avg, ExpressionWrapper, DurationField
+
 from django.core.files import File
 from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.ext import CallbackContext
@@ -478,36 +479,66 @@ def show_admin_menu(chat_id):
     )
 
 @log_handler
+def show_admin_panel(chat_id):
+    """Отобразить меню администратора."""
+    profile = _get_profile(chat_id)
+    if profile.role not in ('admin', 'super_admin'):
+        send_telegram_message(chat_id, "У вас нет доступа к админ‑панели.")
+        return
+
+    text = "🛠 *Панель администратора*.\nВыберите действие:"
+    buttons = [
+        [KeyboardButton("➕ Добавить квартиру"), KeyboardButton("🏠 Мои квартиры")],
+        [KeyboardButton("📊 Статистика"), KeyboardButton("📈 Расширенная статистика")],
+        [KeyboardButton("📥 Скачать CSV")],
+        [KeyboardButton("🧭 Главное меню")]
+    ]
+    send_telegram_message(
+        chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(
+            buttons, resize_keyboard=True,
+            input_field_placeholder="Выберите действие"
+        ).to_dict()
+    )
+
+@log_handler
 def show_admin_properties(chat_id):
     """Показать список квартир админа."""
     profile = _get_profile(chat_id)
     if profile.role not in ('admin', 'super_admin'):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
-    # Получаем квартиры
-    if profile.role == 'admin':
-        props = Property.objects.filter(owner=profile.user)
-    else:
-        props = Property.objects.all()
+
+    # Квартиры владельца или все (для супер‑админа)
+    props = Property.objects.filter(owner=profile.user) if profile.role == 'admin' else Property.objects.all()
+
+    # Если квартир нет
     if not props.exists():
         send_telegram_message(
             chat_id,
             "У вас пока нет квартир.",
             reply_markup=ReplyKeyboardMarkup(
-                [[KeyboardButton("➕ Добавить квартиру")], [KeyboardButton("🧭 Главное меню")]],
+                # Предлагаем вернуться в админ‑панель или в главное меню
+                [[KeyboardButton("🛠 Панель администратора")],
+                 [KeyboardButton("🧭 Главное меню")]],
                 resize_keyboard=True
             ).to_dict()
         )
         return
-    # Формируем текст
+
+    # Формируем список квартир
     lines = ["🏠 *Ваши квартиры:*\n"]
     for prop in props:
-        lines.append(f"• {prop.name} — {prop.district.city.name}, {prop.district.name} — {prop.price_per_day} ₸/сутки — {prop.status}")
+        lines.append(
+            f"• {prop.name} — {prop.district.city.name}, {prop.district.name} — "
+            f"{prop.price_per_day} ₸/сутки — {prop.status}"
+        )
     text = "\n".join(lines)
-    # Кнопки
+
+    # Кнопки: только возврат в админ‑панель или в главное меню
     buttons = [
-        [KeyboardButton("➕ Добавить квартиру")],
-        [KeyboardButton("📊 Статистика")],
+        [KeyboardButton("🛠 Панель администратора")],
         [KeyboardButton("🧭 Главное меню")]
     ]
     send_telegram_message(
@@ -515,6 +546,7 @@ def show_admin_properties(chat_id):
         text,
         reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True).to_dict()
     )
+
 
 @log_handler
 def show_detailed_statistics(chat_id, period='month'):
@@ -555,6 +587,105 @@ def show_detailed_statistics(chat_id, period='month'):
         text,
         reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True, input_field_placeholder="Выберите действие").to_dict()
     )
+
+@log_handler
+def show_extended_statistics(chat_id, period='month'):
+    """Показать расширенную статистику для администратора."""
+    profile = _get_profile(chat_id)
+    # Доступ только для админа или супер‑админа
+    if profile.role not in ('admin', 'super_admin'):
+        send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
+        return
+
+    today = date.today()
+    if period == 'week':
+        start = today - timedelta(days=7)
+    elif period == 'month':
+        start = today - timedelta(days=30)
+    elif period == 'quarter':
+        start = today - timedelta(days=90)
+    else:
+        start = today - timedelta(days=365)
+
+    # Фильтр по объектам владельца (админа) или все объекты (супер‑админ)
+    props = Property.objects.filter(owner=profile.user) if profile.role == 'admin' else Property.objects.all()
+
+    # Подтверждённые и завершённые брони за период
+    bookings = Booking.objects.filter(
+        property__in=props,
+        created_at__gte=start,
+        status__in=['confirmed', 'completed']
+    )
+
+    total_revenue = bookings.aggregate(Sum('total_price'))['total_price__sum'] or 0
+    total_bookings = bookings.count()
+    canceled = Booking.objects.filter(
+        property__in=props,
+        created_at__gte=start,
+        status='cancelled'
+    ).count()
+    avg_check = total_revenue / total_bookings if total_bookings else 0
+
+    # Рассчитываем длительность каждого бронирования и время между бронированием и заездом
+    duration_expr = ExpressionWrapper(F('end_date') - F('start_date'), output_field=DurationField())
+    lead_expr = ExpressionWrapper(F('start_date') - F('created_at'), output_field=DurationField())
+    bookings = bookings.annotate(duration_days=duration_expr, lead_days=lead_expr)
+
+    total_nights = bookings.aggregate(Sum('duration_days'))['duration_days__sum']
+    avg_stay = bookings.aggregate(Avg('duration_days'))['duration_days__avg']
+    avg_lead = bookings.aggregate(Avg('lead_days'))['lead_days__avg']
+
+    # Конвертируем результаты в дни
+    total_nights = total_nights.days if total_nights else 0
+    avg_stay = avg_stay.days if avg_stay else 0
+    avg_lead = avg_lead.days if avg_lead else 0
+
+    # Коэффициент занятости (в процентах)
+    period_days = (today - start).days or 1
+    total_available = period_days * props.count()  # сколько ночей было доступно суммарно
+    occupancy_rate = (total_nights / total_available * 100) if total_available else 0
+
+    # Доход по классам жилья
+    class_revenue_qs = bookings.values('property__property_class').annotate(total=Sum('total_price'))
+    class_names = {'economy': 'Комфорт', 'business': 'Бизнес', 'luxury': 'Премиум'}
+    class_revenue_text = ""
+    for entry in class_revenue_qs:
+        cls = class_names.get(entry['property__property_class'], entry['property__property_class'])
+        class_revenue_text += f"{cls}: {entry['total']:,.0f} ₸\n"
+
+    # Топ‑3 квартиры по доходу
+    top_props = (bookings.values('property__name')
+                          .annotate(total=Sum('total_price'))
+                          .order_by('-total')[:3])
+    top_text = ""
+    for idx, item in enumerate(top_props, start=1):
+        top_text += f"{idx}. {item['property__name']}: {item['total']:,.0f} ₸\n"
+
+    # Формируем текст сообщения
+    text = (
+        f"📈 *Расширенная статистика за {period}:*\n\n"
+        f"💰 Доход: {total_revenue:,.0f} ₸\n"
+        f"📦 Брони: {total_bookings}, отмены: {canceled}\n"
+        f"💳 Средний чек: {avg_check:,.0f} ₸\n\n"
+        f"🏨 Занятость: {occupancy_rate:.1f}%\n"
+        f"🛏️ Средняя длительность проживания: {avg_stay} ноч.\n"
+        f"⏳ Средний срок бронирования до заезда: {avg_lead} дн.\n\n"
+        f"🏷️ Доход по классам:\n{class_revenue_text or 'нет данных'}\n"
+        f"🏆 Топ‑квартиры по доходу:\n{top_text or 'нет данных'}"
+    )
+
+    buttons = [
+        [KeyboardButton("Неделя"), KeyboardButton("Месяц")],
+        [KeyboardButton("Квартал"), KeyboardButton("Год")],
+        [KeyboardButton("📥 Скачать CSV")],
+        [KeyboardButton("🧭 Главное меню")]
+    ]
+    send_telegram_message(
+        chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True, input_field_placeholder="Выберите период").to_dict()
+    )
+
 
 @log_handler
 def export_statistics_csv(chat_id, period='month'):

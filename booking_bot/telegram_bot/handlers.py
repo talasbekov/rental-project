@@ -14,10 +14,11 @@ from booking_bot.payments import initiate_payment as kaspi_initiate_payment, Kas
 from .utils import send_telegram_message, send_photo_group, escape_markdown
 # Admin handlers import
 from .admin_handlers import (
-    show_admin_properties,
+    show_admin_panel,
     show_super_admin_menu,
     handle_add_property_start,
-    handle_photo_upload,
+    handle_photo_upload, show_detailed_statistics, show_extended_statistics, export_statistics_csv,
+    show_admin_properties,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,16 +82,25 @@ def message_handler(chat_id, text, update=None, context=None):
             help_command_handler(chat_id)
             return
 
-        # — Пункты для Admin и SuperAdmin —
+        if profile.role in ('admin', 'super_admin') and text == "🛠 Панель администратора":
+            show_admin_panel(chat_id)
+            return
+
         if profile.role in ('admin', 'super_admin'):
             if text == "➕ Добавить квартиру":
-                handle_add_property_start(chat_id)
+                handle_add_property_start(chat_id, text)
                 return
-            # elif text == "📊 Статистика":
-            #     show_admin_statistics(chat_id)
-            #     return
             elif text == "🏠 Мои квартиры":
                 show_admin_properties(chat_id)
+                return
+            elif text == "📊 Статистика":
+                show_detailed_statistics(chat_id, period='month')  # или предлагайте выбрать период
+                return
+            elif text == "📈 Расширенная статистика":
+                show_extended_statistics(chat_id, period='month')
+                return
+            elif text == "📥 Скачать CSV":
+                export_statistics_csv(chat_id, period='month')
                 return
 
         # — Только для SuperAdmin —
@@ -808,6 +818,7 @@ def show_property_reviews(chat_id, property_id, offset=0):
 
 @log_handler
 def help_command_handler(chat_id):
+    profile = _get_or_create_local_profile(chat_id)
     text = (
         "🤖 *Помощь по боту ЖильеGO*\n\n"
         "/start — главное меню\n"
@@ -818,6 +829,9 @@ def help_command_handler(chat_id):
         [KeyboardButton("🔍 Поиск квартир"), KeyboardButton("📋 Мои бронирования")],
         [KeyboardButton("📊 Статус текущей брони"), KeyboardButton("❓ Помощь")],
     ]
+    # Если роль админ — добавляем кнопку панели
+    if profile.role in ('admin', 'super_admin'):
+        kb.append([KeyboardButton("🛠 Панель администратора")])
     send_telegram_message(chat_id, text,
                            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True, input_field_placeholder="Что Вас интересует?").to_dict())
 

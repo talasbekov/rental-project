@@ -40,8 +40,8 @@ INSTALLED_APPS = [
     'booking_bot.listings',
     'booking_bot.bookings',
     'booking_bot.payments',
-    'booking_bot.whatsapp_bot',
     'booking_bot.telegram_bot',
+    'booking_bot.whatsapp_bot',
 ]
 
 MIDDLEWARE = [
@@ -124,10 +124,13 @@ SIMPLE_JWT = {
 # Bots and external APIs
 TELEGRAM_BOT_TOKEN = get_env('TELEGRAM_BOT_TOKEN', required=True)
 BOT_SERVICE_USERNAME = get_env('BOT_SERVICE_USERNAME', '')
-# WHATSAPP_ACCESS_TOKEN = get_env('WHATSAPP_ACCESS_TOKEN', '')
-# KASPI_API_KEY = get_env('KASPI_API_KEY', '')
-# KASPI_MERCHANT_ID = get_env('KASPI_MERCHANT_ID', '')
 WEBHOOK_SECRET = get_env('WEBHOOK_SECRET', '')
+
+# WhatsApp Business API Settings
+WHATSAPP_ACCESS_TOKEN = get_env('WHATSAPP_ACCESS_TOKEN', default='')
+WHATSAPP_PHONE_NUMBER_ID = get_env('WHATSAPP_PHONE_NUMBER_ID', default='')
+WHATSAPP_BUSINESS_ACCOUNT_ID = get_env('WHATSAPP_BUSINESS_ACCOUNT_ID', default='')
+WHATSAPP_VERIFY_TOKEN = get_env('WHATSAPP_VERIFY_TOKEN', default='your-verify-token-here')
 
 # Encryption key for custom fields
 # ENCRYPTION_KEY = get_env('ENCRYPTION_KEY', required=True)

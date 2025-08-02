@@ -14,5 +14,18 @@ class UserProfile(models.Model):
     telegram_chat_id = models.CharField(max_length=255, unique=True, null=True, blank=True, db_index=True)
     telegram_state = models.JSONField(default=dict, blank=True)
 
+    whatsapp_phone = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        unique=True,
+        help_text="Номер WhatsApp пользователя (без +)"
+    )
+    whatsapp_state = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Состояние WhatsApp бота для пользователя"
+    )
+
     def __str__(self):
         return f"{self.user.username} - {self.get_role_display()}"

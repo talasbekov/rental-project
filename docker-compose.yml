@@ -40,6 +40,34 @@ services:
     depends_on:
       - db
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  # Celery для фоновых задач (обработка платежей, уведомления)
+  celery:
+    build: .
+    command: celery -A booking_bot worker -l info
+    volumes:
+      - .:/code
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+
+  celery-beat:
+    build: .
+    command: celery -A booking_bot beat -l info
+    volumes:
+      - .:/code
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+
 volumes:
   pgdata:
 

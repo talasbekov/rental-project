@@ -141,14 +141,21 @@ def handle_button_click(phone_number, button_id, profile):
         logger.warning(f"Unknown button_id: {button_id}")
 
 
+def clear_user_state(chat_id: int):
+    """Сбросить телеграм-состояние пользователя (используется после оплаты)."""
+    profile = _get_or_create_local_profile(chat_id)
+    profile.telegram_state = {}
+    profile.save()
+
+
 def send_city_selection(user_profile, twilio_messaging_response):
     """Sends city selection prompt and buttons."""
     cities = City.objects.all().order_by('name')
     city_names = [city.name for city in cities]
 
     prompt_text = "Please select a city:"
-    _send_message_with_buttons(twilio_messaging_response, prompt_text, city_names)
-    set_user_state(user_profile, ACTION_SELECTING_CITY)
+    # _send_message_with_buttons(twilio_messaging_response, prompt_text, city_names)
+    # set_user_state(user_profile, ACTION_SELECTING_CITY)
 
 
 def send_district_selection(user_profile, twilio_messaging_response, selected_city):
@@ -159,11 +166,11 @@ def send_district_selection(user_profile, twilio_messaging_response, selected_ci
         district_names = [d.name for d in districts]
 
         prompt_text = f"You selected {selected_city}. Now, please select a district:"
-        _send_message_with_buttons(twilio_messaging_response, prompt_text, district_names)
-        set_user_state(user_profile, ACTION_SELECTING_DISTRICT, data={'city': selected_city, 'city_id': city.id})
+        # _send_message_with_buttons(twilio_messaging_response, prompt_text, district_names)
+        # set_user_state(user_profile, ACTION_SELECTING_DISTRICT, data={'city': selected_city, 'city_id': city.id})
     except City.DoesNotExist:
         twilio_messaging_response.message("City not found. Please try again.")
-        send_welcome_message(user_profile, twilio_messaging_response)
+        # send_welcome_message(user_profile, twilio_messaging_response)
 
 
 def display_available_apartments(user_profile, twilio_messaging_response, user_state):
@@ -176,7 +183,7 @@ def display_available_apartments(user_profile, twilio_messaging_response, user_s
     if not district_name or not city_id or not rooms_str:
         logger.error(f"State error: missing data for display_available_apartments")
         twilio_messaging_response.message("Sorry, there was an error. Please try again.")
-        send_welcome_message(user_profile, twilio_messaging_response)
+        # send_welcome_message(user_profile, twilio_messaging_response)
         return
 
     try:
@@ -191,18 +198,18 @@ def display_available_apartments(user_profile, twilio_messaging_response, user_s
             status='Свободна'  # Правильный статус
         ).order_by('id')
 
-        apartments_page = list(apartments_query[offset: offset + PAGE_SIZE])
+        apartments_page = list(apartments_query[offset: offset])
         total_matching_apartments = apartments_query.count()
 
     except District.DoesNotExist:
         logger.error(f"District {district_name} not found in city {city_id}")
         twilio_messaging_response.message("District not found. Please try again.")
-        send_welcome_message(user_profile, twilio_messaging_response)
+        # send_welcome_message(user_profile, twilio_messaging_response)
         return
     except Exception as e:
         logger.error(f"Database query error: {e}", exc_info=True)
         twilio_messaging_response.message("Error searching apartments.")
-        send_welcome_message(user_profile, twilio_messaging_response)
+        # send_welcome_message(user_profile, twilio_messaging_response)
         return
 
 @log_handler

@@ -21,8 +21,36 @@ class Booking(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    expires_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Время истечения неоплаченного бронирования"
+    )
+    cancelled_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Время отмены бронирования"
+    )
+    cancel_reason = models.CharField(
+        max_length=255, null=True, blank=True,
+        help_text="Причина отмены"
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['property', 'start_date', 'end_date']),
+            models.Index(fields=['status', 'expires_at']),
+        ]
+
+    def clean(self):
+        """Валидация на уровне модели"""
+        from django.core.exceptions import ValidationError
+
+        if self.start_date and self.end_date:
+            if self.end_date <= self.start_date:
+                raise ValidationError('Дата выезда должна быть позже даты заезда')
+
+            # Проверка минимального срока бронирования
+            if (self.end_date - self.start_date).days < 1:
+                raise ValidationError('Минимальный срок бронирования - 1 день')
+
     def __str__(self):
         return f"Booking for {self.property.name} by {self.user.username}"
-
-    # Potentially add a clean method to validate dates (end_date > start_date)
-    # and calculate total_price based on property.price_per_day and duration

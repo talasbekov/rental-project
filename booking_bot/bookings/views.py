@@ -12,74 +12,124 @@ from ..users.models import UserProfile
 
 User = get_user_model()
 
+# booking_bot/bookings/views.py - исправленная версия с защитой от гонок
+
+from django.db import transaction
+from django.db.models import Q
+from rest_framework import viewsets, status, serializers as drf_serializers
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from datetime import datetime, timedelta
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class BookingViewSet(viewsets.ModelViewSet):
     queryset = Booking.objects.all()
     serializer_class = BookingSerializer
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def perform_create(self, serializer):
-        import logging
-        logger = logging.getLogger(__name__)
-
+        """Создание бронирования с защитой от гонок"""
         logger.info(f"Creating booking for user: {self.request.user}")
-        logger.info(f"Validated data: {serializer.validated_data}")
 
-        # Получаем property из validated_data
+        # Получаем данные из валидированного сериализатора
         prop = serializer.validated_data['property']
         sd = serializer.validated_data['start_date']
         ed = serializer.validated_data['end_date']
 
-        logger.info(f"Property: {prop}, Start: {sd}, End: {ed}")
+        # Блокируем квартиру для проверки (SELECT FOR UPDATE)
+        locked_property = Property.objects.select_for_update().get(id=prop.id)
 
-        # Вычисляем продолжительность и цену
+        # Проверяем доступность на выбранные даты
+        conflicting_bookings = Booking.objects.filter(
+            property=locked_property,
+            status__in=['pending_payment', 'confirmed'],
+            start_date__lt=ed,
+            end_date__gt=sd
+        ).exists()
+
+        if conflicting_bookings:
+            raise drf_serializers.ValidationError({
+                'dates': 'Выбранные даты уже забронированы'
+            })
+
+        # Вычисляем стоимость
         duration = (ed - sd).days
         if duration <= 0:
-            raise drf_serializers.ValidationError("Booking duration must be at least 1 day.")
+            raise drf_serializers.ValidationError("Минимальный срок бронирования - 1 день")
 
-        total_price = duration * prop.price_per_day
-        logger.info(f"Duration: {duration} days, Total price: {total_price}")
+        total_price = duration * locked_property.price_per_day
 
-        # Сохраняем бронь с аутентифицированным пользователем
+        # Создаем бронирование со статусом pending_payment
         booking = serializer.save(
             user=self.request.user,
             total_price=total_price,
-            status='pending'
+            status='pending_payment',
+            expires_at=datetime.now() + timedelta(minutes=15)  # 15 минут на оплату
         )
-        logger.info(f"Booking created successfully: {booking.id}")
+
+        logger.info(f"Booking created: {booking.id}, expires at {booking.expires_at}")
+
+        # Запускаем отложенную задачу для отмены неоплаченного бронирования
+        from booking_bot.bookings.tasks import cancel_expired_booking
+        cancel_expired_booking.apply_async(
+            args=[booking.id],
+            eta=booking.expires_at
+        )
+
         return booking
 
-    @action(detail=True, methods=['post']) # Add more specific permission later
-    def cancel(self, request, pk=None):
-        booking = self.get_object()
-
-        # Add logic here: who can cancel?
-        # For now, let's assume the user who booked it or an admin.
-        # Make sure request.user is the Django User model instance
-        if booking.user != request.user and not (hasattr(request.user, 'is_staff') and request.user.is_staff): # Example: allow staff/admin
-             return Response({'error': 'You do not have permission to cancel this booking.'}, status=status.HTTP_403_FORBIDDEN)
-
-        if booking.status == 'cancelled':
-            return Response({'message': 'Booking is already cancelled.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Add conditions under which a booking can be cancelled (e.g., not too close to start_date)
-
-        booking.status = 'cancelled'
-        booking.save()
-        return Response({'message': 'Booking cancelled successfully.'})
-
     def get_queryset(self):
-        """
-        Users should only see their own bookings unless they are admin/super_admin.
-        """
+        """Фильтрация бронирований по правам доступа"""
         user = self.request.user
         if user.is_authenticated:
-            # This check for profile and role needs User model to have profile linked,
-            # and profile to have role. Or use Django's built-in is_staff or is_superuser.
-            # Example using is_staff for admin-like access:
-            if hasattr(user, 'is_staff') and user.is_staff:
+            # Админы видят все
+            if user.is_staff or hasattr(user, 'profile') and user.profile.role in ['admin', 'super_admin']:
                 return Booking.objects.all()
+            # Обычные пользователи - только свои
             return Booking.objects.filter(user=user)
-        return Booking.objects.none() # Should not happen if IsAuthenticated is effective
+        return Booking.objects.none()
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def cancel(self, request, pk=None):
+        """Отмена бронирования с освобождением дат"""
+        booking = self.get_object()
+
+        # Проверка прав
+        if booking.user != request.user and not request.user.is_staff:
+            return Response(
+                {'error': 'У вас нет прав для отмены этого бронирования'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if booking.status == 'cancelled':
+            return Response(
+                {'message': 'Бронирование уже отменено'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Блокируем запись для изменения
+        locked_booking = Booking.objects.select_for_update().get(id=booking.id)
+
+        # Сохраняем причину отмены
+        cancel_reason = request.data.get('reason', 'Отменено пользователем')
+
+        locked_booking.status = 'cancelled'
+        locked_booking.cancelled_at = datetime.now()
+        locked_booking.cancel_reason = cancel_reason
+        locked_booking.save()
+
+        # Освобождаем календарные дни (если используется система календаря)
+        if hasattr(self, '_update_calendar_availability'):
+            self._update_calendar_availability(locked_booking, 'free')
+
+        logger.info(f"Booking {booking.id} cancelled by {request.user}, reason: {cancel_reason}")
+
+        return Response({'message': 'Бронирование успешно отменено'})
 
 
 class UserBookingsListView(generics.ListAPIView):

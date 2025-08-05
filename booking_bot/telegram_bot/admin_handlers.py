@@ -688,29 +688,32 @@ def show_extended_statistics(chat_id, period='month'):
 
 
 @log_handler
-def export_statistics_csv(chat_id, period='month'):
+def export_statistics_csv(chat_id: int,
+                          context: CallbackContext,
+                          period: str = 'month'):
+    """Сгенерировать и отправить CSV с статистикой."""
     profile = _get_profile(chat_id)
     if profile.role not in ('admin', 'super_admin'):
         send_telegram_message(chat_id, "У вас нет доступа.")
         return
 
-    # Генерируем CSV
+    # 1) Собираем данные и пишем в StringIO
     text_buf = StringIO()
     writer = csv.writer(text_buf)
-    writer.writerow(['ID','Start','End','Price','Status'])
+    writer.writerow(['ID', 'Start', 'End', 'Price', 'Status'])
     writer.writerow([1, '01.06.2025', '02.06.2025', 5000, 'confirmed'])
+    # TODO: здесь ваша реальная логика выборки статистики
     text_buf.seek(0)
 
-    # В байтовый буфер
+    # 2) Конвертируем в BytesIO, задаём имя файла
     byte_buf = BytesIO(text_buf.getvalue().encode('utf-8'))
     byte_buf.name = f'stat_{period}.csv'
     byte_buf.seek(0)
 
-    # Отправляем через ваш util — он сам сделает multipart-upload
-    send_document(
-        chat_id,
-        byte_buf,
-        filename=byte_buf.name,
+    # 3) Отправляем документ через multipart/form-data
+    context.bot.send_document(
+        chat_id=chat_id,
+        document=InputFile(byte_buf, filename=byte_buf.name),
         caption=f'Ваша статистика за {period}'
     )
 

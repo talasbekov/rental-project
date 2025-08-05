@@ -38,3 +38,21 @@ class PropertyAdmin(admin.ModelAdmin):
         }),
     )
     inlines = [PropertyPhotoInline]
+
+
+from django.contrib import admin
+from .models import CalendarDay
+
+
+@admin.register(CalendarDay)
+class CalendarDayAdmin(admin.ModelAdmin):
+    list_display = ('property', 'date', 'status', 'booking')
+    list_filter = ('status', 'date', 'property')
+    search_fields = ('property__name', 'booking__id')
+    date_hierarchy = 'date'
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        # Оптимизация запросов
+        return qs.select_related('property', 'booking', 'booking__user')
+

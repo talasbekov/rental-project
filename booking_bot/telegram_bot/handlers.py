@@ -20,6 +20,7 @@ from .admin_handlers import (
     handle_photo_upload, show_detailed_statistics, show_extended_statistics, export_statistics_csv,
     show_admin_properties,
 )
+from ..core.models import AuditLog
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ def message_handler(chat_id, text, update=None, context=None):
                 show_extended_statistics(chat_id, period='month')
                 return
             elif text == "📥 Скачать CSV":
-                export_statistics_csv(chat_id, period='month')
+                export_statistics_csv(chat_id, context, period='month')
                 return
 
         # — Только для SuperAdmin —
@@ -716,8 +717,9 @@ def handle_payment_confirmation(chat_id):
 def send_booking_confirmation(chat_id, booking):
     """Отправляет подтверждение бронирования с деталями"""
     property_obj = booking.property
+    user = booking.user
 
-    # Формируем текст подтверждения
+    # Формируем текст без кодов доступа
     text = (
         f"✅ *Оплата подтверждена!*\n\n"
         f"🎉 Ваше бронирование успешно оформлено!\n\n"
@@ -730,23 +732,49 @@ def send_booking_confirmation(chat_id, booking):
         f"Стоимость: {booking.total_price:,.0f} ₸\n\n"
     )
 
-    # Добавляем инструкции по заселению
+    # Добавляем инструкции
     if property_obj.entry_instructions:
         text += f"📝 *Инструкции по заселению:*\n{property_obj.entry_instructions}\n\n"
 
-    # Добавляем коды доступа
-    if property_obj.digital_lock_code:
-        text += f"🔐 *Код от замка:* `{property_obj.digital_lock_code}`\n"
-    elif property_obj.key_safe_code:
-        text += f"🔑 *Код от сейфа с ключами:* `{property_obj.key_safe_code}`\n"
+    # Получаем коды доступа с логированием
+    codes = property_obj.get_access_codes(user)
+
+    # Логируем отправку кодов через Telegram
+    AuditLog.log(
+        user=user,
+        action='send_code',
+        obj=property_obj,
+        details={
+            'booking_id': booking.id,
+            'channel': 'telegram',
+            'codes_sent': list(codes.keys())
+        },
+        telegram_chat_id=str(chat_id)
+    )
+
+    # Добавляем коды к сообщению
+    if codes.get('digital_lock_code'):
+        text += f"🔐 *Код от замка:* `{codes['digital_lock_code']}`\n"
+
+    if codes.get('key_safe_code'):
+        text += f"🔑 *Код от сейфа:* `{codes['key_safe_code']}`\n"
 
     # Контакты владельца
     if hasattr(property_obj.owner, 'profile') and property_obj.owner.profile.phone_number:
         text += f"\n📞 *Контакт владельца:* {property_obj.owner.profile.phone_number}\n"
 
+        # Логируем просмотр телефона
+        AuditLog.log(
+            user=user,
+            action='view_phone',
+            obj=property_obj.owner.profile,
+            details={'context': 'booking_confirmation'},
+            telegram_chat_id=str(chat_id)
+        )
+
     text += "\n💬 Желаем приятного отдыха!"
 
-    # Кнопки
+    # Отправляем сообщение
     kb = [
         [KeyboardButton("📊 Мои бронирования")],
         [KeyboardButton("🧭 Главное меню")]
@@ -757,13 +785,6 @@ def send_booking_confirmation(chat_id, booking):
         text,
         reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
     )
-
-    # Дополнительно можем отправить фото квартиры
-    photos = PropertyPhoto.objects.filter(property=property_obj)[:3]
-    if photos:
-        photo_urls = [p.get_photo_url() for p in photos if p.get_photo_url()]
-        if photo_urls:
-            send_photo_group(chat_id, photo_urls)
 
 @log_handler
 def show_user_bookings(chat_id, booking_type='active'):

@@ -192,6 +192,34 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_RESULT_SERIALIZER = 'json'
 
+# S3/MinIO настройки
+AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID', '')
+AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
+AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME', 'zhiliego-photos')
+AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'us-east-1')
+
+# Для MinIO (self-hosted S3)
+S3_ENDPOINT_URL = os.environ.get('S3_ENDPOINT_URL', None)  # например: http://minio:9000
+
+# CloudFront CDN (опционально)
+AWS_CLOUDFRONT_DOMAIN = os.environ.get('AWS_CLOUDFRONT_DOMAIN', None)
+
+# Настройки оптимизации фотографий
+PHOTO_MAX_SIZE = 5 * 1024 * 1024  # 5 МБ
+PHOTO_MAX_DIMENSION = 1920  # Максимальная ширина/высота
+PHOTO_THUMBNAIL_SIZE = (400, 300)  # Размер миниатюры
+
+# Кэширование
+AWS_S3_OBJECT_PARAMETERS = {
+    'CacheControl': 'max-age=86400',  # 1 день
+}
+
+# Для локальной разработки можно использовать MinIO в Docker
+if DEBUG:
+    S3_ENDPOINT_URL = 'http://localhost:9000'
+    AWS_ACCESS_KEY_ID = 'minioadmin'
+    AWS_SECRET_ACCESS_KEY = 'minioadmin'
+
 # Celery beat schedule example tasks. Adjust schedules as needed.
 CELERY_BEAT_SCHEDULE = {
     # Send booking reminders hourly

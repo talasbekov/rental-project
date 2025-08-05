@@ -222,20 +222,21 @@ if DEBUG:
 
 # Celery beat schedule example tasks. Adjust schedules as needed.
 CELERY_BEAT_SCHEDULE = {
-    # Send booking reminders hourly
-    'send-booking-reminders': {
-        'task': 'booking_bot.whatsapp_bot.tasks.send_booking_reminder',
-        'schedule': crontab(minute='0', hour='*/1'),
+    'process-notifications': {
+        'task': 'booking_bot.notifications.tasks.process_notification_queue',
+        'schedule': crontab(minute='*/1'),  # каждую минуту
     },
-    # Ask guests to leave a review at 10:00 each day
-    'ask-for-review': {
-        'task': 'booking_bot.whatsapp_bot.tasks.send_review_request',
-        'schedule': crontab(minute=0, hour=10),
+    'check-expired-bookings': {
+        'task': 'booking_bot.bookings.tasks.check_all_expired_bookings',
+        'schedule': crontab(minute='*/5'),  # каждые 5 минут
     },
-    # Cancel unpaid bookings every 15 minutes
-    'cancel-unpaid-bookings': {
-        'task': 'booking_bot.whatsapp_bot.tasks.check_expired_bookings',
-        'schedule': crontab(minute='*/15'),
+    'send-checkin-reminders': {
+        'task': 'booking_bot.notifications.tasks.send_checkin_reminders',
+        'schedule': crontab(hour=10, minute=0),  # ежедневно в 10:00
+    },
+    'monitor-occupancy': {
+        'task': 'booking_bot.notifications.tasks.monitor_low_occupancy',
+        'schedule': crontab(hour=9, minute=0, day_of_week=1),  # понедельник 9:00
     },
 }
 

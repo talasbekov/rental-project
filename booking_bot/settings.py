@@ -6,6 +6,9 @@ from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / '.env')
 
+# Celery beat schedule helpers
+from celery.schedules import crontab
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Helper to get environment variables or raise
@@ -42,6 +45,9 @@ INSTALLED_APPS = [
     'booking_bot.payments',
     'booking_bot.telegram_bot',
     'booking_bot.whatsapp_bot',
+    # Third-party apps for encryption and task scheduling
+    'django_cryptography',
+    'django_celery_beat',
 ]
 
 MIDDLEWARE = [
@@ -135,19 +141,11 @@ WHATSAPP_VERIFY_TOKEN = get_env('WHATSAPP_VERIFY_TOKEN', default='your-verify-to
 # Encryption key for custom fields
 # ENCRYPTION_KEY = get_env('ENCRYPTION_KEY', required=True)
 
-# Domain and URLs\NGRK
-NGROK_URL = get_env('NGROK_URL', '')
-if not DEBUG:
-    SECURE_SSL_REDIRECT = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    SECURE_HSTS_SECONDS = 31536000
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
-
-# Обновим DOMAIN для HTTPS
-DOMAIN = 'https://jgo.kz' if not DEBUG else get_env('NGROK_URL', 'http://localhost:8000')
-SITE_URL = NGROK_URL
+# Domain configuration
+# Use DJANGO_DOMAIN environment variable to configure the domain without relying on ngrok.
+# In development, default to localhost. SITE_URL points to the same domain.
+DOMAIN = get_env('DJANGO_DOMAIN', 'http://localhost:8000')
+SITE_URL = DOMAIN
 API_BASE = f"{DOMAIN}/api/v1"
 
 # Kaspi Payment Gateway Settings
@@ -184,6 +182,34 @@ SECURE_HSTS_PRELOAD = True
 # File upload limits
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
+
+# Celery configuration
+# Define broker and result backend from environment or default to Redis.
+CELERY_BROKER_URL = get_env('CELERY_BROKER_URL', 'redis://redis:6379/0')
+CELERY_RESULT_BACKEND = get_env('CELERY_RESULT_BACKEND', 'redis://redis:6379/1')
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_RESULT_SERIALIZER = 'json'
+
+# Celery beat schedule example tasks. Adjust schedules as needed.
+CELERY_BEAT_SCHEDULE = {
+    # Send booking reminders hourly
+    'send-booking-reminders': {
+        'task': 'booking_bot.whatsapp_bot.tasks.send_booking_reminder',
+        'schedule': crontab(minute='0', hour='*/1'),
+    },
+    # Ask guests to leave a review at 10:00 each day
+    'ask-for-review': {
+        'task': 'booking_bot.whatsapp_bot.tasks.send_review_request',
+        'schedule': crontab(minute=0, hour=10),
+    },
+    # Cancel unpaid bookings every 15 minutes
+    'cancel-unpaid-bookings': {
+        'task': 'booking_bot.whatsapp_bot.tasks.check_expired_bookings',
+        'schedule': crontab(minute='*/15'),
+    },
+}
 
 # Logging configuration
 LOGGING = {

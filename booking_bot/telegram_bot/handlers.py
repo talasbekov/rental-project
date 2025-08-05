@@ -222,6 +222,10 @@ def select_class(chat_id, profile, text):
 
 @log_handler
 def select_rooms(chat_id, profile, text):
+    if text not in ['1', '2', '3', '4+']:
+        send_telegram_message(chat_id, "Пожалуйста, выберите количество комнат из предложенных кнопок.")
+        return
+
     rooms = 4 if text == '4+' else int(text)
     profile.telegram_state.update({'rooms': rooms, 'state': STATE_SHOWING_RESULTS})
     profile.save()

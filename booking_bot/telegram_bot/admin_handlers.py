@@ -2,13 +2,13 @@ import csv
 import logging
 import tempfile
 from datetime import date, timedelta
-from io import StringIO
+from io import StringIO, BytesIO
 from typing import Optional
 
 from django.db.models import Sum, Count, Q, F, Avg, ExpressionWrapper, DurationField
 
 from django.core.files import File
-from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
+from telegram import KeyboardButton, ReplyKeyboardMarkup, InputFile
 from telegram.ext import CallbackContext
 
 from booking_bot.users.models import UserProfile
@@ -689,20 +689,30 @@ def show_extended_statistics(chat_id, period='month'):
 
 @log_handler
 def export_statistics_csv(chat_id, period='month'):
-    """Сгенерировать и отправить CSV с статистикой."""
     profile = _get_profile(chat_id)
-    if profile.role not in ('admin','super_admin'):
+    if profile.role not in ('admin', 'super_admin'):
         send_telegram_message(chat_id, "У вас нет доступа.")
         return
-    # Реализация отправки CSV файла
-    # Здесь используем send_document
-    buffer = StringIO()
-    writer = csv.writer(buffer)
+
+    # Генерируем CSV
+    text_buf = StringIO()
+    writer = csv.writer(text_buf)
     writer.writerow(['ID','Start','End','Price','Status'])
-    # Пример
-    writer.writerow([1,'01.06.2025','02.06.2025',5000,'confirmed'])
-    buffer.seek(0)
-    send_document(chat_id, buffer, filename=f'stat_{period}.csv')
+    writer.writerow([1, '01.06.2025', '02.06.2025', 5000, 'confirmed'])
+    text_buf.seek(0)
+
+    # В байтовый буфер
+    byte_buf = BytesIO(text_buf.getvalue().encode('utf-8'))
+    byte_buf.name = f'stat_{period}.csv'
+    byte_buf.seek(0)
+
+    # Отправляем через ваш util — он сам сделает multipart-upload
+    send_document(
+        chat_id,
+        byte_buf,
+        filename=byte_buf.name,
+        caption=f'Ваша статистика за {period}'
+    )
 
 @log_handler
 def show_property_management(chat_id, property_id):

@@ -30,39 +30,112 @@ class District(models.Model):
     class Meta:
         unique_together = ('name', 'city') # Ensure district names are unique within a city
 
+
 class Property(models.Model):
+    """Модель квартиры для посуточной аренды"""
+
     PROPERTY_CLASS_CHOICES = [
-        ('comfort', 'Комфорт / Комфорт'), # Adjusted display value slightly
-        ('business', 'Business / Бизнес'),
-        ('luxury', 'Luxury / Премиум'),
+        ('comfort', 'Комфорт'),
+        ('business', 'Бизнес'),
+        ('premium', 'Премиум'),
     ]
-    # REGION_CHOICES removed, replaced by ForeignKey to District
+
     STATUS_CHOICES = [
-        ('Свободна', 'Available / Свободна'),
-        ('Забронирована', 'Booked / Забронирована'),
-        ('Занята', 'Occupied / Занята'), # Changed 'maintenance' to 'occupied' for clarity
-        ('На обслуживании', 'Maintenance / На обслуживании'), # Added maintenance back as a separate status
+        ('Свободна', 'Свободна'),
+        ('Забронирована', 'Забронирована'),
+        ('Занята', 'Занята'),
+        ('На обслуживании', 'На обслуживании'),
     ]
-    name = models.CharField(max_length=255)
-    description = models.TextField()
-    address = models.CharField(max_length=255) # This will be the free-form address
-    district = models.ForeignKey(District, on_delete=models.SET_NULL, null=True, related_name='properties') # Link to new District model
-    number_of_rooms = models.PositiveIntegerField()
-    area = models.DecimalField(max_digits=8, decimal_places=2, help_text="Area in square meters")
-    property_class = models.CharField(max_length=20, choices=PROPERTY_CLASS_CHOICES, default='comfort')
-    # region field removed
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Свободна')
 
-    # Encrypted fields
-    key_safe_code = models.CharField(max_length=50, null=True, blank=True)
-    digital_lock_code = models.CharField(max_length=50, null=True, blank=True)
+    # Основные поля
+    name = models.CharField(max_length=255, verbose_name='Название')
+    description = models.TextField(verbose_name='Описание')
+    address = models.CharField(max_length=255, verbose_name='Адрес')
+    district = models.ForeignKey(
+        'District',
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='properties',
+        verbose_name='Район'
+    )
 
-    entry_instructions = models.TextField(null=True, blank=True)
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='properties', limit_choices_to={'is_staff': True}) # Assuming admins are staff users
-    price_per_day = models.DecimalField(max_digits=10, decimal_places=2)
+    # Характеристики
+    number_of_rooms = models.PositiveIntegerField(verbose_name='Количество комнат')
+    area = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        help_text="Площадь в квадратных метрах"
+    )
+    property_class = models.CharField(
+        max_length=20,
+        choices=PROPERTY_CLASS_CHOICES,
+        default='comfort',
+        verbose_name='Класс жилья'
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='Свободна',
+        verbose_name='Статус'
+    )
+
+    # Доступ к квартире (новые поля согласно ТЗ)
+    entry_floor = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name='Этаж'
+    )
+    entry_code = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        verbose_name='Код домофона'
+    )
+    key_safe_code = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        verbose_name='Код сейфа'
+    )
+    digital_lock_code = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        verbose_name='Код замка'
+    )
+    entry_instructions = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name='Инструкции по заселению'
+    )
+
+    # Контакты
+    owner_phone = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        verbose_name='Телефон владельца/риелтора'
+    )
+
+    # Владелец и цена
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='properties',
+        limit_choices_to={'is_staff': True},
+        verbose_name='Владелец'
+    )
+    price_per_day = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        verbose_name='Цена за сутки'
+    )
+
+    # Временные метки
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Зашифрованные поля для конфиденциальных данных
     _encrypted_key_safe_code = models.TextField(
         db_column='encrypted_key_safe_code',
         blank=True,
@@ -73,9 +146,24 @@ class Property(models.Model):
         blank=True,
         default=''
     )
+    _encrypted_entry_code = models.TextField(
+        db_column='encrypted_entry_code',
+        blank=True,
+        default=''
+    )
+    _encrypted_owner_phone = models.TextField(
+        db_column='encrypted_owner_phone',
+        blank=True,
+        default=''
+    )
 
     # Сервис шифрования
     _encryption_service = None
+
+    class Meta:
+        verbose_name = 'Квартира'
+        verbose_name_plural = 'Квартиры'
+        ordering = ['-created_at']
 
     @property
     def encryption_service(self):
@@ -83,19 +171,12 @@ class Property(models.Model):
             self._encryption_service = EncryptionService()
         return self._encryption_service
 
+    # Свойства для работы с зашифрованными полями
     @property
     def key_safe_code(self):
         """Расшифровка кода сейфа при чтении"""
         if self._encrypted_key_safe_code:
-            # Логируем доступ
-            if hasattr(self, '_accessing_user'):
-                AuditLog.log(
-                    user=self._accessing_user,
-                    action='view_code',
-                    obj=self,
-                    details={'code_type': 'key_safe'}
-                )
-
+            self._log_access('view_code', {'code_type': 'key_safe'})
             return self.encryption_service.decrypt(self._encrypted_key_safe_code)
         return ''
 
@@ -111,15 +192,7 @@ class Property(models.Model):
     def digital_lock_code(self):
         """Расшифровка кода замка при чтении"""
         if self._encrypted_digital_lock_code:
-            # Логируем доступ
-            if hasattr(self, '_accessing_user'):
-                AuditLog.log(
-                    user=self._accessing_user,
-                    action='view_code',
-                    obj=self,
-                    details={'code_type': 'digital_lock'}
-                )
-
+            self._log_access('view_code', {'code_type': 'digital_lock'})
             return self.encryption_service.decrypt(self._encrypted_digital_lock_code)
         return ''
 
@@ -131,8 +204,50 @@ class Property(models.Model):
         else:
             self._encrypted_digital_lock_code = ''
 
+    @property
+    def entry_code(self):
+        """Расшифровка кода домофона при чтении"""
+        if self._encrypted_entry_code:
+            self._log_access('view_code', {'code_type': 'entry_code'})
+            return self.encryption_service.decrypt(self._encrypted_entry_code)
+        return ''
+
+    @entry_code.setter
+    def entry_code(self, value):
+        """Шифрование кода домофона при записи"""
+        if value:
+            self._encrypted_entry_code = self.encryption_service.encrypt(value)
+        else:
+            self._encrypted_entry_code = ''
+
+    @property
+    def owner_phone(self):
+        """Расшифровка телефона владельца при чтении"""
+        if self._encrypted_owner_phone:
+            self._log_access('view_phone', {'phone_type': 'owner'})
+            return self.encryption_service.decrypt(self._encrypted_owner_phone)
+        return ''
+
+    @owner_phone.setter
+    def owner_phone(self, value):
+        """Шифрование телефона владельца при записи"""
+        if value:
+            self._encrypted_owner_phone = self.encryption_service.encrypt(value)
+        else:
+            self._encrypted_owner_phone = ''
+
+    def _log_access(self, action, details):
+        """Логирование доступа к конфиденциальным данным"""
+        if hasattr(self, '_accessing_user'):
+            AuditLog.log(
+                user=self._accessing_user,
+                action=action,
+                obj=self,
+                details=details
+            )
+
     def get_access_codes(self, user, log_access=True):
-        """Безопасное получение кодов доступа с логированием"""
+        """Безопасное получение всех кодов доступа с логированием"""
         codes = {}
 
         if log_access:
@@ -140,7 +255,7 @@ class Property(models.Model):
                 user=user,
                 action='view_code',
                 obj=self,
-                details={'codes_requested': ['key_safe', 'digital_lock']}
+                details={'codes_requested': ['all_codes']}
             )
 
         if self._encrypted_key_safe_code:
@@ -148,6 +263,14 @@ class Property(models.Model):
 
         if self._encrypted_digital_lock_code:
             codes['digital_lock_code'] = self.encryption_service.decrypt(self._encrypted_digital_lock_code)
+
+        if self._encrypted_entry_code:
+            codes['entry_code'] = self.encryption_service.decrypt(self._encrypted_entry_code)
+
+        if self._encrypted_owner_phone:
+            codes['owner_phone'] = self.encryption_service.decrypt(self._encrypted_owner_phone)
+
+        codes['entry_floor'] = self.entry_floor
 
         return codes
 
@@ -167,17 +290,30 @@ class Property(models.Model):
             }
         )
 
+        # Формируем сообщение
+        message = f"🔐 Информация для заселения в {self.name}:\n\n"
+
+        if codes.get('entry_floor'):
+            message += f"🏢 Этаж: {codes['entry_floor']}\n"
+
+        if codes.get('entry_code'):
+            message += f"🔢 Код домофона: {codes['entry_code']}\n"
+
+        if codes.get('digital_lock_code'):
+            message += f"🔐 Код замка: {codes['digital_lock_code']}\n"
+
+        if codes.get('key_safe_code'):
+            message += f"🔑 Код сейфа: {codes['key_safe_code']}\n"
+
+        if codes.get('owner_phone'):
+            message += f"\n📞 Контакт владельца: {codes['owner_phone']}\n"
+
+        if self.entry_instructions:
+            message += f"\n📝 Инструкции:\n{self.entry_instructions}"
+
         # Отправляем через соответствующий канал
         from booking_bot.telegram_bot.utils import send_telegram_message
         from booking_bot.whatsapp_bot.utils import send_whatsapp_message
-
-        message = f"🔐 Коды доступа для {self.name}:\n"
-
-        if codes.get('digital_lock_code'):
-            message += f"Код замка: {codes['digital_lock_code']}\n"
-
-        if codes.get('key_safe_code'):
-            message += f"Код сейфа: {codes['key_safe_code']}\n"
 
         if hasattr(user, 'profile'):
             if user.profile.telegram_chat_id:
@@ -189,7 +325,7 @@ class Property(models.Model):
         return True
 
     def __str__(self):
-        return self.name
+        return f"{self.name} - {self.district}"
 
 
 from django.db import models
@@ -206,7 +342,7 @@ class PropertyPhoto(models.Model):
     # Используем кастомное хранилище
     image = models.ImageField(
         upload_to='property_photos/',
-        storage=S3PhotoStorage(),
+        storage=S3PhotoStorage,
         blank=True,
         null=True,
         max_length=500,

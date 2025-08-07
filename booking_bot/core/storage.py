@@ -5,10 +5,12 @@ from PIL import Image
 from io import BytesIO
 import hashlib
 import uuid
-from django.conf import settings
+
 from django.core.files.storage import Storage
 from django.core.files.base import ContentFile
 import logging
+
+from booking_bot import settings
 
 logger = logging.getLogger(__name__)
 

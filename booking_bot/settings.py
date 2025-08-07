@@ -44,8 +44,8 @@ INSTALLED_APPS = [
     'booking_bot.bookings',
     'booking_bot.payments',
     'booking_bot.telegram_bot',
-    'booking_bot.whatsapp_bot',
-    # Third-party apps for encryption and task scheduling
+    'booking_bot.notifications',
+    'booking_bot.whatsapp_bot.apps.WhatsAppBotConfig',
     'django_cryptography',
     'django_celery_beat',
 ]
@@ -222,21 +222,64 @@ if DEBUG:
 
 # Celery beat schedule example tasks. Adjust schedules as needed.
 CELERY_BEAT_SCHEDULE = {
+    # Обработка уведомлений
     'process-notifications': {
         'task': 'booking_bot.notifications.tasks.process_notification_queue',
         'schedule': crontab(minute='*/1'),  # каждую минуту
     },
+
+    # Проверка истекших бронирований
     'check-expired-bookings': {
         'task': 'booking_bot.bookings.tasks.check_all_expired_bookings',
         'schedule': crontab(minute='*/5'),  # каждые 5 минут
     },
+
+    # Актуализация статусов бронирований
+    'update-booking-statuses': {
+        'task': 'booking_bot.bookings.tasks.update_booking_statuses',
+        'schedule': crontab(hour=0, minute=1),  # ежедневно в 00:01
+    },
+
+    # Напоминания о заезде
     'send-checkin-reminders': {
-        'task': 'booking_bot.notifications.tasks.send_checkin_reminders',
+        'task': 'booking_bot.bookings.tasks.send_checkin_reminder',
         'schedule': crontab(hour=10, minute=0),  # ежедневно в 10:00
     },
+
+    # Мониторинг загрузки
     'monitor-occupancy': {
-        'task': 'booking_bot.notifications.tasks.monitor_low_occupancy',
+        'task': 'booking_bot.bookings.tasks.check_low_demand_properties',
         'schedule': crontab(hour=9, minute=0, day_of_week=1),  # понедельник 9:00
+    },
+
+    # Анализ KO-фактора гостей
+    'analyze-ko-factor': {
+        'task': 'booking_bot.bookings.tasks.analyze_guest_ko_factor',
+        'schedule': crontab(hour=2, minute=0, day_of_week=0),  # воскресенье 02:00
+    },
+
+    # Ежемесячный отчет
+    'monthly-report': {
+        'task': 'booking_bot.bookings.tasks.generate_monthly_report',
+        'schedule': crontab(hour=9, minute=0, day_of_month=1),  # 1-го числа в 09:00
+    },
+
+    # Проверка необходимости обновления фото/цен
+    'check-updates-needed': {
+        'task': 'booking_bot.bookings.tasks.check_property_updates_needed',
+        'schedule': crontab(hour=11, minute=0, day_of_week=3),  # среда 11:00
+    },
+
+    # Расширение календаря на будущее
+    'extend-calendar': {
+        'task': 'booking_bot.listings.tasks.extend_calendar_forward',
+        'schedule': crontab(hour=3, minute=0, day_of_week=1),  # понедельник 03:00
+    },
+
+    # Очистка старых записей календаря
+    'cleanup-calendar': {
+        'task': 'booking_bot.listings.tasks.cleanup_old_calendar_days',
+        'schedule': crontab(hour=4, minute=0, day_of_month=1),  # 1-го числа в 04:00
     },
 }
 

@@ -17,6 +17,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+async def set_bot_commands(application):
+    """Установка команд бота и кнопки меню"""
+    commands = [
+        ('start', '🏠 Главное меню'),
+        ('search', '🔍 Поиск квартир'),
+        ('bookings', '📋 Мои бронирования'),
+        ('help', '❓ Помощь')
+    ]
+    await application.bot.set_my_commands(commands)
+
+    # Установка кнопки меню
+    await application.bot.set_chat_menu_button(
+        menu_button={
+            "type": "commands"
+        }
+    )
+
 # Global application instance
 application = None
 
@@ -62,11 +80,8 @@ def setup_application():
     # УБИРАЕМ дублирующиеся обработчики и оставляем только один основной
     application.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, telegram_message_handler))
 
-    # Set commands
-    async def set_cmds(app):
-        await app.bot.set_my_commands([('start','Главное меню'),('help','Помощь')])
-        logger.info("Commands set")
-    application.job_queue.run_once(lambda ctx: set_cmds(application), 0)
+    # Set commands and menu button
+    application.job_queue.run_once(lambda ctx: set_bot_commands(application), 0)
 
     logger.info("Bot initialized")
     return application

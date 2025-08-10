@@ -35,6 +35,11 @@ STATE_ADMIN_ADD_AREA        = 'admin_add_area'
 STATE_ADMIN_ADD_PRICE       = 'admin_add_price'
 STATE_ADMIN_ADD_PHOTOS      = 'admin_add_photos'
 
+# Новые состояния для отмены
+STATE_CANCEL_BOOKING = 'cancel_booking'
+STATE_CANCEL_REASON = 'cancel_reason'
+STATE_CANCEL_REASON_TEXT = 'cancel_reason_text'
+
 
 def log_handler(func):
     def wrapper(*args, **kwargs):

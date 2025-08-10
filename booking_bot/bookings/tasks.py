@@ -104,31 +104,41 @@ def send_review_request(booking_id):
     """Автоматический запрос отзыва после выезда"""
     from booking_bot.bookings.models import Booking
     from booking_bot.listings.models import Review
-    from booking_bot.notifications.service import NotificationService
+    from booking_bot.telegram_bot.utils import send_telegram_message
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
     try:
         booking = Booking.objects.get(id=booking_id)
 
-        # Проверяем, что отзыв еще не оставлен
+        # Проверяем что отзыв еще не оставлен
         if Review.objects.filter(property=booking.property, user=booking.user).exists():
             logger.info(f"Review already exists for booking {booking_id}")
             return
 
-        # Отправляем запрос на отзыв
-        NotificationService.schedule(
-            event='review_request',
-            user=booking.user,
-            context={
-                'booking': booking,
-                'property': booking.property,
-                'booking_id': booking.id
-            }
+        # Формируем кнопки для оценки
+        keyboard = [
+            [InlineKeyboardButton(f"⭐ {i}", callback_data=f"review_{booking_id}_{i}")
+             for i in range(1, 6)]
+        ]
+        markup = InlineKeyboardMarkup(keyboard)
+
+        text = (
+            f"🏠 Как прошло ваше проживание в *{booking.property.name}*?\n\n"
+            f"Пожалуйста, оцените от 1 до 5 звезд:"
         )
+
+        # Отправляем через Telegram
+        if hasattr(booking.user, 'profile') and booking.user.profile.telegram_chat_id:
+            send_telegram_message(
+                booking.user.profile.telegram_chat_id,
+                text,
+                reply_markup=markup.to_dict()
+            )
 
         logger.info(f"Review request sent for booking {booking_id}")
 
-    except Booking.DoesNotExist:
-        logger.error(f"Booking {booking_id} not found for review request")
+    except Exception as e:
+        logger.error(f"Error sending review request: {e}")
 
 
 @shared_task
@@ -200,10 +210,21 @@ def analyze_guest_ko_factor():
             ko_factor = (cancelled_bookings / total_bookings) * 100
 
             # Обновляем профиль пользователя
+            # Обновляем профиль пользователя
             profile, _ = UserProfile.objects.get_or_create(user=user)
-            profile.ko_factor = ko_factor
-            profile.requires_prepayment = ko_factor > 50  # Требуем предоплату если отмен > 50%
+            profile.telegram_state = profile.telegram_state or {}
+            profile.telegram_state['ko_factor'] = ko_factor
+            profile.telegram_state['requires_prepayment'] = ko_factor > 50
             profile.save()
+
+            # Уведомляем пользователя о требовании предоплаты
+            if ko_factor > 50 and profile.telegram_chat_id:
+                from booking_bot.telegram_bot.utils import send_telegram_message
+                send_telegram_message(
+                    profile.telegram_chat_id,
+                    f"⚠️ Внимание! Из-за частых отмен ({ko_factor:.0f}%) "
+                    f"для будущих бронирований потребуется 100% предоплата."
+                )
 
             if ko_factor > 50:
                 # Уведомляем администраторов
@@ -339,25 +360,28 @@ def generate_monthly_report():
     buffer.close()
 
     # Отправляем админам
+    # Сохраняем PDF в медиа
+    from django.core.files.base import ContentFile
+    pdf_filename = f"report_{report_year}_{report_month}.pdf"
+    pdf_file = ContentFile(pdf_content, name=pdf_filename)
+
+    # Отправляем админам через Telegram
     admins = UserProfile.objects.filter(role__in=['admin', 'super_admin'])
     for admin in admins:
-        # Сохраняем файл
-        from django.core.files.base import ContentFile
-        from booking_bot.notifications.service import NotificationService
+        if admin.telegram_chat_id:
+            from booking_bot.telegram_bot.utils import send_document
+            # Сохраняем временно для отправки
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+                tmp.write(pdf_content)
+                tmp_path = tmp.name
 
-        # Можно сохранить в модель для хранения отчетов
-        # или отправить по email
-        NotificationService.schedule(
-            event='monthly_report',
-            user=admin.user,
-            context={
-                'month': calendar.month_name[report_month],
-                'year': report_year,
-                'total_revenue': total_revenue,
-                'total_bookings': total_bookings,
-                'report_url': 'URL_TO_REPORT'  # Здесь можно добавить ссылку на сохраненный отчет
-            }
-        )
+            send_document(
+                admin.telegram_chat_id,
+                document_url=f"file://{tmp_path}",
+                caption=f"📊 Отчет за {calendar.month_name[report_month]} {report_year}",
+                filename=pdf_filename
+            )
 
     logger.info(f"Monthly report generated for {report_month}/{report_year}")
     return True

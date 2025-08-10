@@ -6,7 +6,8 @@ from telegram import ReplyKeyboardMarkup, KeyboardButton
 
 from .constants import STATE_MAIN_MENU, STATE_AWAITING_CHECK_IN, STATE_AWAITING_CHECK_OUT, STATE_CONFIRM_BOOKING, \
     STATE_SELECT_CITY, STATE_SELECT_DISTRICT, STATE_SELECT_CLASS, STATE_SELECT_ROOMS, STATE_SHOWING_RESULTS, \
-    log_handler, _get_or_create_local_profile, _get_profile, start_command_handler
+    log_handler, _get_or_create_local_profile, _get_profile, start_command_handler, STATE_CANCEL_REASON_TEXT, \
+    STATE_CANCEL_REASON, STATE_CANCEL_BOOKING
 from .. import settings
 from booking_bot.listings.models import City, District, Property, PropertyPhoto, Review
 from booking_bot.bookings.models import Booking
@@ -861,7 +862,6 @@ def help_command_handler(chat_id):
                            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True, input_field_placeholder="Что Вас интересует?").to_dict())
 
 
-
 def date_input_handler(chat_id, text):
     """Dispatch date input to check-in or check-out handler based on state."""
     profile = _get_profile(chat_id)
@@ -873,3 +873,328 @@ def date_input_handler(chat_id, text):
         handle_checkout_input(chat_id, text)
     else:
         send_telegram_message(chat_id, "Неверный ввод даты.")
+
+
+@log_handler
+def handle_cancel_booking_start(chat_id, booking_id):
+    """Начать процесс отмены бронирования"""
+    profile = _get_profile(chat_id)
+
+    try:
+        booking = Booking.objects.get(
+            id=booking_id,
+            user=profile.user,
+            status__in=['pending_payment', 'confirmed']
+        )
+
+        if not booking.is_cancellable():
+            send_telegram_message(
+                chat_id,
+                "❌ Это бронирование нельзя отменить.\n"
+                "Отмена возможна только до даты заезда."
+            )
+            return
+
+        # Сохраняем ID бронирования в состоянии
+        profile.telegram_state = {
+            'state': STATE_CANCEL_BOOKING,
+            'cancelling_booking_id': booking_id
+        }
+        profile.save()
+
+        # Показываем детали бронирования
+        text = (
+            f"🚫 *Отмена бронирования #{booking_id}*\n\n"
+            f"🏠 {booking.property.name}\n"
+            f"📅 {booking.start_date.strftime('%d.%m.%Y')} - "
+            f"{booking.end_date.strftime('%d.%m.%Y')}\n"
+            f"💰 {booking.total_price:,.0f} ₸\n\n"
+            "Вы уверены, что хотите отменить это бронирование?"
+        )
+
+        keyboard = [
+            [KeyboardButton("✅ Да, отменить")],
+            [KeyboardButton("❌ Нет, оставить")],
+        ]
+
+        send_telegram_message(
+            chat_id,
+            text,
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard,
+                resize_keyboard=True
+            ).to_dict()
+        )
+
+    except Booking.DoesNotExist:
+        send_telegram_message(
+            chat_id,
+            "❌ Бронирование не найдено."
+        )
+
+
+@log_handler
+def handle_cancel_confirmation(chat_id, text):
+    """Обработка подтверждения отмены"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+
+    booking_id = state_data.get('cancelling_booking_id')
+    if not booking_id:
+        send_telegram_message(chat_id, "Ошибка: бронирование не найдено.")
+        return
+
+    if text == "❌ Нет, оставить":
+        profile.telegram_state = {}
+        profile.save()
+        send_telegram_message(
+            chat_id,
+            "✅ Бронирование сохранено.\n"
+            "Возвращаемся в главное меню."
+        )
+        start_command_handler(chat_id)
+        return
+
+    if text == "✅ Да, отменить":
+        # Переходим к выбору причины
+        state_data['state'] = STATE_CANCEL_REASON
+        profile.telegram_state = state_data
+        profile.save()
+
+        # Показываем кнопки с причинами согласно ТЗ
+        keyboard = [
+            [KeyboardButton("Изменились планы")],
+            [KeyboardButton("Нашел лучший вариант")],
+            [KeyboardButton("Слишком дорого")],
+            [KeyboardButton("Проблемы с оплатой")],
+            [KeyboardButton("Ошибка в датах")],
+            [KeyboardButton("Форс-мажор")],
+            [KeyboardButton("Другая причина")],
+        ]
+
+        send_telegram_message(
+            chat_id,
+            "📝 Пожалуйста, укажите причину отмены:",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard,
+                resize_keyboard=True,
+                input_field_placeholder="Выберите причину"
+            ).to_dict()
+        )
+
+
+@log_handler
+def handle_cancel_reason_selection(chat_id, text):
+    """Обработка выбора причины отмены"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+
+    booking_id = state_data.get('cancelling_booking_id')
+    if not booking_id:
+        send_telegram_message(chat_id, "Ошибка: бронирование не найдено.")
+        return
+
+    # Маппинг текста кнопок на коды причин
+    reason_mapping = {
+        'Изменились планы': 'changed_plans',
+        'Нашел лучший вариант': 'found_better',
+        'Слишком дорого': 'too_expensive',
+        'Проблемы с оплатой': 'payment_issues',
+        'Ошибка в датах': 'wrong_dates',
+        'Форс-мажор': 'emergency',
+        'Другая причина': 'other'
+    }
+
+    if text in reason_mapping:
+        reason_code = reason_mapping[text]
+
+        if reason_code == 'other':
+            # Запрашиваем текстовое описание
+            state_data['cancel_reason'] = reason_code
+            state_data['state'] = STATE_CANCEL_REASON_TEXT
+            profile.telegram_state = state_data
+            profile.save()
+
+            keyboard = [[KeyboardButton("❌ Отмена")]]
+            send_telegram_message(
+                chat_id,
+                "Пожалуйста, опишите причину отмены:",
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard,
+                    resize_keyboard=True,
+                    input_field_placeholder="Введите причину"
+                ).to_dict()
+            )
+        else:
+            # Выполняем отмену
+            perform_booking_cancellation(
+                chat_id,
+                booking_id,
+                reason_code,
+                text  # Используем текст кнопки как reason_text
+            )
+    else:
+        send_telegram_message(
+            chat_id,
+            "Пожалуйста, выберите причину из предложенных вариантов."
+        )
+
+
+@log_handler
+def handle_cancel_reason_text(chat_id, text):
+    """Обработка текстового описания причины отмены"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+
+    if text == "❌ Отмена":
+        profile.telegram_state = {}
+        profile.save()
+        start_command_handler(chat_id)
+        return
+
+    booking_id = state_data.get('cancelling_booking_id')
+    reason_code = state_data.get('cancel_reason', 'other')
+
+    # Выполняем отмену с текстовой причиной
+    perform_booking_cancellation(
+        chat_id,
+        booking_id,
+        reason_code,
+        text
+    )
+
+
+@log_handler
+def perform_booking_cancellation(chat_id, booking_id, reason_code, reason_text):
+    """Выполнить отмену бронирования"""
+    profile = _get_profile(chat_id)
+
+    try:
+        booking = Booking.objects.get(
+            id=booking_id,
+            user=profile.user
+        )
+
+        # Используем метод cancel из модели
+        booking.cancel(
+            user=profile.user,
+            reason=reason_code,
+            reason_text=reason_text
+        )
+
+        # Отправляем подтверждение
+        text = (
+            f"✅ *Бронирование #{booking_id} отменено*\n\n"
+            f"🏠 {booking.property.name}\n"
+            f"📅 {booking.start_date.strftime('%d.%m.%Y')} - "
+            f"{booking.end_date.strftime('%d.%m.%Y')}\n\n"
+            f"Причина: {reason_text}\n\n"
+            "Квартира снова доступна для бронирования."
+        )
+
+        # Если была оплата, информируем о возврате
+        if booking.kaspi_payment_id:
+            text += "\n💳 Возврат средств будет произведен в течение 3-5 рабочих дней."
+
+        # Очищаем состояние
+        profile.telegram_state = {}
+        profile.save()
+
+        keyboard = [
+            [KeyboardButton("🔍 Поиск квартир")],
+            [KeyboardButton("🧭 Главное меню")]
+        ]
+
+        send_telegram_message(
+            chat_id,
+            text,
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard,
+                resize_keyboard=True
+            ).to_dict()
+        )
+
+        # Уведомляем владельца квартиры
+        notify_owner_about_cancellation(booking, reason_text)
+
+    except Booking.DoesNotExist:
+        send_telegram_message(
+            chat_id,
+            "❌ Ошибка при отмене бронирования. Попробуйте позже."
+        )
+        profile.telegram_state = {}
+        profile.save()
+
+
+def notify_owner_about_cancellation(booking, reason_text):
+    """Уведомить владельца об отмене бронирования"""
+    owner = booking.property.owner
+    if hasattr(owner, 'profile') and owner.profile.telegram_chat_id:
+        text = (
+            f"❌ *Отменено бронирование*\n\n"
+            f"🏠 {booking.property.name}\n"
+            f"📅 {booking.start_date.strftime('%d.%m.%Y')} - "
+            f"{booking.end_date.strftime('%d.%m.%Y')}\n"
+            f"💰 {booking.total_price:,.0f} ₸\n\n"
+            f"Причина: {reason_text}\n\n"
+            "Даты снова доступны для бронирования."
+        )
+        send_telegram_message(
+            owner.profile.telegram_chat_id,
+            text
+        )
+
+
+# Добавить в show_user_bookings функцию кнопку отмены для активных броней
+@log_handler
+def show_user_bookings_with_cancel(chat_id, booking_type='active'):
+    """Показать бронирования с возможностью отмены"""
+    profile = _get_profile(chat_id)
+
+    if booking_type == 'active':
+        bookings = Booking.objects.filter(
+            user=profile.user,
+            status='confirmed',
+            end_date__gte=date.today()
+        ).order_by('start_date')
+        title = "📊 *Текущие бронирования*"
+    else:
+        bookings = Booking.objects.filter(
+            user=profile.user,
+            status__in=['completed', 'cancelled']
+        ).order_by('-created_at')[:10]
+        title = "📋 *История бронирований*"
+
+    if not bookings:
+        text = f"{title}\n\nУ вас пока нет {'активных' if booking_type == 'active' else 'завершенных'} бронирований."
+        kb = [[KeyboardButton("🧭 Главное меню")]]
+        send_telegram_message(
+            chat_id,
+            text,
+            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
+        )
+        return
+
+    text = title + "\n\n"
+    buttons = []
+
+    for b in bookings:
+        emoji = {'confirmed': '✅', 'completed': '✔️', 'cancelled': '❌'}.get(b.status, '•')
+        text += (
+            f"{emoji} *#{b.id} - {b.property.name}*\n"
+            f"📅 {b.start_date.strftime('%d.%m')} - {b.end_date.strftime('%d.%m.%Y')}\n"
+            f"💰 {b.total_price} ₸\n"
+        )
+
+        # Добавляем кнопку отмены для активных броней
+        if b.status == 'confirmed' and b.is_cancellable():
+            text += f"Для отмены отправьте: /cancel_{b.id}\n"
+
+        text += "\n"
+
+    kb = [[KeyboardButton("🧭 Главное меню")]]
+    send_telegram_message(
+        chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
+    )

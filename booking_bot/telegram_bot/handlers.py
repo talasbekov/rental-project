@@ -4,10 +4,14 @@ from django.db import transaction
 from django.db.models import Count, Avg
 from telegram import ReplyKeyboardMarkup, KeyboardButton
 
-from .constants import STATE_MAIN_MENU, STATE_AWAITING_CHECK_IN, STATE_AWAITING_CHECK_OUT, STATE_CONFIRM_BOOKING, \
-    STATE_SELECT_CITY, STATE_SELECT_DISTRICT, STATE_SELECT_CLASS, STATE_SELECT_ROOMS, STATE_SHOWING_RESULTS, \
-    log_handler, _get_or_create_local_profile, _get_profile, start_command_handler, STATE_CANCEL_REASON_TEXT, \
-    STATE_CANCEL_REASON, STATE_CANCEL_BOOKING
+from .constants import (
+    STATE_MAIN_MENU, STATE_AWAITING_CHECK_IN, STATE_AWAITING_CHECK_OUT,
+    STATE_CONFIRM_BOOKING, STATE_SELECT_CITY, STATE_SELECT_DISTRICT,
+    STATE_SELECT_CLASS, STATE_SELECT_ROOMS, STATE_SHOWING_RESULTS,
+    STATE_CANCEL_REASON_TEXT, STATE_CANCEL_REASON, STATE_CANCEL_BOOKING,
+    STATE_AWAITING_REVIEW_TEXT, log_handler, _get_or_create_local_profile, _get_profile,
+    start_command_handler  # ← новый импорт
+)
 from .. import settings
 from booking_bot.listings.models import City, District, Property, PropertyPhoto, Review
 from booking_bot.bookings.models import Booking
@@ -32,20 +36,37 @@ def message_handler(chat_id, text, update=None, context=None):
     state_data = profile.telegram_state or {}
     state = state_data.get('state', STATE_MAIN_MENU)
 
+    # отмена брони по команде /cancel_<id>
+    if text.startswith('/cancel_'):
+        try:
+            cancel_id = int(text[len('/cancel_'):])
+            handle_cancel_booking_start(chat_id, cancel_id)
+        except ValueError:
+            send_telegram_message(chat_id, "Неверный формат команды отмены.")
+        return
+
+    # обработка текста отзыва
+    if (profile.telegram_state or {}).get('state') == STATE_AWAITING_REVIEW_TEXT:
+        handle_review_text(chat_id, text)
+        return
+
     # Обработка фотографий (если есть)
     if update and update.message and update.message.photo:
         if handle_photo_upload(chat_id, update, context):
             return
         elif text.startswith("/debug_photos"):
-            parts = text.split()
-            if len(parts) > 1:
-                try:
-                    prop_id = int(parts[1])
-                    debug_property_photos(chat_id, prop_id)
-                except ValueError:
-                    send_telegram_message(chat_id, "Неверный ID объекта")
+            if profile.role not in ('admin', 'super_admin'):
+                send_telegram_message(chat_id, "Команда недоступна.")
             else:
-                send_telegram_message(chat_id, "Использование: /debug_photos <ID>")
+                parts = text.split()
+                if len(parts) > 1:
+                    try:
+                        prop_id = int(parts[1])
+                        debug_property_photos(chat_id, prop_id)
+                    except ValueError:
+                        send_telegram_message(chat_id, "Неверный ID объекта")
+                else:
+                    send_telegram_message(chat_id, "Использование: /debug_photos <ID>")
 
     if handle_add_property_start(chat_id, text):
         return
@@ -75,10 +96,10 @@ def message_handler(chat_id, text, update=None, context=None):
             prompt_city(chat_id, profile)
             return
         elif text == "📋 Мои бронирования":
-            show_user_bookings(chat_id, 'completed')
+            show_user_bookings_with_cancel(chat_id, 'completed')
             return
         elif text == "📊 Статус текущей брони":
-            show_user_bookings(chat_id, 'active')
+            show_user_bookings_with_cancel(chat_id, 'active')
             return
         elif text == "❓ Помощь":
             help_command_handler(chat_id)
@@ -344,6 +365,69 @@ def show_search_results(chat_id, profile, offset=0):
         text,
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
     )
+
+@log_handler
+def prompt_review(chat_id, booking):
+    """
+    Отправляет сообщение с просьбой оставить отзыв и переводит пользователя
+    в состояние STATE_AWAITING_REVIEW_TEXT. Сохраняем ID квартиры в состоянии.
+    """
+    profile = _get_profile(chat_id)
+    # сохраняем состояние для отзыва
+    profile.telegram_state = {
+        'state': STATE_AWAITING_REVIEW_TEXT,
+        'review_property_id': booking.property.id
+    }
+    profile.save()
+    send_telegram_message(
+        chat_id,
+        "🙏 Спасибо за бронирование!\n"
+        "Пожалуйста, оцените квартиру и оставьте отзыв.\n"
+        "Напишите сообщение вида «5 Отличная квартира!» (первая цифра — оценка 1‑5 звезд)."
+    )
+
+@log_handler
+def handle_review_text(chat_id, text):
+    """
+    Обрабатывает текст отзыва от пользователя, создает объект Review
+    и очищает состояние.
+    """
+    profile = _get_profile(chat_id)
+    sd = profile.telegram_state or {}
+    prop_id = sd.get('review_property_id')
+    if not prop_id:
+        send_telegram_message(chat_id, "Ошибка: объект для отзыва не найден.")
+        return
+
+    # пробуем извлечь рейтинг (первая цифра 1–5), остальное — текст
+    rating = 5
+    comment = text.strip()
+    if comment and comment[0].isdigit():
+        try:
+            rating_candidate = int(comment[0])
+            if 1 <= rating_candidate <= 5:
+                rating = rating_candidate
+                comment = comment[1:].strip()
+        except ValueError:
+            pass
+
+    try:
+        prop = Property.objects.get(id=prop_id)
+        Review.objects.create(
+            property=prop,
+            user=profile.user,
+            rating=rating,
+            text=comment
+        )
+        send_telegram_message(chat_id, "✅ Спасибо! Ваш отзыв сохранён.")
+    except Exception as e:
+        logger.error(f"Error creating review: {e}")
+        send_telegram_message(chat_id, "❌ Не удалось сохранить отзыв. Попробуйте позже.")
+
+    # очищаем состояние
+    profile.telegram_state = {}
+    profile.save()
+
 
 @log_handler
 def debug_property_photos(chat_id, property_id):
@@ -786,6 +870,7 @@ def send_booking_confirmation(chat_id, booking):
         text,
         reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
     )
+    prompt_review(chat_id, booking)
 
 @log_handler
 def show_user_bookings(chat_id, booking_type='active'):
@@ -969,6 +1054,8 @@ def handle_cancel_confirmation(chat_id, text):
             [KeyboardButton("Проблемы с оплатой")],
             [KeyboardButton("Ошибка в датах")],
             [KeyboardButton("Форс-мажор")],
+            [KeyboardButton("Отменено владельцем")],
+            [KeyboardButton("Нет ответа от владельца")],
             [KeyboardButton("Другая причина")],
         ]
 
@@ -1002,6 +1089,8 @@ def handle_cancel_reason_selection(chat_id, text):
         'Проблемы с оплатой': 'payment_issues',
         'Ошибка в датах': 'wrong_dates',
         'Форс-мажор': 'emergency',
+        'Отменено владельцем': 'owner_cancelled',
+        'Нет ответа от владельца': 'no_response',
         'Другая причина': 'other'
     }
 

@@ -8,12 +8,15 @@ from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse, Http
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 
+from booking_bot.bookings.models import Booking
 from booking_bot.telegram_bot.handlers import (
     start_command_handler, help_command_handler,
     show_user_bookings, message_handler, date_input_handler,
 )
 # Добавляем импорт для обработки фото
 from booking_bot.telegram_bot.admin_handlers import handle_photo_upload
+from booking_bot.telegram_bot.utils import send_telegram_message
+from booking_bot.users.models import UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -132,56 +135,60 @@ def telegram_webhook(request):
     return JsonResponse({"ok": True})
 
 
-def show_booking_details(chat_id, booking_id):
-    """Show detailed booking information"""
-    from booking_bot.bookings.models import Booking
-    from booking_bot.users.models import UserProfile
-    from booking_bot.telegram_bot.utils import send_telegram_message
+def show_booking_details(chat_id: int, booking_id: int) -> None:
+    """Показать подробную информацию о бронировании.
 
+    Выводит информацию о квартире, датах проживания и сумме. Коды
+    домофона/сейфа отображаются только после успешной оплаты.
+    """
     try:
         profile = UserProfile.objects.get(telegram_chat_id=str(chat_id))
-        booking = Booking.objects.get(id=booking_id, user=profile.user)
+    except UserProfile.DoesNotExist:
+        send_telegram_message(chat_id, "Профиль не найден.")
+        return
 
-        if booking.status != 'confirmed':
-            send_telegram_message(chat_id, "Детали доступны только для подтвержденных бронирований.")
-            return
-
-        property_obj = booking.property
-
-        text = (
-            f"*Детали бронирования #{booking.id}*\n\n"
-            f"🏠 *{property_obj.name}*\n"
-            f"📍 Адрес: {property_obj.address}\n"
+    try:
+        booking = Booking.objects.select_related('property', 'property__owner__profile').get(
+            id=booking_id, user=profile.user
         )
-
-        # Add access information if available
-        if property_obj.entry_instructions:
-            text += f"\n📝 *Инструкции:*\n{property_obj.entry_instructions}\n"
-
-        if property_obj.digital_lock_code:
-            text += f"\n🔐 Код замка: `{property_obj.digital_lock_code}`\n"
-        elif property_obj.key_safe_code:
-            text += f"\n🔑 Код сейфа: `{property_obj.key_safe_code}`\n"
-
-        text += (
-            f"\n📅 Заезд: {booking.start_date.strftime('%d.%m.%Y')}\n"
-            f"📅 Выезд: {booking.end_date.strftime('%d.%m.%Y')}\n"
-            f"💰 Оплачено: {booking.total_price} ₸"
-        )
-
-        # Add owner contact if available
-        if property_obj.owner.profile.phone_number:
-            text += f"\n\n📞 Контакт: {property_obj.owner.profile.phone_number}"
-
-        keyboard = [[{"text": "◀️ Назад", "callback_data": "main_current"}]]
-
-        send_telegram_message(chat_id, text, {"inline_keyboard": keyboard})
-
-    except (UserProfile.DoesNotExist, Booking.DoesNotExist):
+    except Booking.DoesNotExist:
         send_telegram_message(chat_id, "Бронирование не найдено.")
-    except Exception as e:
-        logger.error(f"Error showing booking details: {e}")
-        send_telegram_message(chat_id, "Произошла ошибка при загрузке деталей.")
+        return
+
+    # Общая информация
+    property_obj = booking.property
+    lines = [f"*Детали бронирования #{booking.id}*\n"]
+    lines.append(f"🏠 *{property_obj.name}*")
+    lines.append(f"📍 Адрес: {property_obj.address}")
+    lines.append(
+        f"\n📅 Заезд: {booking.start_date.strftime('%d.%m.%Y')}\n📅 Выезд: {booking.end_date.strftime('%d.%m.%Y')}"
+    )
+    lines.append(f"💰 Оплачено: {booking.total_price} ₸")
+
+    # Инструкции всегда показываем
+    if property_obj.entry_instructions:
+        lines.append(f"\n📝 *Инструкции:*\n{property_obj.entry_instructions}")
+
+    # Коды доступа — только если оплата подтверждена
+    if booking.status in ('confirmed', 'completed'):
+        if property_obj.digital_lock_code:
+            lines.append(f"\n🔐 Код замка: `{property_obj.digital_lock_code}`")
+        elif property_obj.key_safe_code:
+            lines.append(f"\n🔑 Код сейфа: `{property_obj.key_safe_code}`")
+    else:
+        lines.append(
+            "\n🔒 Коды доступа станут доступны после подтверждения оплаты."
+        )
+
+    # Контакт владельца
+    owner_phone = getattr(property_obj.owner.profile, 'phone_number', None)
+    if owner_phone:
+        lines.append(f"\n📞 Контакт: {owner_phone}")
+
+    text = "\n".join(lines)
+    # Кнопка для возврата в меню текущих броней
+    keyboard = [[{"text": "◀️ Назад", "callback_data": "main_current"}]]
+    send_telegram_message(chat_id, text, {"inline_keyboard": keyboard}, parse_mode="Markdown")
 
 
 def handle_photo_message(chat_id, message):

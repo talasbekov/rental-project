@@ -692,3 +692,19 @@ class PropertyCalendarManager:
                 })
 
         return available_periods
+
+
+class Favorite(models.Model):
+    """Избранные объекты для пользователей."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="favorites")
+    property = models.ForeignKey(
+        'listings.Property', on_delete=models.CASCADE, related_name="favorited_by"
+    )
+
+    class Meta:
+        unique_together = ('user', 'property')
+        verbose_name = "Избранное"
+        verbose_name_plural = "Избранное"
+
+    def __str__(self) -> str:  # pragma: no cover - строковое представление для админки
+        return f"{self.user.username} → {self.property.name}"

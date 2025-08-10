@@ -10,16 +10,16 @@ from booking_bot.users.models import UserProfile
 
 logger = logging.getLogger(__name__)
 
-STATE_MAIN_MENU = 'main_menu'
-STATE_SELECT_CITY = 'select_city'
-STATE_SELECT_DISTRICT = 'select_district'
-STATE_SELECT_CLASS = 'select_class'
-STATE_SELECT_ROOMS = 'select_rooms'
-STATE_SHOWING_RESULTS = 'showing_results'
-STATE_AWAITING_CHECK_IN = 'awaiting_check_in'
-STATE_AWAITING_CHECK_OUT = 'awaiting_check_out'
-STATE_CONFIRM_BOOKING = 'confirm_booking'
-STATE_AWAITING_REVIEW_TEXT = 'awaiting_review_text'
+STATE_MAIN_MENU             = 'main_menu'
+STATE_SELECT_CITY           = 'select_city'
+STATE_SELECT_DISTRICT       = 'select_district'
+STATE_SELECT_CLASS          = 'select_class'
+STATE_SELECT_ROOMS          = 'select_rooms'
+STATE_SHOWING_RESULTS       = 'showing_results'
+STATE_AWAITING_CHECK_IN     = 'awaiting_check_in'
+STATE_AWAITING_CHECK_OUT    = 'awaiting_check_out'
+STATE_CONFIRM_BOOKING       = 'confirm_booking'
+STATE_AWAITING_REVIEW_TEXT  = 'awaiting_review_text'
 
 # Admin states
 STATE_ADMIN_MENU            = 'admin_menu'
@@ -36,9 +36,12 @@ STATE_ADMIN_ADD_PRICE       = 'admin_add_price'
 STATE_ADMIN_ADD_PHOTOS      = 'admin_add_photos'
 
 # Новые состояния для отмены
-STATE_CANCEL_BOOKING = 'cancel_booking'
-STATE_CANCEL_REASON = 'cancel_reason'
-STATE_CANCEL_REASON_TEXT = 'cancel_reason_text'
+STATE_CANCEL_BOOKING        = 'cancel_booking'
+STATE_CANCEL_REASON         = 'cancel_reason'
+STATE_CANCEL_REASON_TEXT    = 'cancel_reason_text'
+
+STATE_AWAITING_CHECK_IN_TIME    = 'awaiting_check_in_time'
+STATE_AWAITING_CHECK_OUT_TIME   = 'awaiting_check_out_time'
 
 
 def log_handler(func):

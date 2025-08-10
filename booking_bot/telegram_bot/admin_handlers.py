@@ -614,7 +614,7 @@ def show_admin_panel(chat_id):
     buttons = [
         [KeyboardButton("➕ Добавить квартиру"), KeyboardButton("🏠 Мои квартиры")],
         [KeyboardButton("📊 Статистика"), KeyboardButton("📈 Расширенная статистика")],
-        [KeyboardButton("📥 Скачать CSV")],
+        [KeyboardButton("📝 Отзывы о гостях"), KeyboardButton("📥 Скачать CSV")],  # Новая кнопка
         [KeyboardButton("🧭 Главное меню")]
     ]
     send_telegram_message(
@@ -809,6 +809,221 @@ def show_extended_statistics(chat_id, period='month'):
         text,
         reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True, input_field_placeholder="Выберите период").to_dict()
     )
+
+
+@log_handler
+def show_pending_guest_reviews(chat_id):
+    """Показать список гостей, ожидающих отзыв"""
+    profile = _get_profile(chat_id)
+    if profile.role not in ('admin', 'super_admin'):
+        send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
+        return
+
+    # Находим завершенные бронирования без отзывов о госте
+    from booking_bot.listings.models import GuestReview
+    from datetime import date, timedelta
+
+    # Брони за последние 30 дней
+    cutoff_date = date.today() - timedelta(days=30)
+
+    if profile.role == 'admin':
+        bookings = Booking.objects.filter(
+            property__owner=profile.user,
+            status='completed',
+            end_date__gte=cutoff_date
+        ).exclude(
+            guest_review__isnull=False
+        ).select_related('user', 'property')[:10]
+    else:  # super_admin
+        bookings = Booking.objects.filter(
+            status='completed',
+            end_date__gte=cutoff_date
+        ).exclude(
+            guest_review__isnull=False
+        ).select_related('user', 'property')[:10]
+
+    if not bookings:
+        text = "📝 Нет гостей, ожидающих отзыв."
+        kb = [[KeyboardButton("🛠 Панель администратора")]]
+    else:
+        text = "📝 *Гости, ожидающие отзыв:*\n\n"
+        kb = []
+
+        for booking in bookings:
+            guest_name = booking.user.get_full_name() or booking.user.username
+            text += (
+                f"• {guest_name}\n"
+                f"  🏠 {booking.property.name}\n"
+                f"  📅 {booking.start_date.strftime('%d.%m')} - {booking.end_date.strftime('%d.%m')}\n"
+                f"  /review_guest_{booking.id}\n\n"
+            )
+
+        kb.append([KeyboardButton("🛠 Панель администратора")])
+
+    send_telegram_message(
+        chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
+    )
+
+
+@log_handler
+def handle_guest_review_start(chat_id, booking_id):
+    """Начать процесс отзыва о госте"""
+    profile = _get_profile(chat_id)
+
+    try:
+        if profile.role == 'admin':
+            booking = Booking.objects.get(
+                id=booking_id,
+                property__owner=profile.user,
+                status='completed'
+            )
+        else:  # super_admin
+            booking = Booking.objects.get(
+                id=booking_id,
+                status='completed'
+            )
+
+        # Сохраняем в состояние
+        profile.telegram_state = {
+            'state': 'guest_review_rating',
+            'guest_review_booking_id': booking_id
+        }
+        profile.save()
+
+        guest_name = booking.user.get_full_name() or booking.user.username
+        text = (
+            f"📝 *Отзыв о госте*\n\n"
+            f"Гость: {guest_name}\n"
+            f"Квартира: {booking.property.name}\n"
+            f"Период: {booking.start_date.strftime('%d.%m')} - {booking.end_date.strftime('%d.%m')}\n\n"
+            "Оцените гостя от 1 до 5:"
+        )
+
+        kb = [
+            [KeyboardButton("⭐"), KeyboardButton("⭐⭐"), KeyboardButton("⭐⭐⭐")],
+            [KeyboardButton("⭐⭐⭐⭐"), KeyboardButton("⭐⭐⭐⭐⭐")],
+            [KeyboardButton("❌ Отмена")]
+        ]
+
+        send_telegram_message(
+            chat_id,
+            text,
+            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
+        )
+
+    except Booking.DoesNotExist:
+        send_telegram_message(chat_id, "Бронирование не найдено.")
+
+
+@log_handler
+def handle_guest_review_rating(chat_id, text):
+    """Обработка рейтинга гостя"""
+    profile = _get_profile(chat_id)
+
+    # Подсчет звезд
+    rating = text.count("⭐")
+    if rating < 1 or rating > 5:
+        send_telegram_message(chat_id, "Пожалуйста, выберите оценку от 1 до 5 звезд.")
+        return
+
+    sd = profile.telegram_state
+    sd['guest_review_rating'] = rating
+    sd['state'] = 'guest_review_text'
+    profile.telegram_state = sd
+    profile.save()
+
+    text = (
+        f"Оценка: {'⭐' * rating}\n\n"
+        "Напишите короткий комментарий о госте (или отправьте 'Пропустить'):"
+    )
+
+    kb = [
+        [KeyboardButton("Пропустить")],
+        [KeyboardButton("❌ Отмена")]
+    ]
+
+    send_telegram_message(
+        chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True, input_field_placeholder="Ваш комментарий").to_dict()
+    )
+
+
+@log_handler
+def handle_guest_review_text(chat_id, text):
+    """Сохранение отзыва о госте"""
+    profile = _get_profile(chat_id)
+    sd = profile.telegram_state
+
+    booking_id = sd.get('guest_review_booking_id')
+    rating = sd.get('guest_review_rating')
+
+    if text == "Пропустить":
+        text = ""
+
+    try:
+        booking = Booking.objects.get(id=booking_id)
+
+        from booking_bot.listings.models import GuestReview
+        GuestReview.objects.create(
+            guest=booking.user,
+            admin=profile.user,
+            booking=booking,
+            rating=rating,
+            text=text
+        )
+
+        # Обновляем KO-фактор гостя
+        update_guest_ko_factor(booking.user)
+
+        send_telegram_message(
+            chat_id,
+            "✅ Отзыв о госте сохранен!"
+        )
+
+        # Очищаем состояние
+        profile.telegram_state = {}
+        profile.save()
+
+        # Возврат в меню
+        show_admin_panel(chat_id)
+
+    except Exception as e:
+        logger.error(f"Error saving guest review: {e}")
+        send_telegram_message(chat_id, "❌ Ошибка при сохранении отзыва.")
+
+
+def update_guest_ko_factor(user):
+    """Обновить KO-фактор гостя на основе его истории"""
+    from booking_bot.bookings.models import Booking
+    from datetime import timedelta
+
+    # Анализируем за последние 6 месяцев
+    six_months_ago = date.today() - timedelta(days=180)
+
+    total_bookings = Booking.objects.filter(
+        user=user,
+        created_at__gte=six_months_ago
+    ).count()
+
+    cancelled_bookings = Booking.objects.filter(
+        user=user,
+        created_at__gte=six_months_ago,
+        status='cancelled',
+        cancelled_by=user
+    ).count()
+
+    if total_bookings > 0:
+        ko_factor = (cancelled_bookings / total_bookings)
+
+        # Обновляем профиль
+        profile = user.profile
+        profile.ko_factor = ko_factor
+        profile.save()
+
+        logger.info(f"Updated KO-factor for {user.username}: {ko_factor:.2%}")
 
 
 @log_handler

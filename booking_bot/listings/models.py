@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from django.db import models
 from django.contrib.auth.models import User
 
+from booking_bot import bookings
 from booking_bot.core.models import AuditLog
 from booking_bot.core.security import EncryptionService
 
@@ -692,6 +693,23 @@ class PropertyCalendarManager:
                 })
 
         return available_periods
+
+
+class GuestReview(models.Model):
+    """Отзывы администраторов о гостях"""
+    guest = models.ForeignKey(User, on_delete=models.CASCADE, related_name='guest_reviews')
+    admin = models.ForeignKey(User, on_delete=models.CASCADE, related_name='admin_reviews')
+    booking = models.OneToOneField('bookings.Booking', on_delete=models.CASCADE, related_name='guest_review')
+    rating = models.PositiveIntegerField(choices=[(i, str(i)) for i in range(1, 6)])
+    text = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('booking',)  # Один отзыв на бронирование
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Review for {self.guest.username} by {self.admin.username} - {self.rating} stars"
 
 
 class Favorite(models.Model):

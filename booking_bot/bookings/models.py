@@ -30,6 +30,17 @@ class Booking(models.Model):
         ('other', 'Другая причина'),
     ]
 
+    check_in_time = models.TimeField(
+        null=True,
+        blank=True,
+        verbose_name='Время заезда'
+    )
+    check_out_time = models.TimeField(
+        null=True,
+        blank=True,
+        verbose_name='Время выезда'
+    )
+
     # Основные поля
     user = models.ForeignKey(
         User,
@@ -103,6 +114,7 @@ class Booking(models.Model):
         related_name='cancelled_bookings',
         help_text="Кто отменил бронирование"
     )
+
 
     # Временные метки
     created_at = models.DateTimeField(auto_now_add=True)

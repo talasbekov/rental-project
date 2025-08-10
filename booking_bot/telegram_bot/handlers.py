@@ -10,10 +10,11 @@ from .constants import (
     STATE_SELECT_CLASS, STATE_SELECT_ROOMS, STATE_SHOWING_RESULTS,
     STATE_CANCEL_REASON_TEXT, STATE_CANCEL_REASON, STATE_CANCEL_BOOKING,
     STATE_AWAITING_REVIEW_TEXT, log_handler, _get_or_create_local_profile, _get_profile,
-    start_command_handler  # ← новый импорт
+    start_command_handler, STATE_AWAITING_CHECK_IN_TIME, STATE_AWAITING_CHECK_OUT_TIME  # ← новый импорт
 )
+
 from .. import settings
-from booking_bot.listings.models import City, District, Property, PropertyPhoto, Review
+from booking_bot.listings.models import City, District, Property, PropertyPhoto, Review, Favorite
 from booking_bot.bookings.models import Booking
 from booking_bot.payments import initiate_payment as kaspi_initiate_payment, KaspiPaymentError
 from .utils import send_telegram_message, send_photo_group, escape_markdown
@@ -83,6 +84,12 @@ def message_handler(chat_id, text, update=None, context=None):
     if state == STATE_AWAITING_CHECK_OUT:
         handle_checkout_input(chat_id, text)
         return
+    if state == STATE_AWAITING_CHECK_IN_TIME:
+        handle_checkin_time(chat_id, text)
+        return
+    if state == STATE_AWAITING_CHECK_OUT_TIME:
+        handle_checkout_time(chat_id, text)
+        return
     if state == STATE_CONFIRM_BOOKING:
         if text == "💳 Оплатить Kaspi":
             handle_payment_confirmation(chat_id)
@@ -95,11 +102,14 @@ def message_handler(chat_id, text, update=None, context=None):
         if text == "🔍 Поиск квартир":
             prompt_city(chat_id, profile)
             return
-        elif text == "📋 Мои бронирования":
-            show_user_bookings_with_cancel(chat_id, 'completed')
-            return
         elif text == "📊 Статус текущей брони":
             show_user_bookings_with_cancel(chat_id, 'active')
+            return
+        elif text == "⭐ Избранное":
+            show_favorites_list(chat_id)
+            return
+        elif text == "📋 Мои бронирования":
+            show_user_bookings_with_cancel(chat_id, 'completed')
             return
         elif text == "❓ Помощь":
             help_command_handler(chat_id)
@@ -124,6 +134,15 @@ def message_handler(chat_id, text, update=None, context=None):
                 return
             elif text == "📥 Скачать CSV":
                 export_statistics_csv(chat_id, context, period='month')
+                return
+            elif text == "📝 Отзывы о гостях":
+                from .admin_handlers import show_pending_guest_reviews
+                show_pending_guest_reviews(chat_id)
+                return
+            elif text.startswith("/review_guest_"):
+                booking_id = int(text.replace("/review_guest_", ""))
+                from .admin_handlers import handle_guest_review_start
+                handle_guest_review_start(chat_id, booking_id)
                 return
 
         # — Только для SuperAdmin —
@@ -343,6 +362,17 @@ def show_search_results(chat_id, profile, offset=0):
     if prop.status == 'Свободна':
         keyboard.append([KeyboardButton(f"📅 Забронировать {prop.id}")])
 
+    # Кнопка избранного
+    is_favorite = Favorite.objects.filter(
+        user=profile.user,
+        property=prop
+    ).exists()
+
+    if is_favorite:
+        keyboard.append([KeyboardButton(f"❌ Из избранного {prop.id}")])
+    else:
+        keyboard.append([KeyboardButton(f"⭐ В избранное {prop.id}")])
+
     # Кнопка отзывов
     if stats['cnt'] > 0:
         keyboard.append([KeyboardButton(f"💬 Отзывы {prop.id}")])
@@ -472,6 +502,78 @@ def debug_property_photos(chat_id, property_id):
 
 
 @log_handler
+def show_favorites_list(chat_id):
+    """Показать список избранных квартир"""
+    profile = _get_profile(chat_id)
+
+    favorites = Favorite.objects.filter(
+        user=profile.user
+    ).select_related('property', 'property__district__city')
+
+    if not favorites.exists():
+        text = "⭐ *Избранное*\n\nВаш список избранного пуст."
+        kb = [
+            [KeyboardButton("🔍 Поиск квартир")],
+            [KeyboardButton("🧭 Главное меню")]
+        ]
+    else:
+        text = "⭐ *Избранное*\n\n"
+        for fav in favorites[:10]:  # Показываем первые 10
+            prop = fav.property
+            text += (
+                f"• *{prop.name}*\n"
+                f"  📍 {prop.district.city.name}, {prop.district.name}\n"
+                f"  💰 {prop.price_per_day} ₸/сутки\n"
+                f"  /view_{prop.id} - подробнее\n\n"
+            )
+
+        kb = [
+            [KeyboardButton("🔍 Поиск квартир")],
+            [KeyboardButton("🧭 Главное меню")]
+        ]
+
+    send_telegram_message(
+        chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
+    )
+
+
+@log_handler
+def toggle_favorite(chat_id, property_id):
+    """Добавить/удалить из избранного"""
+    profile = _get_profile(chat_id)
+
+    try:
+        prop = Property.objects.get(id=property_id)
+
+        # Проверяем, есть ли уже в избранном
+        favorite = Favorite.objects.filter(
+            user=profile.user,
+            property=prop
+        ).first()
+
+        if favorite:
+            favorite.delete()
+            send_telegram_message(
+                chat_id,
+                f"❌ Удалено из избранного: {prop.name}"
+            )
+        else:
+            Favorite.objects.create(
+                user=profile.user,
+                property=prop
+            )
+            send_telegram_message(
+                chat_id,
+                f"⭐ Добавлено в избранное: {prop.name}"
+            )
+
+    except Property.DoesNotExist:
+        send_telegram_message(chat_id, "Квартира не найдена")
+
+
+@log_handler
 def navigate_results(chat_id, profile, text):
     sd = profile.telegram_state or {}
     if text == "➡️ Следующая":
@@ -481,6 +583,9 @@ def navigate_results(chat_id, profile, text):
     elif text.startswith("📅 Забронировать"):
         pid = int(text.split()[-1])
         handle_booking_start(chat_id, pid)
+    elif text.startswith("⭐ В избранное"):
+        pid = int(text.split()[-1])
+        toggle_favorite(chat_id, pid)
     elif text.startswith("💬 Отзывы"):
         pid = int(text.split()[-1])
         show_property_reviews(chat_id, pid, offset=0)
@@ -568,7 +673,7 @@ def handle_checkin_input(chat_id, text):
 
 @log_handler
 def handle_checkout_input(chat_id, text):
-    """Handle checkout date input: full dates, +N-дней и лейблы (DD.MM (+N дней))."""
+    """Handle checkout date input with time selection"""
     import re
     from datetime import datetime, date, timedelta
 
@@ -582,19 +687,15 @@ def handle_checkout_input(chat_id, text):
         return
     check_in = date.fromisoformat(check_in_str)
 
-    # 1) Лейбл вида "26.06 (+1 день)" или "(+2 дня)"
+    # Парсинг даты выезда (как было)
     m = re.search(r"\(\s*\+?(\d+)", text)
     if m:
         offset = int(m.group(1))
         check_out = check_in + timedelta(days=offset)
-
-    # 2) Случай "Сегодня" или "Завтра" (на всякий случай)
     elif text.startswith("Сегодня"):
         check_out = date.today()
     elif text.startswith("Завтра"):
         check_out = date.today() + timedelta(days=1)
-
-    # 3) Полная дата "DD.MM.YYYY"
     else:
         try:
             check_out = datetime.strptime(text, "%d.%m.%Y").date()
@@ -602,18 +703,87 @@ def handle_checkout_input(chat_id, text):
             send_telegram_message(chat_id, "Неверный формат даты. Используйте кнопку или ДД.MM.YYYY.")
             return
 
-    # Проверяем корректность
     if check_out <= check_in:
         send_telegram_message(chat_id, "Дата выезда должна быть позже даты заезда.")
         return
 
-    # Сохраняем и переходим к подтверждению
-    days = (check_out - check_in).days
+    # Сохраняем дату и переходим к выбору времени заезда
     sd.update({
         'check_out_date': check_out.isoformat(),
-        'state': STATE_CONFIRM_BOOKING,
-        'days': days
+        'state': STATE_AWAITING_CHECK_IN_TIME
     })
+    profile.telegram_state = sd
+    profile.save()
+
+    # Предлагаем выбрать время заезда
+    text = f"📅 Даты: {check_in.strftime('%d.%m')} - {check_out.strftime('%d.%m')}\n\n⏰ Выберите время заезда:"
+    kb = [
+        [KeyboardButton("12:00"), KeyboardButton("14:00")],
+        [KeyboardButton("16:00"), KeyboardButton("18:00")],
+        [KeyboardButton("❌ Отмена")]
+    ]
+    send_telegram_message(
+        chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True, input_field_placeholder="Время заезда").to_dict()
+    )
+
+
+@log_handler
+def handle_checkin_time(chat_id, text):
+    """Обработка выбора времени заезда"""
+    profile = _get_profile(chat_id)
+    sd = profile.telegram_state or {}
+
+    # Валидация времени
+    if text not in ["12:00", "14:00", "16:00", "18:00"]:
+        send_telegram_message(chat_id, "Пожалуйста, выберите время из предложенных вариантов.")
+        return
+
+    sd.update({
+        'check_in_time': text,
+        'state': STATE_AWAITING_CHECK_OUT_TIME
+    })
+    profile.telegram_state = sd
+    profile.save()
+
+    # Предлагаем время выезда
+    text_msg = f"⏰ Время заезда: {text}\n\nВыберите время выезда:"
+    kb = [
+        [KeyboardButton("10:00"), KeyboardButton("11:00")],
+        [KeyboardButton("12:00"), KeyboardButton("14:00")],
+        [KeyboardButton("❌ Отмена")]
+    ]
+    send_telegram_message(
+        chat_id,
+        text_msg,
+        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True, input_field_placeholder="Время выезда").to_dict()
+    )
+
+
+@log_handler
+def handle_checkout_time(chat_id, text):
+    """Обработка выбора времени выезда"""
+    profile = _get_profile(chat_id)
+    sd = profile.telegram_state or {}
+
+    # Валидация времени
+    if text not in ["10:00", "11:00", "12:00", "14:00"]:
+        send_telegram_message(chat_id, "Пожалуйста, выберите время из предложенных вариантов.")
+        return
+
+    sd.update({
+        'check_out_time': text,
+        'state': STATE_CONFIRM_BOOKING
+    })
+
+    # Получаем все данные для подтверждения
+    check_in = date.fromisoformat(sd.get('check_in_date'))
+    check_out = date.fromisoformat(sd.get('check_out_date'))
+    check_in_time = sd.get('check_in_time')
+    check_out_time = text
+    days = (check_out - check_in).days
+
     property_id = sd.get('booking_property_id')
     try:
         prop = Property.objects.get(id=property_id)
@@ -623,15 +793,16 @@ def handle_checkout_input(chat_id, text):
 
     total_price = days * prop.price_per_day
     sd['total_price'] = float(total_price)
+    sd['days'] = days
     profile.telegram_state = sd
     profile.save()
 
-    # Собираем текст подтверждения и Reply-кнопки
+    # Формируем сообщение с временем
     text_msg = (
         f"*Подтверждение бронирования*\n\n"
         f"🏠 {prop.name}\n"
-        f"📅 Заезд: {check_in.strftime('%d.%m.%Y')}\n"
-        f"📅 Выезд: {check_out.strftime('%d.%m.%Y')}\n"
+        f"📅 Заезд: {check_in.strftime('%d.%m.%Y')} в {check_in_time}\n"
+        f"📅 Выезд: {check_out.strftime('%d.%m.%Y')} до {check_out_time}\n"
         f"🌙 Ночей: {days}\n"
         f"💰 Итого: *{total_price:,.0f} ₸*"
     )
@@ -639,14 +810,11 @@ def handle_checkout_input(chat_id, text):
         [KeyboardButton("💳 Оплатить Kaspi")],
         [KeyboardButton("❌ Отменить")]
     ]
-    reply_markup = ReplyKeyboardMarkup(
-        keyboard=kb,
-        resize_keyboard=True,
-        input_field_placeholder="Выберите действие"
-    ).to_dict()
-
-    send_telegram_message(chat_id, text_msg, reply_markup=reply_markup)
-
+    send_telegram_message(
+        chat_id,
+        text_msg,
+        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
+    )
 
 # Обновленная функция handle_payment_confirmation в telegram_bot/handlers.py
 

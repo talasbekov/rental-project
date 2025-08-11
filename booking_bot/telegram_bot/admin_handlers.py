@@ -22,6 +22,7 @@ from .constants import (
     start_command_handler
 )
 from .utils import send_telegram_message, send_document
+from ..settings import TELEGRAM_BOT_TOKEN
 
 logger = logging.getLogger(__name__)
 
@@ -1071,34 +1072,81 @@ def show_top_users_statistics(chat_id):
 
 
 @log_handler
-def export_statistics_csv(chat_id: int,
-                          context: CallbackContext,
-                          period: str = 'month'):
-    """Сгенерировать и отправить CSV с статистикой."""
+def export_statistics_csv(chat_id: int, context=None, period: str = 'month'):
+    """Генерация и отправка CSV со статистикой"""
     profile = _get_profile(chat_id)
     if profile.role not in ('admin', 'super_admin'):
         send_telegram_message(chat_id, "У вас нет доступа.")
         return
 
-    # 1) Собираем данные и пишем в StringIO
-    text_buf = StringIO()
-    writer = csv.writer(text_buf)
-    writer.writerow(['ID', 'Start', 'End', 'Price', 'Status'])
-    writer.writerow([1, '01.06.2025', '02.06.2025', 5000, 'confirmed'])
-    # TODO: здесь ваша реальная логика выборки статистики
-    text_buf.seek(0)
+    from datetime import date, timedelta
+    from django.db.models import Sum, Count
+    import csv
+    from io import StringIO, BytesIO
 
-    # 2) Конвертируем в BytesIO, задаём имя файла
-    byte_buf = BytesIO(text_buf.getvalue().encode('utf-8'))
-    byte_buf.name = f'stat_{period}.csv'
-    byte_buf.seek(0)
+    # Определяем период
+    today = date.today()
+    if period == 'week':
+        start = today - timedelta(days=7)
+    elif period == 'month':
+        start = today - timedelta(days=30)
+    elif period == 'quarter':
+        start = today - timedelta(days=90)
+    else:
+        start = today - timedelta(days=365)
 
-    # 3) Отправляем документ через multipart/form-data
-    context.bot.send_document(
-        chat_id=chat_id,
-        document=InputFile(byte_buf, filename=byte_buf.name),
-        caption=f'Ваша статистика за {period}'
+    # Получаем данные
+    if profile.role == 'admin':
+        props = Property.objects.filter(owner=profile.user)
+    else:
+        props = Property.objects.all()
+
+    bookings = Booking.objects.filter(
+        property__in=props,
+        created_at__gte=start,
+        status__in=['confirmed', 'completed']
     )
+
+    # Создаем CSV
+    output = StringIO()
+    writer = csv.writer(output)
+
+    # Заголовки
+    writer.writerow(['ID', 'Квартира', 'Гость', 'Заезд', 'Выезд', 'Сумма', 'Статус'])
+
+    # Данные
+    for booking in bookings:
+        writer.writerow([
+            booking.id,
+            booking.property.name,
+            booking.user.username,
+            booking.start_date.strftime('%d.%m.%Y'),
+            booking.end_date.strftime('%d.%m.%Y'),
+            float(booking.total_price),
+            booking.get_status_display()
+        ])
+
+    # Конвертируем в bytes
+    output.seek(0)
+    file_data = output.getvalue().encode('utf-8-sig')  # UTF-8 с BOM для Excel
+
+    # Отправляем файл через Telegram API
+    import requests
+    bot_token = TELEGRAM_BOT_TOKEN
+    url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
+
+    files = {
+        'document': (f'statistics_{period}.csv', file_data, 'text/csv')
+    }
+    data = {
+        'chat_id': chat_id,
+        'caption': f'📊 Статистика за {period}'
+    }
+
+    response = requests.post(url, data=data, files=files)
+
+    if response.status_code != 200:
+        send_telegram_message(chat_id, "Ошибка при отправке файла")
 
 @log_handler
 def show_property_management(chat_id, property_id):

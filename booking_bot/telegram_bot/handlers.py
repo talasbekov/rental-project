@@ -961,6 +961,8 @@ def handle_payment_confirmation(chat_id):
                 property=prop,
                 start_date=check_in,
                 end_date=check_out,
+                check_in_time=sd.get('check_in_time', '14:00'),  # Добавить
+                check_out_time=sd.get('check_out_time', '12:00'),  # Добавить
                 total_price=total_price,
                 status='pending_payment'
             )

@@ -156,6 +156,17 @@ class Booking(models.Model):
         if not self.pk and self.status == 'pending_payment' and not self.expires_at:
             self.expires_at = datetime.now() + timedelta(minutes=15)
 
+        if not self.pk and self.status == 'pending_payment':
+            from booking_bot.notifications.service import NotificationService
+            NotificationService.schedule(
+                event='booking_created',
+                user=self.user,
+                context={
+                    'booking': self,
+                    'property': self.property
+                }
+            )
+
         super().save(*args, **kwargs)
 
     def cancel(self, user, reason, reason_text=None):

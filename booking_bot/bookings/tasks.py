@@ -6,6 +6,7 @@ from django.db.models import Count, Q, Avg
 import logging
 
 from booking_bot.listings.models import District, PropertyCalendarManager
+from booking_bot.settings import TELEGRAM_BOT_TOKEN
 
 logger = logging.getLogger(__name__)
 
@@ -247,17 +248,28 @@ def analyze_guest_ko_factor():
 
 @shared_task
 def generate_monthly_report():
-    """Генерация ежемесячной PDF-сводки"""
+    """Генерация и отправка ежемесячной PDF-сводки"""
     from booking_bot.listings.models import Property, PropertyCalendarManager
     from booking_bot.bookings.models import Booking
     from booking_bot.users.models import UserProfile
     from django.db.models import Sum, Count, Avg
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib.pagesizes import A4
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
     from io import BytesIO
     import calendar
+    import os
+
+    # Регистрируем шрифт с поддержкой кириллицы
+    try:
+        # Используем системный шрифт или добавляем свой
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
+    except:
+        pass  # Используем стандартный шрифт
 
     # Определяем период отчета (предыдущий месяц)
     today = date.today()
@@ -302,7 +314,7 @@ def generate_monthly_report():
 
     # Заголовок
     title = Paragraph(
-        f"<b>Отчет ЖильеGO за {calendar.month_name[report_month]} {report_year}</b>",
+        f"<b>Report ZhilieGO - {report_month}/{report_year}</b>",
         styles['Title']
     )
     story.append(title)
@@ -310,12 +322,12 @@ def generate_monthly_report():
 
     # Основные показатели
     data = [
-        ['Показатель', 'Значение'],
-        ['Общий доход', f'{total_revenue:,.0f} ₸'],
-        ['Всего бронирований', str(total_bookings)],
-        ['Подтвержденных', str(confirmed_bookings)],
-        ['Отмененных', str(cancelled_bookings)],
-        ['Конверсия', f'{(confirmed_bookings / total_bookings * 100):.1f}%' if total_bookings else '0%'],
+        ['Metric', 'Value'],
+        ['Total Revenue', f'{total_revenue:,.0f} KZT'],
+        ['Total Bookings', str(total_bookings)],
+        ['Confirmed', str(confirmed_bookings)],
+        ['Cancelled', str(cancelled_bookings)],
+        ['Conversion', f'{(confirmed_bookings / total_bookings * 100):.1f}%' if total_bookings else '0%'],
     ]
 
     table = Table(data, colWidths=[200, 150])
@@ -334,13 +346,14 @@ def generate_monthly_report():
 
     # Топ квартиры
     if top_properties:
-        story.append(Paragraph("<b>ТОП-5 квартир по доходу:</b>", styles['Heading2']))
+        story.append(Paragraph("<b>TOP-5 Properties:</b>", styles['Heading2']))
 
-        top_data = [['Квартира', 'Доход', 'Бронирований']]
+        top_data = [['Property', 'Revenue', 'Bookings']]
         for prop in top_properties:
+            name = prop['property__name'][:30] if prop['property__name'] else 'Unknown'
             top_data.append([
-                prop['property__name'][:30],
-                f"{prop['revenue']:,.0f} ₸",
+                name,
+                f"{prop['revenue']:,.0f} KZT",
                 str(prop['count'])
             ])
 
@@ -359,29 +372,50 @@ def generate_monthly_report():
     pdf_content = buffer.getvalue()
     buffer.close()
 
-    # Отправляем админам
-    # Сохраняем PDF в медиа
-    from django.core.files.base import ContentFile
-    pdf_filename = f"report_{report_year}_{report_month}.pdf"
-    pdf_file = ContentFile(pdf_content, name=pdf_filename)
+    # Сохраняем файл временно
+    import tempfile
+    temp_file = tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix='.pdf',
+        prefix=f'report_{report_year}_{report_month}_'
+    )
+    temp_file.write(pdf_content)
+    temp_file.close()
 
     # Отправляем админам через Telegram
+    from booking_bot.telegram_bot.utils import send_telegram_message
     admins = UserProfile.objects.filter(role__in=['admin', 'super_admin'])
+
     for admin in admins:
         if admin.telegram_chat_id:
-            from booking_bot.telegram_bot.utils import send_document
-            # Сохраняем временно для отправки
-            import tempfile
-            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
-                tmp.write(pdf_content)
-                tmp_path = tmp.name
+            try:
+                # Используем requests для отправки файла
+                import requests
 
-            send_document(
-                admin.telegram_chat_id,
-                document_url=f"file://{tmp_path}",
-                caption=f"📊 Отчет за {calendar.month_name[report_month]} {report_year}",
-                filename=pdf_filename
-            )
+                bot_token = TELEGRAM_BOT_TOKEN
+                url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
+
+                with open(temp_file.name, 'rb') as f:
+                    files = {'document': (f'report_{report_month}_{report_year}.pdf', f, 'application/pdf')}
+                    data = {
+                        'chat_id': admin.telegram_chat_id,
+                        'caption': f'📊 Отчет за {report_month}/{report_year}'
+                    }
+                    response = requests.post(url, data=data, files=files)
+
+                    if response.status_code == 200:
+                        logger.info(f"Report sent to admin {admin.user.username}")
+                    else:
+                        logger.error(f"Failed to send report: {response.text}")
+
+            except Exception as e:
+                logger.error(f"Error sending report to {admin.user.username}: {e}")
+
+    # Удаляем временный файл
+    try:
+        os.unlink(temp_file.name)
+    except:
+        pass
 
     logger.info(f"Monthly report generated for {report_month}/{report_year}")
     return True

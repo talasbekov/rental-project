@@ -696,20 +696,53 @@ class PropertyCalendarManager:
 
 
 class GuestReview(models.Model):
-    """Отзывы администраторов о гостях"""
-    guest = models.ForeignKey(User, on_delete=models.CASCADE, related_name='guest_reviews')
-    admin = models.ForeignKey(User, on_delete=models.CASCADE, related_name='admin_reviews')
-    booking = models.OneToOneField('bookings.Booking', on_delete=models.CASCADE, related_name='guest_review')
+    """Отзыв администратора о госте"""
+    booking = models.OneToOneField(
+        'bookings.Booking',
+        on_delete=models.CASCADE,
+        related_name='guest_review'
+    )
+    reviewer = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='guest_reviews_given'
+    )
+    guest = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='guest_reviews_received'
+    )
     rating = models.PositiveIntegerField(choices=[(i, str(i)) for i in range(1, 6)])
     text = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('booking',)  # Один отзыв на бронирование
+        unique_together = ('booking', 'reviewer')
         ordering = ['-created_at']
 
-    def __str__(self):
-        return f"Review for {self.guest.username} by {self.admin.username} - {self.rating} stars"
+
+class PropertyTarget(models.Model):
+    """Целевые показатели для квартир"""
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.CASCADE,
+        related_name='targets'
+    )
+    month = models.DateField(help_text="Первое число месяца")
+    target_revenue = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="Целевая выручка"
+    )
+    target_occupancy = models.FloatField(
+        help_text="Целевая загрузка в процентах"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('property', 'month')
+        ordering = ['-month']
 
 
 class Favorite(models.Model):

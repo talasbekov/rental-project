@@ -154,6 +154,9 @@ KASPI_MERCHANT_ID = get_env('KASPI_MERCHANT_ID', '')
 KASPI_SECRET_KEY = get_env('KASPI_SECRET_KEY', '')
 KASPI_API_BASE_URL = get_env('KASPI_API_BASE_URL', 'https://api.kaspi.kz/v2/')
 
+# Убрать предупреждения про AutoField
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
 # Payment settings
 PAYMENT_SUCCESS_URL = f"{SITE_URL}/payments/success/"
 PAYMENT_FAIL_URL = f"{SITE_URL}/payments/fail/"

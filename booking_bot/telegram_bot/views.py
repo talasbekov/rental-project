@@ -96,6 +96,52 @@ def telegram_webhook(request):
 
                 return MockFile(file_id)
 
+            def send_document(self, *args, **kwargs):
+                """
+                Мок отправки документа. Принимает позиционные и именованные аргументы:
+                (chat_id, document, ...) или chat_id=, document=, filename=, caption=.
+                Сохраняет файл во /tmp и пишет путь в логи, чтобы dev/test не падал.
+                """
+                import io, os, time, logging
+                log = logging.getLogger(__name__)
+
+                # распаковка аргументов
+                chat_id = kwargs.get("chat_id", args[0] if len(args) > 0 else None)
+                document = kwargs.get("document", args[1] if len(args) > 1 else None)
+                filename = kwargs.get("filename", None)
+                caption = kwargs.get("caption", None)
+
+                saved_path = None
+                try:
+                    data = None
+                    if hasattr(document, "read"):  # file-like (BytesIO, file)
+                        pos = document.tell() if hasattr(document, "tell") else None
+                        data = document.read()
+                        if pos is not None and hasattr(document, "seek"):
+                            document.seek(pos)
+                        if not filename:
+                            filename = getattr(document, "name", None)
+                    elif isinstance(document, (bytes, bytearray)):  # сырые байты
+                        data = bytes(document)
+                    elif isinstance(document, str) and os.path.exists(document):  # путь к файлу
+                        saved_path = document
+                        if not filename:
+                            filename = os.path.basename(document)
+
+                    if data is not None:
+                        if not filename:
+                            filename = f"document_{int(time.time())}.bin"
+                        saved_path = f"/tmp/{filename}"
+                        with open(saved_path, "wb") as f:
+                            f.write(data)
+
+                    log.info("MockBot.send_document(chat_id=%s, filename=%s, caption=%r, saved_path=%s)",
+                             chat_id, filename, caption, saved_path)
+                except Exception as e:
+                    log.warning("MockBot.send_document error: %s", e)
+
+                return {"ok": True, "result": {"document": {"file_name": filename, "path": saved_path}}}
+
         update_obj = MockUpdate(message)
         context_obj = MockContext()
 

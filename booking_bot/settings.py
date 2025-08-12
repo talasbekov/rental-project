@@ -34,8 +34,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'drf_spectacular',
-    'drf_spectacular_sidecar',
     'django_filters',
     'rest_framework',
     'booking_bot.core',
@@ -114,18 +112,6 @@ STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
-
-# REST Framework
-REST_FRAMEWORK = {
-    'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],
-    'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework_simplejwt.authentication.JWTAuthentication'],
-    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-}
-
-# Simple JWT
-SIMPLE_JWT = {
-    # Customize token lifetimes as needed
-}
 
 # Bots and external APIs
 TELEGRAM_BOT_TOKEN = get_env('TELEGRAM_BOT_TOKEN', required=True)
@@ -283,6 +269,23 @@ CELERY_BEAT_SCHEDULE = {
     'cleanup-calendar': {
         'task': 'booking_bot.listings.tasks.cleanup_old_calendar_days',
         'schedule': crontab(hour=4, minute=0, day_of_month=1),  # 1-го числа в 04:00
+    },
+    # Напоминание о заезде за день
+    'checkin-reminder': {
+        'task': 'booking_bot.bookings.tasks.send_checkin_reminder',
+        'schedule': crontab(hour=10, minute=0),  # каждый день в 10:00
+    },
+
+    # Запрос отзыва после выезда
+    'review-request': {
+        'task': 'booking_bot.bookings.tasks.send_review_request',
+        'schedule': crontab(hour=12, minute=0),  # каждый день в 12:00
+    },
+
+    # Предложение продления за 2 дня до выезда
+    'extend-reminder': {
+        'task': 'booking_bot.bookings.tasks.send_extend_reminder',
+        'schedule': crontab(hour=15, minute=0),  # каждый день в 15:00
     },
 }
 

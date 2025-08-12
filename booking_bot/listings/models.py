@@ -38,7 +38,7 @@ class Property(models.Model):
     PROPERTY_CLASS_CHOICES = [
         ('comfort', 'Комфорт'),
         ('business', 'Бизнес'),
-        ('luxury', 'Премиум'),
+        ('premium', 'Премиум'),
     ]
 
     STATUS_CHOICES = [

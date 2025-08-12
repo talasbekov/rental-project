@@ -143,6 +143,58 @@ def send_review_request(booking_id):
 
 
 @shared_task
+def send_extend_reminder():
+    """Напоминание о возможности продления за 2 дня до выезда"""
+    from booking_bot.bookings.models import Booking
+    from booking_bot.telegram_bot.utils import send_telegram_message
+    from telegram import KeyboardButton, ReplyKeyboardMarkup
+
+    two_days_ahead = date.today() + timedelta(days=2)
+
+    bookings = Booking.objects.filter(
+        end_date=two_days_ahead,
+        status='confirmed'
+    ).select_related('property', 'user__profile')
+
+    for booking in bookings:
+        # Проверяем доступность для продления
+        check_date = booking.end_date + timedelta(days=1)
+        conflicts = Booking.objects.filter(
+            property=booking.property,
+            status__in=['confirmed', 'pending_payment'],
+            start_date__lte=check_date,
+            end_date__gt=check_date
+        ).exclude(id=booking.id).exists()
+
+        if not conflicts:
+            # Можно продлить
+            if hasattr(booking.user, 'profile') and booking.user.profile.telegram_chat_id:
+                text = (
+                    f"📅 *Напоминание о выезде*\n\n"
+                    f"Через 2 дня заканчивается ваше проживание в:\n"
+                    f"🏠 {booking.property.name}\n"
+                    f"Дата выезда: {booking.end_date.strftime('%d.%m.%Y')}\n\n"
+                    f"Хотите продлить проживание?\n"
+                    f"Используйте команду: /extend_{booking.id}"
+                )
+
+                keyboard = [
+                    [KeyboardButton(f"/extend_{booking.id}")],
+                    [KeyboardButton("🧭 Главное меню")]
+                ]
+
+                send_telegram_message(
+                    booking.user.profile.telegram_chat_id,
+                    text,
+                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+                )
+
+                logger.info(f"Extend reminder sent for booking {booking.id}")
+
+    return bookings.count()
+
+
+@shared_task
 def check_low_demand_properties():
     """Проверка квартир с низким спросом"""
     from booking_bot.listings.models import Property, PropertyCalendarManager

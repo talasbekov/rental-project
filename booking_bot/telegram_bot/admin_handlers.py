@@ -627,24 +627,22 @@ def show_admin_panel(chat_id):
         ).to_dict()
     )
 
+
 @log_handler
 def show_admin_properties(chat_id):
-    """Показать список квартир админа."""
+    """Показать список квартир админа с возможностью просмотра календаря"""
     profile = _get_profile(chat_id)
     if profile.role not in ('admin', 'super_admin'):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
 
-    # Квартиры владельца или все (для супер‑админа)
     props = Property.objects.filter(owner=profile.user) if profile.role == 'admin' else Property.objects.all()
 
-    # Если квартир нет
     if not props.exists():
         send_telegram_message(
             chat_id,
             "У вас пока нет квартир.",
             reply_markup=ReplyKeyboardMarkup(
-                # Предлагаем вернуться в админ‑панель или в главное меню
                 [[KeyboardButton("🛠 Панель администратора")],
                  [KeyboardButton("🧭 Главное меню")]],
                 resize_keyboard=True
@@ -652,25 +650,210 @@ def show_admin_properties(chat_id):
         )
         return
 
-    # Формируем список квартир
     lines = ["🏠 *Ваши квартиры:*\n"]
-    for prop in props:
+    keyboard = []
+
+    for i, prop in enumerate(props[:10], 1):
         lines.append(
-            f"• {prop.name} — {prop.district.city.name}, {prop.district.name} — "
-            f"{prop.price_per_day} ₸/сутки — {prop.status}"
+            f"{i}. {prop.name}\n"
+            f"   📍 {prop.district.city.name}, {prop.district.name}\n"
+            f"   💰 {prop.price_per_day} ₸/сутки\n"
+            f"   Статус: {prop.status}\n"
         )
+        # Кнопки для каждой квартиры
+        keyboard.append([
+            KeyboardButton(f"📅 Календарь #{prop.id}"),
+            KeyboardButton(f"✏️ Изменить #{prop.id}")
+        ])
+
     text = "\n".join(lines)
 
-    # Кнопки: только возврат в админ‑панель или в главное меню
-    buttons = [
-        [KeyboardButton("🛠 Панель администратора")],
-        [KeyboardButton("🧭 Главное меню")]
-    ]
+    keyboard.append([KeyboardButton("🛠 Панель администратора")])
+    keyboard.append([KeyboardButton("🧭 Главное меню")])
+
     send_telegram_message(
         chat_id,
         text,
-        reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True).to_dict()
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
     )
+
+
+@log_handler
+def show_property_calendar(chat_id, property_id, year=None, month=None):
+    """Показать календарь занятости квартиры"""
+    profile = _get_profile(chat_id)
+
+    if profile.role not in ('admin', 'super_admin'):
+        send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
+        return
+
+    try:
+        # Проверяем доступ к квартире
+        if profile.role == 'admin':
+            prop = Property.objects.get(id=property_id, owner=profile.user)
+        else:
+            prop = Property.objects.get(id=property_id)
+
+        from datetime import date
+        from booking_bot.listings.models import PropertyCalendarManager
+        import calendar
+
+        # Используем текущий месяц если не указан
+        if not year or not month:
+            today = date.today()
+            year = today.year
+            month = today.month
+
+        # Получаем матрицу календаря
+        calendar_matrix = PropertyCalendarManager.get_calendar_view(prop, year, month)
+
+        # Формируем текст календаря
+        month_name = calendar.month_name[month]
+        text = f"📅 *Календарь занятости*\n"
+        text += f"🏠 {prop.name}\n"
+        text += f"📆 {month_name} {year}\n\n"
+
+        # Заголовки дней недели
+        text += "Пн  Вт  Ср  Чт  Пт  Сб  Вс\n"
+
+        # Легенда статусов
+        status_emoji = {
+            'free': '⬜',  # Свободно
+            'booked': '🟨',  # Забронировано
+            'occupied': '🟥',  # Занято
+            'blocked': '⬛',  # Заблокировано
+            'cleaning': '🟦',  # Уборка
+        }
+
+        # Формируем календарь
+        for week in calendar_matrix:
+            week_text = ""
+            for day_info in week:
+                if day_info is None:
+                    week_text += "    "  # Пустое место
+                else:
+                    emoji = status_emoji.get(day_info['status'], '⬜')
+                    if day_info['is_today']:
+                        # Выделяем сегодняшний день
+                        week_text += f"[{day_info['day']:2}]"
+                    else:
+                        week_text += f"{emoji}{day_info['day']:2}"
+                    week_text += " "
+            text += week_text.rstrip() + "\n"
+
+        # Легенда
+        text += "\n*Легенда:*\n"
+        text += "⬜ Свободно  🟨 Забронировано\n"
+        text += "🟥 Занято    ⬛ Заблокировано\n"
+        text += "🟦 Уборка    [...] Сегодня\n"
+
+        # Статистика за месяц
+        occupancy_rate = PropertyCalendarManager.get_occupancy_rate(
+            prop,
+            date(year, month, 1),
+            date(year, month + 1, 1) if month < 12 else date(year + 1, 1, 1)
+        )
+        text += f"\n📊 Загрузка: {occupancy_rate:.1f}%"
+
+        # Кнопки навигации
+        keyboard = []
+        nav_row = []
+
+        # Предыдущий месяц
+        if month == 1:
+            prev_month, prev_year = 12, year - 1
+        else:
+            prev_month, prev_year = month - 1, year
+        nav_row.append(KeyboardButton(f"◀️ {prev_month}/{prev_year}"))
+
+        # Следующий месяц
+        if month == 12:
+            next_month, next_year = 1, year + 1
+        else:
+            next_month, next_year = month + 1, year
+        nav_row.append(KeyboardButton(f"▶️ {next_month}/{next_year}"))
+
+        keyboard.append(nav_row)
+        keyboard.append([KeyboardButton("📊 Детали броней")])
+        keyboard.append([KeyboardButton("🚫 Заблокировать даты")])
+        keyboard.append([KeyboardButton("🏠 Мои квартиры")])
+        keyboard.append([KeyboardButton("🧭 Главное меню")])
+
+        # Сохраняем состояние для навигации
+        profile.telegram_state = {
+            'state': 'viewing_calendar',
+            'calendar_property_id': property_id,
+            'calendar_year': year,
+            'calendar_month': month
+        }
+        profile.save()
+
+        send_telegram_message(
+            chat_id,
+            text,
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        )
+
+    except Property.DoesNotExist:
+        send_telegram_message(chat_id, "Квартира не найдена.")
+
+
+@log_handler
+def show_calendar_booking_details(chat_id, property_id, year, month):
+    """Показать детали бронирований за месяц"""
+    profile = _get_profile(chat_id)
+
+    try:
+        if profile.role == 'admin':
+            prop = Property.objects.get(id=property_id, owner=profile.user)
+        else:
+            prop = Property.objects.get(id=property_id)
+
+        from datetime import date
+        start_date = date(year, month, 1)
+        if month == 12:
+            end_date = date(year + 1, 1, 1)
+        else:
+            end_date = date(year, month + 1, 1)
+
+        bookings = Booking.objects.filter(
+            property=prop,
+            start_date__lt=end_date,
+            end_date__gte=start_date,
+            status__in=['confirmed', 'completed']
+        ).order_by('start_date')
+
+        import calendar
+        month_name = calendar.month_name[month]
+
+        text = f"📋 *Бронирования - {month_name} {year}*\n"
+        text += f"🏠 {prop.name}\n\n"
+
+        if not bookings:
+            text += "Нет бронирований на этот период."
+        else:
+            for booking in bookings:
+                guest_name = booking.user.get_full_name() or booking.user.username
+                text += (
+                    f"• {booking.start_date.strftime('%d.%m')} - "
+                    f"{booking.end_date.strftime('%d.%m')}\n"
+                    f"  Гость: {guest_name}\n"
+                    f"  Сумма: {booking.total_price:,.0f} ₸\n\n"
+                )
+
+        keyboard = [
+            [KeyboardButton("📅 Назад к календарю")],
+            [KeyboardButton("🏠 Мои квартиры")]
+        ]
+
+        send_telegram_message(
+            chat_id,
+            text,
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        )
+
+    except Property.DoesNotExist:
+        send_telegram_message(chat_id, "Квартира не найдена.")
 
 
 @log_handler

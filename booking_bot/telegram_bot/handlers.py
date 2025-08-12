@@ -14,7 +14,7 @@ from .constants import (
 )
 
 from .. import settings
-from booking_bot.listings.models import City, District, Property, PropertyPhoto, Review, Favorite
+from booking_bot.listings.models import City, District, Property, PropertyPhoto, Review, Favorite, ReviewPhoto
 from booking_bot.bookings.models import Booking
 from booking_bot.payments import initiate_payment as kaspi_initiate_payment, KaspiPaymentError
 from .utils import send_telegram_message, send_photo_group, escape_markdown
@@ -26,7 +26,8 @@ from .admin_handlers import (
     handle_photo_upload, show_detailed_statistics, show_extended_statistics, export_statistics_csv,
     show_admin_properties, show_city_statistics, handle_guest_review_rating, save_guest_review, process_add_admin,
     process_remove_admin, handle_target_property_selection, save_property_target, handle_add_admin, show_admins_list,
-    handle_remove_admin, show_plan_fact, set_property_targets, show_ko_factor_report,
+    handle_remove_admin, show_plan_fact, set_property_targets, show_ko_factor_report, show_property_calendar,
+    show_calendar_booking_details,
 )
 from ..core.models import AuditLog
 
@@ -44,9 +45,29 @@ def message_handler(chat_id, text, update=None, context=None):
         handle_review_text(chat_id, text)
         return
 
+    if state == 'review_rating':
+        handle_review_rating(chat_id, text)
+        return
+    elif state == 'review_text':
+        handle_review_text_input(chat_id, text)
+        return
+    elif state == 'review_photos':
+        handle_review_photos_choice(chat_id, text)
+        return
+    elif state == 'review_uploading_photos':
+        if text == "✅ Готово":
+            save_review(chat_id)
+        elif text == "❌ Отмена":
+            profile.telegram_state = {}
+            profile.save()
+            start_command_handler(chat_id)
+        return
+
     # Обработка фотографий (если есть)
     if update and update.message and update.message.photo:
         if handle_photo_upload(chat_id, update, context):
+            return
+        elif handle_review_photo_upload(chat_id, update, context):
             return
         elif text.startswith("/debug_photos"):
             if profile.role not in ('admin', 'super_admin'):
@@ -125,6 +146,25 @@ def message_handler(chat_id, text, update=None, context=None):
         elif text == "⭐ Избранное":
             show_favorites_list(chat_id)
             return
+        elif text == "⭐ Избранное" or text == "⭐ Все избранное":
+            show_favorites_list(chat_id)
+            return
+        elif text.startswith("⭐") and "." in text:
+            # Обработка выбора из избранного
+            try:
+                num = int(text.split(".")[0].replace("⭐", "").strip())
+                favorites = Favorite.objects.filter(user=profile.user).select_related('property')
+                if num <= favorites.count():
+                    fav = favorites[num - 1]
+                    show_favorite_property_detail(chat_id, fav.property.id)
+            except:
+                pass
+            return
+        elif text.startswith("❌ Удалить из избранного"):
+            prop_id = int(text.split()[-1])
+            toggle_favorite(chat_id, prop_id)
+            show_favorites_list(chat_id)
+            return
         elif text == "📋 Мои бронирования":
             show_user_bookings_with_cancel(chat_id, 'completed')
             return
@@ -160,6 +200,31 @@ def message_handler(chat_id, text, update=None, context=None):
                 booking_id = int(text.replace("/review_guest_", ""))
                 from .admin_handlers import handle_guest_review_start
                 handle_guest_review_start(chat_id, booking_id)
+                return
+            elif text.startswith("📅 Календарь #"):
+                prop_id = int(text.split("#")[1])
+                show_property_calendar(chat_id, prop_id)
+                return
+            elif state == 'viewing_calendar':
+                sd = profile.telegram_state or {}
+                prop_id = sd.get('calendar_property_id')
+                year = sd.get('calendar_year')
+                month = sd.get('calendar_month')
+
+                if "◀️" in text or "▶️" in text:
+                    # Навигация по месяцам
+                    import re
+                    match = re.search(r'(\d+)/(\d+)', text)
+                    if match:
+                        new_month = int(match.group(1))
+                        new_year = int(match.group(2))
+                        show_property_calendar(chat_id, prop_id, new_year, new_month)
+                elif text == "📊 Детали броней":
+                    show_calendar_booking_details(chat_id, prop_id, year, month)
+                elif text == "📅 Назад к календарю":
+                    show_property_calendar(chat_id, prop_id, year, month)
+                elif text == "🚫 Заблокировать даты":
+                    start_block_dates(chat_id, prop_id)
                 return
 
             # Переключение периодов в статистике
@@ -343,7 +408,7 @@ def select_district(chat_id, profile, text):
         district = District.objects.get(name=text)
         profile.telegram_state.update({'district_id': district.id, 'state': STATE_SELECT_CLASS})
         profile.save()
-        classes = [('economy', 'Комфорт'), ('business', 'Бизнес'), ('luxury', 'Премиум')]
+        classes = [('comfort', 'Комфорт'), ('business', 'Бизнес'), ('premium', 'Премиум')]
         kb = [[KeyboardButton(label)] for _, label in classes]
         markup = ReplyKeyboardMarkup(
             keyboard=kb,
@@ -356,7 +421,7 @@ def select_district(chat_id, profile, text):
 
 @log_handler
 def select_class(chat_id, profile, text):
-    mapping = {'Комфорт': 'economy', 'Бизнес': 'business', 'Премиум': 'luxury'}
+    mapping = {'Комфорт': 'comfort', 'Бизнес': 'business', 'Премиум': 'premium'}
     if text in mapping:
         profile.telegram_state.update({'property_class': mapping[text], 'state': STATE_SELECT_ROOMS})
         profile.save()
@@ -502,24 +567,36 @@ def show_search_results(chat_id, profile, offset=0):
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
     )
 
+
 @log_handler
 def prompt_review(chat_id, booking):
-    """
-    Отправляет сообщение с просьбой оставить отзыв и переводит пользователя
-    в состояние STATE_AWAITING_REVIEW_TEXT. Сохраняем ID квартиры в состоянии.
-    """
+    """Запрос отзыва с поддержкой фотографий"""
     profile = _get_profile(chat_id)
-    # сохраняем состояние для отзыва
+
+    # Сохраняем состояние для отзыва
     profile.telegram_state = {
-        'state': STATE_AWAITING_REVIEW_TEXT,
-        'review_property_id': booking.property.id
+        'state': 'review_rating',
+        'review_property_id': booking.property.id,
+        'review_booking_id': booking.id
     }
     profile.save()
+
+    text = (
+        "🙏 *Спасибо за бронирование!*\n\n"
+        f"Как вам понравилась квартира *{booking.property.name}*?\n"
+        "Пожалуйста, оцените от 1 до 5 звезд:"
+    )
+
+    keyboard = [
+        [KeyboardButton("⭐"), KeyboardButton("⭐⭐"), KeyboardButton("⭐⭐⭐")],
+        [KeyboardButton("⭐⭐⭐⭐"), KeyboardButton("⭐⭐⭐⭐⭐")],
+        [KeyboardButton("❌ Пропустить отзыв")]
+    ]
+
     send_telegram_message(
         chat_id,
-        "🙏 Спасибо за бронирование!\n"
-        "Пожалуйста, оцените квартиру и оставьте отзыв.\n"
-        "Напишите сообщение вида «5 Отличная квартира!» (первая цифра — оценка 1‑5 звезд)."
+        text,
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
     )
 
 @log_handler
@@ -566,6 +643,207 @@ def handle_review_text(chat_id, text):
 
 
 @log_handler
+def handle_review_rating(chat_id, text):
+    """Обработка выбора рейтинга"""
+    profile = _get_profile(chat_id)
+
+    if text == "❌ Пропустить отзыв":
+        profile.telegram_state = {}
+        profile.save()
+        start_command_handler(chat_id)
+        return
+
+    rating = text.count("⭐")
+    if rating < 1 or rating > 5:
+        send_telegram_message(chat_id, "Пожалуйста, выберите оценку от 1 до 5 звезд")
+        return
+
+    sd = profile.telegram_state
+    sd['review_rating'] = rating
+    sd['state'] = 'review_text'
+    profile.telegram_state = sd
+    profile.save()
+
+    text = (
+        f"Оценка: {'⭐' * rating}\n\n"
+        "Напишите текст отзыва (или нажмите 'Пропустить'):"
+    )
+
+    keyboard = [
+        [KeyboardButton("Пропустить текст")],
+        [KeyboardButton("❌ Отмена")]
+    ]
+
+    send_telegram_message(
+        chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard,
+            resize_keyboard=True,
+            input_field_placeholder="Ваш отзыв..."
+        ).to_dict()
+    )
+
+
+@log_handler
+def handle_review_text_input(chat_id, text):
+    """Обработка текста отзыва"""
+    profile = _get_profile(chat_id)
+    sd = profile.telegram_state
+
+    if text == "❌ Отмена":
+        profile.telegram_state = {}
+        profile.save()
+        start_command_handler(chat_id)
+        return
+
+    if text == "Пропустить текст":
+        text = ""
+
+    sd['review_text'] = text
+    sd['state'] = 'review_photos'
+    profile.telegram_state = sd
+    profile.save()
+
+    text = (
+        "📷 Хотите добавить фотографии к отзыву?\n"
+        "Можете отправить до 3 фотографий или пропустить этот шаг."
+    )
+
+    keyboard = [
+        [KeyboardButton("📷 Добавить фото")],
+        [KeyboardButton("✅ Сохранить без фото")],
+        [KeyboardButton("❌ Отмена")]
+    ]
+
+    send_telegram_message(
+        chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+    )
+
+
+@log_handler
+def handle_review_photos_choice(chat_id, text):
+    """Обработка выбора добавления фото"""
+    profile = _get_profile(chat_id)
+    sd = profile.telegram_state
+
+    if text == "❌ Отмена":
+        profile.telegram_state = {}
+        profile.save()
+        start_command_handler(chat_id)
+        return
+
+    if text == "✅ Сохранить без фото":
+        save_review(chat_id)
+        return
+
+    if text == "📷 Добавить фото":
+        sd['state'] = 'review_uploading_photos'
+        sd['review_photos'] = []
+        profile.telegram_state = sd
+        profile.save()
+
+        keyboard = [[KeyboardButton("✅ Готово")], [KeyboardButton("❌ Отмена")]]
+
+        send_telegram_message(
+            chat_id,
+            "Отправьте фотографии (до 3 штук).\n"
+            "После загрузки нажмите '✅ Готово'",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        )
+
+
+@log_handler
+def handle_review_photo_upload(chat_id, update, context):
+    """Обработка загрузки фото к отзыву"""
+    profile = _get_profile(chat_id)
+    sd = profile.telegram_state or {}
+
+    if sd.get('state') != 'review_uploading_photos':
+        return False
+
+    photos = sd.get('review_photos', [])
+    if len(photos) >= 3:
+        send_telegram_message(chat_id, "Максимум 3 фотографии. Нажмите '✅ Готово' для сохранения.")
+        return True
+
+    if update.message and update.message.photo:
+        photo = max(update.message.photo, key=lambda p: p.file_size)
+        photos.append(photo.file_id)
+        sd['review_photos'] = photos
+        profile.telegram_state = sd
+        profile.save()
+
+        send_telegram_message(
+            chat_id,
+            f"Фото {len(photos)}/3 загружено.\n"
+            f"{'Можете добавить еще или' if len(photos) < 3 else ''} нажмите '✅ Готово'"
+        )
+        return True
+
+    return False
+
+
+@log_handler
+def save_review(chat_id):
+    """Сохранение отзыва с фотографиями"""
+    profile = _get_profile(chat_id)
+    sd = profile.telegram_state or {}
+
+    prop_id = sd.get('review_property_id')
+    rating = sd.get('review_rating', 5)
+    text = sd.get('review_text', '')
+    photo_ids = sd.get('review_photos', [])
+
+    try:
+        prop = Property.objects.get(id=prop_id)
+
+        # Создаем отзыв
+        review = Review.objects.create(
+            property=prop,
+            user=profile.user,
+            rating=rating,
+            text=text
+        )
+
+        # Добавляем фото если есть
+        for file_id in photo_ids:
+            # Получаем URL фото из Telegram
+            import requests
+            bot_token = settings.TELEGRAM_BOT_TOKEN
+            file_response = requests.get(
+                f"https://api.telegram.org/bot{bot_token}/getFile",
+                params={"file_id": file_id}
+            )
+            if file_response.status_code == 200:
+                file_path = file_response.json()["result"]["file_path"]
+                file_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+
+                ReviewPhoto.objects.create(
+                    review=review,
+                    image_url=file_url
+                )
+
+        send_telegram_message(
+            chat_id,
+            f"✅ Спасибо за отзыв!\n"
+            f"Оценка: {'⭐' * rating}\n"
+            f"{'С фотографиями: ' + str(len(photo_ids)) if photo_ids else ''}"
+        )
+
+    except Exception as e:
+        logger.error(f"Error saving review: {e}")
+        send_telegram_message(chat_id, "❌ Ошибка при сохранении отзыва")
+
+    # Очищаем состояние
+    profile.telegram_state = {}
+    profile.save()
+    start_command_handler(chat_id)
+
+
+@log_handler
 def debug_property_photos(chat_id, property_id):
     """Отладочная функция для проверки фотографий объекта"""
     try:
@@ -609,7 +887,7 @@ def debug_property_photos(chat_id, property_id):
 
 @log_handler
 def show_favorites_list(chat_id):
-    """Показать список избранных квартир"""
+    """Показать список избранных квартир с навигацией"""
     profile = _get_profile(chat_id)
 
     favorites = Favorite.objects.filter(
@@ -624,25 +902,79 @@ def show_favorites_list(chat_id):
         ]
     else:
         text = "⭐ *Избранное*\n\n"
-        for fav in favorites[:10]:  # Показываем первые 10
+        kb = []
+
+        for i, fav in enumerate(favorites[:10], 1):  # Показываем первые 10
             prop = fav.property
             text += (
-                f"• *{prop.name}*\n"
-                f"  📍 {prop.district.city.name}, {prop.district.name}\n"
-                f"  💰 {prop.price_per_day} ₸/сутки\n"
-                f"  /view_{prop.id} - подробнее\n\n"
+                f"{i}. *{prop.name}*\n"
+                f"   📍 {prop.district.city.name}, {prop.district.name}\n"
+                f"   💰 {prop.price_per_day} ₸/сутки\n\n"
             )
+            # Добавляем кнопку для каждой квартиры
+            kb.append([KeyboardButton(f"⭐{i}. {prop.name[:30]}")])
 
-        kb = [
-            [KeyboardButton("🔍 Поиск квартир")],
-            [KeyboardButton("🧭 Главное меню")]
-        ]
+        kb.append([KeyboardButton("🔍 Поиск квартир")])
+        kb.append([KeyboardButton("🧭 Главное меню")])
 
     send_telegram_message(
         chat_id,
         text,
         reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
     )
+
+
+@log_handler
+def show_favorite_property_detail(chat_id, property_id):
+    """Показать детали избранной квартиры с возможностью бронирования"""
+    profile = _get_profile(chat_id)
+
+    try:
+        prop = Property.objects.get(id=property_id)
+
+        # Проверяем, что квартира в избранном
+        if not Favorite.objects.filter(user=profile.user, property=prop).exists():
+            send_telegram_message(chat_id, "Квартира не найдена в избранном")
+            return
+
+        # Показываем фото
+        photos = PropertyPhoto.objects.filter(property=prop)[:6]
+        if photos:
+            photo_urls = [p.image_url or p.image.url for p in photos if p.image_url or p.image]
+            if photo_urls:
+                send_photo_group(chat_id, photo_urls)
+
+        # Формируем описание
+        stats = Review.objects.filter(property=prop).aggregate(
+            avg=Avg('rating'), cnt=Count('id')
+        )
+        text = (
+            f"⭐ *Из избранного*\n\n"
+            f"*{prop.name}*\n"
+            f"📍 {prop.district.city.name}, {prop.district.name}\n"
+            f"🏠 Класс: {prop.get_property_class_display()}\n"
+            f"🛏 Комнат: {prop.number_of_rooms}\n"
+            f"💰 Цена: *{prop.price_per_day} ₸/сутки*\n"
+        )
+        if stats['avg']:
+            text += f"⭐ Рейтинг: {stats['avg']:.1f}/5 ({stats['cnt']} отзывов)\n"
+
+        # Кнопки действий
+        keyboard = []
+        if prop.status == 'Свободна':
+            keyboard.append([KeyboardButton(f"📅 Забронировать {prop.id}")])
+        keyboard.append([KeyboardButton(f"❌ Удалить из избранного {prop.id}")])
+        keyboard.append([KeyboardButton("⭐ Все избранное")])
+        keyboard.append([KeyboardButton("🧭 Главное меню")])
+
+        send_telegram_message(
+            chat_id,
+            text,
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        )
+
+    except Property.DoesNotExist:
+        send_telegram_message(chat_id, "Квартира не найдена")
 
 
 @log_handler

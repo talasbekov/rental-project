@@ -1537,58 +1537,41 @@ def handle_payment_confirmation(chat_id):
 
 
 def send_booking_confirmation(chat_id, booking):
-    """Отправляет подтверждение бронирования с деталями"""
+    import html
     property_obj = booking.property
     user = booking.user
 
-    # Формируем текст без кодов доступа
     text = (
-        f"✅ *Оплата подтверждена!*\n\n"
-        f"🎉 Ваше бронирование успешно оформлено!\n\n"
-        f"📋 *Детали бронирования:*\n"
+        "<b>✅ Оплата подтверждена!</b>\n\n"
+        "🎉 Ваше бронирование успешно оформлено!\n\n"
+        "<b>Детали бронирования:</b>\n"
         f"Номер брони: #{booking.id}\n"
-        f"Квартира: {escape_markdown(property_obj.name)}\n"
-        f"Адрес: {escape_markdown(property_obj.address)}\n"
+        f"Квартира: {html.escape(property_obj.name)}\n"
+        f"Адрес: {html.escape(property_obj.address or '')}\n"
         f"Заезд: {booking.start_date.strftime('%d.%m.%Y')}\n"
         f"Выезд: {booking.end_date.strftime('%d.%m.%Y')}\n"
         f"Стоимость: {booking.total_price:,.0f} ₸\n\n"
     )
 
-    # Добавляем инструкции
     if property_obj.entry_instructions:
-        text += f"📝 *Инструкции по заселению:*\n{property_obj.entry_instructions}\n\n"
+        text += f"📝 <b>Инструкции по заселению:</b>\n{html.escape(property_obj.entry_instructions)}\n\n"
 
-    # Получаем коды доступа с логированием
     codes = property_obj.get_access_codes(user)
-
-    # Логируем отправку кодов через Telegram
     AuditLog.log(
         user=user,
         action="send_code",
         obj=property_obj,
-        details={
-            "booking_id": booking.id,
-            "channel": "telegram",
-            "codes_sent": list(codes.keys()),
-        },
+        details={"booking_id": booking.id, "channel": "telegram", "codes_sent": list(codes.keys())},
         telegram_chat_id=str(chat_id),
     )
 
-    # Добавляем коды к сообщению
     if codes.get("digital_lock_code"):
-        text += f"🔐 *Код от замка:* `{codes['digital_lock_code']}`\n"
-
+        text += f"🔐 <b>Код от замка:</b> <code>{html.escape(codes['digital_lock_code'])}</code>\n"
     if codes.get("key_safe_code"):
-        text += f"🔑 *Код от сейфа:* `{codes['key_safe_code']}`\n"
+        text += f"🔑 <b>Код от сейфа:</b> <code>{html.escape(codes['key_safe_code'])}</code>\n"
 
-    # Контакты владельца
-    if (
-        hasattr(property_obj.owner, "profile")
-        and property_obj.owner.profile.phone_number
-    ):
-        text += f"\n📞 *Контакт владельца:* {property_obj.owner.profile.phone_number}\n"
-
-        # Логируем просмотр телефона
+    if hasattr(property_obj.owner, "profile") and property_obj.owner.profile.phone_number:
+        text += f"\n📞 <b>Контакт владельца:</b> {html.escape(property_obj.owner.profile.phone_number)}\n"
         AuditLog.log(
             user=user,
             action="view_phone",
@@ -1599,15 +1582,10 @@ def send_booking_confirmation(chat_id, booking):
 
     text += "\n💬 Желаем приятного отдыха!"
 
-    # Отправляем сообщение
     kb = [[KeyboardButton("📊 Мои бронирования")], [KeyboardButton("🧭 Главное меню")]]
-
-    send_telegram_message(
-        chat_id,
-        text,
-        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict(),
-    )
+    send_telegram_message(chat_id, text, reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict(), parse_mode="HTML")
     prompt_review(chat_id, booking)
+
 
 
 @log_handler
@@ -1652,27 +1630,41 @@ def show_user_bookings(chat_id, booking_type="active"):
 
 @log_handler
 def show_property_reviews(chat_id, property_id, offset=0):
+    import html
     try:
         prop = Property.objects.get(id=property_id)
         reviews = Review.objects.filter(property=prop).order_by("-created_at")
-        if not reviews[offset : offset + 5]:
+        if not reviews[offset: offset + 5]:
             send_telegram_message(chat_id, "Отзывов пока нет.")
             return
-        text = f"*Отзывы о {prop.name}*\n\n"
-        for r in reviews[offset : offset + 5]:
+
+        # Заголовок в HTML + экранирование
+        text = f"<b>Отзывы о {html.escape(prop.name)}</b>\n\n"
+
+        for r in reviews[offset: offset + 5]:
             stars = "⭐" * r.rating
-            text += f"{stars} _{r.user.first_name}_{r.created_at.strftime('%d.%m.%Y')}\n{r.text}\n\n"
+            author = r.user.first_name or r.user.username or "Гость"
+            text += (
+                f"{stars} <i>{html.escape(author)}</i> "
+                f"{r.created_at.strftime('%d.%m.%Y')}\n"
+                f"{html.escape(r.text or '')}\n\n"
+            )
+
         kb = []
         if offset + 5 < reviews.count():
             kb.append([KeyboardButton("➡️ Дальше")])
         kb.append([KeyboardButton("🧭 Главное меню")])
+
+        # Явно указываем HTML (и в хелпере у нас HTML по умолчанию)
         send_telegram_message(
             chat_id,
             text,
             reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict(),
+            parse_mode="HTML",
         )
     except Property.DoesNotExist:
         send_telegram_message(chat_id, "Квартира не найдена.")
+
 
 
 @log_handler

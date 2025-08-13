@@ -1,3 +1,4 @@
+import html
 import re
 
 import requests
@@ -7,31 +8,38 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 BOT_URL = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}"
-
+TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
 
 def escape_markdown(text: str) -> str:
     """Экранирует символы, имеющие специальное значение в Markdown."""
     return re.sub(r"([_*\[\]()~`>#+\-=|{}.!])", r"\\\1", text)
 
 
-def send_telegram_message(chat_id, text, reply_markup=None):
-    """Send a text message via Telegram Bot API"""
+def send_telegram_message(chat_id, text, reply_markup=None, parse_mode=None):
+    from .. import settings  # чтобы взять токен
+    token = settings.TELEGRAM_BOT_TOKEN
+
+    # 1) Безопасный текст по умолчанию: HTML + экранирование
+    if parse_mode is None:
+        parse_mode = "HTML"
+    safe_text = html.escape(text or "")  # не даём упасть на пустом/None
+
     payload = {
         "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "Markdown",
-        "disable_web_page_preview": True,
+        "text": safe_text[:4096],   # лимит Telegram на текст
+        "parse_mode": parse_mode,
     }
     if reply_markup:
         payload["reply_markup"] = reply_markup
 
-    try:
-        response = requests.post(f"{BOT_URL}/sendMessage", json=payload, timeout=10)
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        logger.error(f"Error sending message to {chat_id}: {e}")
-        return None
+    url = TELEGRAM_API.format(token=token, method="sendMessage")
+    r = requests.post(url, json=payload, timeout=10)
+
+    # 2) Логируем тело ответа при ошибке (чтобы видеть "description")
+    if r.status_code != 200:
+        logger.error("Telegram error %s payload=%s response=%s", r.status_code, payload, r.text)
+    r.raise_for_status()
+    return r.json()
 
 
 def _edit_message(chat_id, message_id, text, reply_markup=None):

@@ -12,8 +12,8 @@ import os
 import requests
 
 # Read the bot token and domain from environment variables instead of hard‑coding.
-BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-DOMAIN = os.environ.get('DJANGO_DOMAIN', 'https://example.com')
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+DOMAIN = os.environ.get("DJANGO_DOMAIN", "https://example.com")
 
 if not BOT_TOKEN:
     raise EnvironmentError("TELEGRAM_BOT_TOKEN is not set in environment variables")

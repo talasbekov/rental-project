@@ -8,14 +8,16 @@ from typing import List, Dict, Optional
 logger = logging.getLogger(__name__)
 
 # WhatsApp Cloud API endpoint
-WHATSAPP_API_URL = f"https://graph.facebook.com/v18.0/{settings.WHATSAPP_PHONE_NUMBER_ID}"
+WHATSAPP_API_URL = (
+    f"https://graph.facebook.com/v18.0/{settings.WHATSAPP_PHONE_NUMBER_ID}"
+)
 WHATSAPP_TOKEN = settings.WHATSAPP_ACCESS_TOKEN
 
 
 def escape_markdown(text: str) -> str:
     """Экранирует символы для WhatsApp"""
     # WhatsApp использует другой формат markdown
-    return text.replace('*', '\\*').replace('_', '\\_')
+    return text.replace("*", "\\*").replace("_", "\\_")
 
 
 def send_whatsapp_message(phone_number: str, text: str, preview_url: bool = False):
@@ -23,7 +25,7 @@ def send_whatsapp_message(phone_number: str, text: str, preview_url: bool = Fals
     url = f"{WHATSAPP_API_URL}/messages"
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     payload = {
@@ -31,10 +33,7 @@ def send_whatsapp_message(phone_number: str, text: str, preview_url: bool = Fals
         "recipient_type": "individual",
         "to": phone_number,
         "type": "text",
-        "text": {
-            "preview_url": preview_url,
-            "body": text
-        }
+        "text": {"preview_url": preview_url, "body": text},
     }
 
     try:
@@ -47,24 +46,21 @@ def send_whatsapp_message(phone_number: str, text: str, preview_url: bool = Fals
 
 
 def send_whatsapp_button_message(
-        phone_number: str,
-        body_text: str,
-        buttons: List[Dict[str, str]],
-        header: Optional[str] = None,
-        footer: Optional[str] = None
+    phone_number: str,
+    body_text: str,
+    buttons: List[Dict[str, str]],
+    header: Optional[str] = None,
+    footer: Optional[str] = None,
 ):
     """Отправить сообщение с кнопками (interactive message)"""
     url = f"{WHATSAPP_API_URL}/messages"
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     # Формируем interactive message
-    interactive = {
-        "type": "button",
-        "body": {"text": body_text}
-    }
+    interactive = {"type": "button", "body": {"text": body_text}}
 
     if header:
         interactive["header"] = {"type": "text", "text": header}
@@ -79,8 +75,8 @@ def send_whatsapp_button_message(
                 "type": "reply",
                 "reply": {
                     "id": btn["id"],
-                    "title": btn["title"][:20]  # Максимум 20 символов
-                }
+                    "title": btn["title"][:20],  # Максимум 20 символов
+                },
             }
             for btn in buttons[:3]  # Берем только первые 3 кнопки
         ]
@@ -91,7 +87,7 @@ def send_whatsapp_button_message(
         "recipient_type": "individual",
         "to": phone_number,
         "type": "interactive",
-        "interactive": interactive
+        "interactive": interactive,
     }
 
     try:
@@ -104,18 +100,18 @@ def send_whatsapp_button_message(
 
 
 def send_whatsapp_list_message(
-        phone_number: str,
-        body_text: str,
-        button_text: str,
-        sections: List[Dict],
-        header: Optional[str] = None,
-        footer: Optional[str] = None
+    phone_number: str,
+    body_text: str,
+    button_text: str,
+    sections: List[Dict],
+    header: Optional[str] = None,
+    footer: Optional[str] = None,
 ):
     """Отправить сообщение со списком выбора (для больших меню)"""
     url = f"{WHATSAPP_API_URL}/messages"
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     interactive = {
@@ -123,8 +119,8 @@ def send_whatsapp_list_message(
         "body": {"text": body_text},
         "action": {
             "button": button_text[:20],  # Максимум 20 символов
-            "sections": sections
-        }
+            "sections": sections,
+        },
     }
 
     if header:
@@ -138,7 +134,7 @@ def send_whatsapp_list_message(
         "recipient_type": "individual",
         "to": phone_number,
         "type": "interactive",
-        "interactive": interactive
+        "interactive": interactive,
     }
 
     try:
@@ -151,15 +147,13 @@ def send_whatsapp_list_message(
 
 
 def send_whatsapp_image(
-        phone_number: str,
-        image_url: str,
-        caption: Optional[str] = None
+    phone_number: str, image_url: str, caption: Optional[str] = None
 ):
     """Отправить изображение через WhatsApp"""
     url = f"{WHATSAPP_API_URL}/messages"
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     image_data = {"link": image_url}
@@ -171,7 +165,7 @@ def send_whatsapp_image(
         "recipient_type": "individual",
         "to": phone_number,
         "type": "image",
-        "image": image_data
+        "image": image_data,
     }
 
     try:
@@ -184,9 +178,7 @@ def send_whatsapp_image(
 
 
 def send_whatsapp_media_group(
-        phone_number: str,
-        image_urls: List[str],
-        caption: Optional[str] = None
+    phone_number: str, image_urls: List[str], caption: Optional[str] = None
 ):
     """Отправить группу изображений (поочередно, т.к. WhatsApp не поддерживает группы)"""
     if not image_urls:
@@ -207,23 +199,20 @@ def send_whatsapp_media_group(
 
 
 def send_whatsapp_location(
-        phone_number: str,
-        latitude: float,
-        longitude: float,
-        name: Optional[str] = None,
-        address: Optional[str] = None
+    phone_number: str,
+    latitude: float,
+    longitude: float,
+    name: Optional[str] = None,
+    address: Optional[str] = None,
 ):
     """Отправить локацию через WhatsApp"""
     url = f"{WHATSAPP_API_URL}/messages"
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
-    location_data = {
-        "latitude": latitude,
-        "longitude": longitude
-    }
+    location_data = {"latitude": latitude, "longitude": longitude}
 
     if name:
         location_data["name"] = name
@@ -235,7 +224,7 @@ def send_whatsapp_location(
         "recipient_type": "individual",
         "to": phone_number,
         "type": "location",
-        "location": location_data
+        "location": location_data,
     }
 
     try:
@@ -248,16 +237,16 @@ def send_whatsapp_location(
 
 
 def send_whatsapp_document(
-        phone_number: str,
-        document_url: str,
-        filename: Optional[str] = None,
-        caption: Optional[str] = None
+    phone_number: str,
+    document_url: str,
+    filename: Optional[str] = None,
+    caption: Optional[str] = None,
 ):
     """Отправить документ через WhatsApp"""
     url = f"{WHATSAPP_API_URL}/messages"
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     document_data = {"link": document_url}
@@ -271,7 +260,7 @@ def send_whatsapp_document(
         "recipient_type": "individual",
         "to": phone_number,
         "type": "document",
-        "document": document_data
+        "document": document_data,
     }
 
     try:
@@ -288,13 +277,13 @@ def mark_message_as_read(message_id: str):
     url = f"{WHATSAPP_API_URL}/messages"
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     payload = {
         "messaging_product": "whatsapp",
         "status": "read",
-        "message_id": message_id
+        "message_id": message_id,
     }
 
     try:
@@ -309,9 +298,7 @@ def mark_message_as_read(message_id: str):
 def get_media_url(media_id: str) -> Optional[str]:
     """Получить URL медиафайла по его ID"""
     url = f"https://graph.facebook.com/v18.0/{media_id}"
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}"
-    }
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
 
     try:
         response = requests.get(url, headers=headers, timeout=10)
@@ -325,9 +312,7 @@ def get_media_url(media_id: str) -> Optional[str]:
 
 def download_media(media_url: str, media_id: str) -> Optional[bytes]:
     """Скачать медиафайл с WhatsApp серверов"""
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}"
-    }
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
 
     try:
         response = requests.get(media_url, headers=headers, timeout=30)

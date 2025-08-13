@@ -39,14 +39,11 @@ def send_booking_reminder(booking_id):
         buttons = [
             {"id": f"booking_details_{booking_id}", "title": "📋 Детали"},
             {"id": "contact_owner", "title": "📞 Связаться"},
-            {"id": "main_menu", "title": "🏠 Меню"}
+            {"id": "main_menu", "title": "🏠 Меню"},
         ]
 
         send_whatsapp_button_message(
-            profile.whatsapp_phone,
-            text,
-            buttons,
-            header="Напоминание"
+            profile.whatsapp_phone, text, buttons, header="Напоминание"
         )
 
         logger.info(f"Sent booking reminder for {booking_id}")
@@ -78,14 +75,11 @@ def send_review_request(booking_id):
 
         buttons = [
             {"id": f"leave_review_{booking_id}", "title": "✍️ Оставить отзыв"},
-            {"id": "skip_review", "title": "⏭️ Пропустить"}
+            {"id": "skip_review", "title": "⏭️ Пропустить"},
         ]
 
         send_whatsapp_button_message(
-            profile.whatsapp_phone,
-            text,
-            buttons,
-            header="Оцените проживание"
+            profile.whatsapp_phone, text, buttons, header="Оцените проживание"
         )
 
     except Exception as e:
@@ -96,9 +90,9 @@ def send_review_request(booking_id):
 def notify_owner_new_booking(booking_id):
     """Уведомить владельца о новом бронировании"""
     try:
-        booking = Booking.objects.select_related(
-            'property__owner__profile'
-        ).get(id=booking_id)
+        booking = Booking.objects.select_related("property__owner__profile").get(
+            id=booking_id
+        )
 
         owner_profile = booking.property.owner.profile
         if not owner_profile.whatsapp_phone:
@@ -113,7 +107,7 @@ def notify_owner_new_booking(booking_id):
             f"💰 Сумма: {booking.total_price:,.0f} ₸\n"
         )
 
-        if hasattr(booking.user, 'profile') and booking.user.profile.phone_number:
+        if hasattr(booking.user, "profile") and booking.user.profile.phone_number:
             text += f"📞 Телефон: {booking.user.profile.phone_number}"
 
         send_whatsapp_message(owner_profile.whatsapp_phone, text)
@@ -133,6 +127,7 @@ def send_payment_confirmation(booking_id):
             return
 
         from .handlers import send_booking_confirmation
+
         send_booking_confirmation(profile.whatsapp_phone, booking)
 
     except Exception as e:
@@ -145,12 +140,11 @@ def check_expired_bookings():
     expired_time = datetime.now() - timedelta(minutes=15)
 
     expired_bookings = Booking.objects.filter(
-        status='pending_payment',
-        created_at__lt=expired_time
+        status="pending_payment", created_at__lt=expired_time
     )
 
     for booking in expired_bookings:
-        booking.status = 'cancelled'
+        booking.status = "cancelled"
         booking.save()
 
         # Уведомляем пользователя
@@ -159,10 +153,11 @@ def check_expired_bookings():
             send_whatsapp_message(
                 profile.whatsapp_phone,
                 f"❌ Бронирование #{booking.id} отменено из-за неоплаты.\n"
-                f"Квартира снова доступна для бронирования."
+                f"Квартира снова доступна для бронирования.",
             )
 
         logger.info(f"Cancelled expired booking {booking.id}")
+
 
 # Настройка периодических задач в settings.py:
 # from celery.schedules import crontab

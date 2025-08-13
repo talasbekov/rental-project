@@ -50,7 +50,7 @@ def show_favorites(chat_id: int) -> None:
         send_telegram_message(chat_id, "Не найден профиль пользователя.")
         return
 
-    favorites_qs = Favorite.objects.filter(user=profile.user).select_related('property')
+    favorites_qs = Favorite.objects.filter(user=profile.user).select_related("property")
     if not favorites_qs.exists():
         send_telegram_message(chat_id, "⭐️ Ваш список избранного пуст.")
         return

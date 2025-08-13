@@ -10,13 +10,13 @@ class CSRFExemptMiddleware(MiddlewareMixin):
 
     def process_request(self, request):
         # Список URL паттернов, для которых нужно отключить CSRF
-        exempt_urls = getattr(settings, 'CSRF_EXEMPT_URLS', [])
+        exempt_urls = getattr(settings, "CSRF_EXEMPT_URLS", [])
 
-        path = request.path_info.lstrip('/')
+        path = request.path_info.lstrip("/")
 
         for pattern in exempt_urls:
             if re.match(pattern, path):
-                setattr(request, '_dont_enforce_csrf_checks', True)
+                setattr(request, "_dont_enforce_csrf_checks", True)
                 break
 
         return None

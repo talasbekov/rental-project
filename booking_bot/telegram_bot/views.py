@@ -4,15 +4,24 @@ import json
 import logging
 import re
 
-from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse, HttpResponseForbidden
+from django.http import (
+    JsonResponse,
+    HttpResponseBadRequest,
+    HttpResponse,
+    HttpResponseForbidden,
+)
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 
 from booking_bot.bookings.models import Booking
 from booking_bot.telegram_bot.handlers import (
-    start_command_handler, help_command_handler,
-    show_user_bookings, message_handler, date_input_handler,
+    start_command_handler,
+    help_command_handler,
+    show_user_bookings,
+    message_handler,
+    date_input_handler,
 )
+
 # Добавляем импорт для обработки фото
 from booking_bot.telegram_bot.admin_handlers import handle_photo_upload
 from booking_bot.telegram_bot.utils import send_telegram_message
@@ -22,7 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 def verify_webhook_signature(request):
-    return request.headers.get('X-Telegram-Bot-Api-Secret-Token') == settings.WEBHOOK_SECRET
+    return (
+        request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+        == settings.WEBHOOK_SECRET
+    )
 
 
 @csrf_exempt
@@ -30,9 +42,9 @@ def telegram_webhook(request):
     if not verify_webhook_signature(request):
         return HttpResponseForbidden()
     """Handle incoming updates from Telegram (ReplyKeyboardMarkup only)."""
-    if request.method == 'GET':
+    if request.method == "GET":
         return HttpResponse("Telegram webhook is running")
-    if request.method != 'POST':
+    if request.method != "POST":
         return HttpResponseBadRequest("Method not allowed")
 
     try:
@@ -82,16 +94,21 @@ def telegram_webhook(request):
 
                     def download(self, custom_path):
                         import requests
+
                         bot_token = settings.TELEGRAM_BOT_TOKEN
                         # Получаем путь к файлу
-                        get_file_url = f"https://api.telegram.org/bot{bot_token}/getFile"
-                        response = requests.get(get_file_url, params={"file_id": file_id})
+                        get_file_url = (
+                            f"https://api.telegram.org/bot{bot_token}/getFile"
+                        )
+                        response = requests.get(
+                            get_file_url, params={"file_id": file_id}
+                        )
                         if response.status_code == 200:
                             file_path = response.json()["result"]["file_path"]
                             download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
                             # Скачиваем файл
                             file_response = requests.get(download_url)
-                            with open(custom_path, 'wb') as f:
+                            with open(custom_path, "wb") as f:
                                 f.write(file_response.content)
 
                 return MockFile(file_id)
@@ -103,6 +120,7 @@ def telegram_webhook(request):
                 Сохраняет файл во /tmp и пишет путь в логи, чтобы dev/test не падал.
                 """
                 import io, os, time, logging
+
                 log = logging.getLogger(__name__)
 
                 # распаковка аргументов
@@ -123,7 +141,9 @@ def telegram_webhook(request):
                             filename = getattr(document, "name", None)
                     elif isinstance(document, (bytes, bytearray)):  # сырые байты
                         data = bytes(document)
-                    elif isinstance(document, str) and os.path.exists(document):  # путь к файлу
+                    elif isinstance(document, str) and os.path.exists(
+                        document
+                    ):  # путь к файлу
                         saved_path = document
                         if not filename:
                             filename = os.path.basename(document)
@@ -135,12 +155,20 @@ def telegram_webhook(request):
                         with open(saved_path, "wb") as f:
                             f.write(data)
 
-                    log.info("MockBot.send_document(chat_id=%s, filename=%s, caption=%r, saved_path=%s)",
-                             chat_id, filename, caption, saved_path)
+                    log.info(
+                        "MockBot.send_document(chat_id=%s, filename=%s, caption=%r, saved_path=%s)",
+                        chat_id,
+                        filename,
+                        caption,
+                        saved_path,
+                    )
                 except Exception as e:
                     log.warning("MockBot.send_document error: %s", e)
 
-                return {"ok": True, "result": {"document": {"file_name": filename, "path": saved_path}}}
+                return {
+                    "ok": True,
+                    "result": {"document": {"file_name": filename, "path": saved_path}},
+                }
 
         update_obj = MockUpdate(message)
         context_obj = MockContext()
@@ -161,14 +189,16 @@ def telegram_webhook(request):
             elif text.startswith("/menu"):
                 start_command_handler(chat_id, first_name, last_name)
             elif text.startswith("/bookings"):
-                show_user_bookings(chat_id, 'active')
+                show_user_bookings(chat_id, "active")
             elif text.startswith("/history"):
-                show_user_bookings(chat_id, 'completed')
+                show_user_bookings(chat_id, "completed")
 
             # Затем — быстрый ввод дат: формат "DD.MM.YYYY" или кнопки "Сегодня", "Завтра"
-            elif re.match(r'^\d{2}\.\d{2}\.\d{4}$', text) \
-                    or text.startswith("Сегодня") \
-                    or text.startswith("Завтра"):
+            elif (
+                re.match(r"^\d{2}\.\d{2}\.\d{4}$", text)
+                or text.startswith("Сегодня")
+                or text.startswith("Завтра")
+            ):
                 date_input_handler(chat_id, text)
 
             # Всё остальное — в message_handler (нажатия на Reply-кнопки и пр.)
@@ -194,9 +224,9 @@ def show_booking_details(chat_id: int, booking_id: int) -> None:
         return
 
     try:
-        booking = Booking.objects.select_related('property', 'property__owner__profile').get(
-            id=booking_id, user=profile.user
-        )
+        booking = Booking.objects.select_related(
+            "property", "property__owner__profile"
+        ).get(id=booking_id, user=profile.user)
     except Booking.DoesNotExist:
         send_telegram_message(chat_id, "Бронирование не найдено.")
         return
@@ -216,25 +246,25 @@ def show_booking_details(chat_id: int, booking_id: int) -> None:
         lines.append(f"\n📝 *Инструкции:*\n{property_obj.entry_instructions}")
 
     # Коды доступа — только если оплата подтверждена
-    if booking.status in ('confirmed', 'completed'):
+    if booking.status in ("confirmed", "completed"):
         if property_obj.digital_lock_code:
             lines.append(f"\n🔐 Код замка: `{property_obj.digital_lock_code}`")
         elif property_obj.key_safe_code:
             lines.append(f"\n🔑 Код сейфа: `{property_obj.key_safe_code}`")
     else:
-        lines.append(
-            "\n🔒 Коды доступа станут доступны после подтверждения оплаты."
-        )
+        lines.append("\n🔒 Коды доступа станут доступны после подтверждения оплаты.")
 
     # Контакт владельца
-    owner_phone = getattr(property_obj.owner.profile, 'phone_number', None)
+    owner_phone = getattr(property_obj.owner.profile, "phone_number", None)
     if owner_phone:
         lines.append(f"\n📞 Контакт: {owner_phone}")
 
     text = "\n".join(lines)
     # Кнопка для возврата в меню текущих броней
     keyboard = [[{"text": "◀️ Назад", "callback_data": "main_current"}]]
-    send_telegram_message(chat_id, text, {"inline_keyboard": keyboard}, parse_mode="Markdown")
+    send_telegram_message(
+        chat_id, text, {"inline_keyboard": keyboard}, parse_mode="Markdown"
+    )
 
 
 def handle_photo_message(chat_id, message):
@@ -246,7 +276,7 @@ def handle_photo_message(chat_id, message):
         profile = UserProfile.objects.get(telegram_chat_id=str(chat_id))
         state_data = profile.telegram_state or {}
 
-        if state_data.get('state') == 'awaiting_review_photos':
+        if state_data.get("state") == "awaiting_review_photos":
             # Handle review photo upload
             photos = message.get("photo", [])
             if photos:
@@ -255,15 +285,24 @@ def handle_photo_message(chat_id, message):
                 file_id = photo.get("file_id")
 
                 # Store file_id in state
-                review_photos = state_data.get('review_photos', [])
+                review_photos = state_data.get("review_photos", [])
                 review_photos.append(file_id)
-                state_data['review_photos'] = review_photos
+                state_data["review_photos"] = review_photos
 
                 if len(review_photos) < 3:
                     send_telegram_message(
                         chat_id,
                         f"Фото {len(review_photos)}/3 загружено. Можете добавить еще или нажать 'Готово'.",
-                        {"inline_keyboard": [[{"text": "✅ Готово", "callback_data": "submit_review_with_photos"}]]}
+                        {
+                            "inline_keyboard": [
+                                [
+                                    {
+                                        "text": "✅ Готово",
+                                        "callback_data": "submit_review_with_photos",
+                                    }
+                                ]
+                            ]
+                        },
                     )
                 else:
                     # Auto-submit after 3 photos
@@ -272,7 +311,9 @@ def handle_photo_message(chat_id, message):
                 profile.telegram_state = state_data
                 profile.save()
         else:
-            send_telegram_message(chat_id, "Используйте команду /start для начала работы с ботом.")
+            send_telegram_message(
+                chat_id, "Используйте команду /start для начала работы с ботом."
+            )
 
     except UserProfile.DoesNotExist:
         send_telegram_message(chat_id, "Пользователь не найден. Используйте /start")
@@ -287,30 +328,24 @@ def submit_review_with_photos(chat_id, profile):
     from booking_bot.telegram_bot.utils import send_telegram_message, get_file_url
 
     state_data = profile.telegram_state or {}
-    booking_id = state_data.get('review_booking_id')
-    rating = state_data.get('review_rating')
-    text = state_data.get('review_text', '')
-    photo_file_ids = state_data.get('review_photos', [])
+    booking_id = state_data.get("review_booking_id")
+    rating = state_data.get("review_rating")
+    text = state_data.get("review_text", "")
+    photo_file_ids = state_data.get("review_photos", [])
 
     try:
         booking = Booking.objects.get(id=booking_id, user=profile.user)
 
         # Create review
         review = Review.objects.create(
-            property=booking.property,
-            user=profile.user,
-            rating=rating,
-            text=text
+            property=booking.property, user=profile.user, rating=rating, text=text
         )
 
         # Add photos
         for file_id in photo_file_ids:
             file_url = get_file_url(file_id)
             if file_url:
-                ReviewPhoto.objects.create(
-                    review=review,
-                    image_url=file_url
-                )
+                ReviewPhoto.objects.create(review=review, image_url=file_url)
 
         send_telegram_message(chat_id, "Спасибо за ваш отзыв с фотографиями! 📸👍")
 

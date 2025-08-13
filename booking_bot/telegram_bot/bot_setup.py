@@ -1,12 +1,16 @@
 import requests
 import logging
 from django.conf import settings
-
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 from booking_bot.listings import filters
 from booking_bot.telegram_bot.admin_handlers import show_admin_panel
 from booking_bot.telegram_bot.constants import _get_profile, start_command_handler
-from booking_bot.telegram_bot.handlers import handle_cancel_booking_start, help_command_handler, \
-    show_user_bookings_with_cancel, prompt_city
+from booking_bot.telegram_bot.handlers import (
+    handle_cancel_booking_start,
+    help_command_handler,
+    show_user_bookings_with_cancel,
+    prompt_city,
+)
 from booking_bot.telegram_bot.main import telegram_message_handler
 from booking_bot.telegram_bot.utils import send_telegram_message
 
@@ -38,12 +42,7 @@ def setup_bot_menu():
 
     # Установка кнопки меню
     menu_button_url = f"https://api.telegram.org/bot{bot_token}/setChatMenuButton"
-    menu_button_data = {
-        "menu_button": {
-            "type": "commands",
-            "text": "Меню"
-        }
-    }
+    menu_button_data = {"menu_button": {"type": "commands", "text": "Меню"}}
 
     response = requests.post(menu_button_url, json=menu_button_data)
 
@@ -58,62 +57,89 @@ def setup_bot_menu():
 # Добавить в booking_bot/telegram_bot/main.py
 def setup_application():
     global application
-    if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_BOT_TOKEN.startswith('PLACEHOLDER'):
+    if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_BOT_TOKEN.startswith(
+        "PLACEHOLDER"
+    ):
         logger.warning("TELEGRAM_BOT_TOKEN not configured; bot will not start.")
         return
 
-    builder = Application.builder().token(settings.TELEGRAM_BOT_TOKEN)
+    builder = ApplicationBuilder().token(settings.TELEGRAM_BOT_TOKEN)
     application = builder.build()
 
     # Обработчики команд
-    application.add_handler(CommandHandler('start', lambda update, ctx: start_command_handler(
-        update.effective_chat.id,
-        update.effective_user.first_name,
-        update.effective_user.last_name
-    )))
-    application.add_handler(CommandHandler('search', lambda update, ctx: prompt_city(
-        update.effective_chat.id,
-        _get_profile(update.effective_chat.id)
-    )))
-    application.add_handler(CommandHandler('bookings', lambda update, ctx: show_user_bookings_with_cancel(
-        update.effective_chat.id, 'completed'
-    )))
-    application.add_handler(CommandHandler('status', lambda update, ctx: show_user_bookings_with_cancel(
-        update.effective_chat.id, 'active'
-    )))
-    application.add_handler(CommandHandler('help', lambda update, ctx: help_command_handler(
-        update.effective_chat.id
-    )))
-    application.add_handler(CommandHandler('admin', lambda update, ctx: handle_admin_command(
-        update.effective_chat.id
-    )))
+    application.add_handler(
+        CommandHandler(
+            "start",
+            lambda update, ctx: start_command_handler(
+                update.effective_chat.id,
+                update.effective_user.first_name,
+                update.effective_user.last_name,
+            ),
+        )
+    )
+    application.add_handler(
+        CommandHandler(
+            "search",
+            lambda update, ctx: prompt_city(
+                update.effective_chat.id, _get_profile(update.effective_chat.id)
+            ),
+        )
+    )
+    application.add_handler(
+        CommandHandler(
+            "bookings",
+            lambda update, ctx: show_user_bookings_with_cancel(
+                update.effective_chat.id, "completed"
+            ),
+        )
+    )
+    application.add_handler(
+        CommandHandler(
+            "status",
+            lambda update, ctx: show_user_bookings_with_cancel(
+                update.effective_chat.id, "active"
+            ),
+        )
+    )
+    application.add_handler(
+        CommandHandler(
+            "help", lambda update, ctx: help_command_handler(update.effective_chat.id)
+        )
+    )
+    application.add_handler(
+        CommandHandler(
+            "admin", lambda update, ctx: handle_admin_command(update.effective_chat.id)
+        )
+    )
 
     # Обработчик команд отмены через /cancel_ID
-    application.add_handler(MessageHandler(
-        filters.Regex(r'^/cancel_(\d+)$'),
-        lambda update, ctx: handle_cancel_command(update, ctx)
-    ))
+    application.add_handler(
+        MessageHandler(
+            filters.Regex(r"^/cancel_(\d+)$"),
+            lambda update, ctx: handle_cancel_command(update, ctx),
+        )
+    )
 
     # Основной обработчик сообщений
-    application.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, telegram_message_handler))
+    application.add_handler(
+        MessageHandler(filters.TEXT | filters.PHOTO, telegram_message_handler)
+    )
 
     # Настройка меню при запуске
     async def setup_bot_commands(app):
-        await app.bot.set_my_commands([
-            ('start', '🏠 Главное меню'),
-            ('search', '🔍 Поиск квартир'),
-            ('bookings', '📋 Мои бронирования'),
-            ('status', '📊 Статус текущей брони'),
-            ('help', '❓ Помощь'),
-            ('admin', '🛠 Админ панель'),
-        ])
+        await app.bot.set_my_commands(
+            [
+                ("start", "🏠 Главное меню"),
+                ("search", "🔍 Поиск квартир"),
+                ("bookings", "📋 Мои бронирования"),
+                ("status", "📊 Статус текущей брони"),
+                ("help", "❓ Помощь"),
+                ("admin", "🛠 Админ панель"),
+            ]
+        )
 
         # Установка кнопки меню
-        await app.bot.set_chat_menu_button(
-            menu_button={
-                "type": "commands"
-            }
-        )
+        await app.bot.set_chat_menu_button(menu_button={"type": "commands"})
         logger.info("Bot commands and menu button set")
 
     application.job_queue.run_once(lambda ctx: setup_bot_commands(application), 0)
@@ -125,19 +151,19 @@ def setup_application():
 def handle_admin_command(chat_id):
     """Обработчик команды /admin"""
     profile = _get_profile(chat_id)
-    if profile.role in ('admin', 'super_admin'):
+    if profile.role in ("admin", "super_admin"):
         show_admin_panel(chat_id)
     else:
         send_telegram_message(
-            chat_id,
-            "❌ У вас нет доступа к административной панели."
+            chat_id, "❌ У вас нет доступа к административной панели."
         )
 
 
 def handle_cancel_command(update, context):
     """Обработчик команды /cancel_ID"""
     import re
-    match = re.match(r'^/cancel_(\d+)$', update.message.text)
+
+    match = re.match(r"^/cancel_(\d+)$", update.message.text)
     if match:
         booking_id = int(match.group(1))
         handle_cancel_booking_start(update.effective_chat.id, booking_id)

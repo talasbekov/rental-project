@@ -20,36 +20,28 @@ def update_calendar_statuses():
     today = date.today()
 
     # Обновляем статусы для начавшихся бронирований
-    starting_bookings = Booking.objects.filter(
-        start_date=today,
-        status='confirmed'
-    )
+    starting_bookings = Booking.objects.filter(start_date=today, status="confirmed")
 
     for booking in starting_bookings:
         CalendarDay.objects.filter(
             property=booking.property,
             date__gte=booking.start_date,
-            date__lt=booking.end_date
-        ).update(status='occupied')
+            date__lt=booking.end_date,
+        ).update(status="occupied")
 
         logger.info(f"Updated calendar status to 'occupied' for booking {booking.id}")
 
     # Освобождаем даты для завершенных бронирований
-    ending_bookings = Booking.objects.filter(
-        end_date=today,
-        status='confirmed'
-    )
+    ending_bookings = Booking.objects.filter(end_date=today, status="confirmed")
 
     for booking in ending_bookings:
         # Добавляем день на уборку
         PropertyCalendarManager.add_cleaning_buffer(
-            booking.property,
-            today,
-            hours=4  # Можно сделать настраиваемым
+            booking.property, today, hours=4  # Можно сделать настраиваемым
         )
 
         # Меняем статус бронирования
-        booking.status = 'completed'
+        booking.status = "completed"
         booking.save()
 
         logger.info(f"Booking {booking.id} completed, added cleaning buffer")
@@ -60,7 +52,7 @@ def extend_calendar_forward():
     """Расширение календаря на будущее (запускается еженедельно)"""
     from booking_bot.listings.models import Property, PropertyCalendarManager
 
-    properties = Property.objects.filter(status='Свободна')
+    properties = Property.objects.filter(status="Свободна")
 
     for property_obj in properties:
         PropertyCalendarManager.initialize_calendar(property_obj, days_ahead=365)
@@ -122,8 +114,7 @@ def cleanup_orphaned_photos():
 
     # Находим фотографии без связанных объектов недвижимости
     orphaned = PropertyPhoto.objects.filter(
-        property__isnull=True,
-        created_at__lt=datetime.now() - timedelta(days=1)
+        property__isnull=True, created_at__lt=datetime.now() - timedelta(days=1)
     )
 
     for photo in orphaned:
@@ -140,9 +131,9 @@ def generate_photo_variants(photo_id):
     from booking_bot.listings.models import PropertyPhoto
 
     sizes = {
-        'mobile': (480, 360),
-        'tablet': (768, 576),
-        'desktop': (1920, 1080),
+        "mobile": (480, 360),
+        "tablet": (768, 576),
+        "desktop": (1920, 1080),
     }
 
     try:
@@ -161,17 +152,17 @@ def generate_photo_variants(photo_id):
 
             # Сохраняем
             output = BytesIO()
-            variant_img.save(output, format='JPEG', quality=85, optimize=True)
+            variant_img.save(output, format="JPEG", quality=85, optimize=True)
             output.seek(0)
 
             # Загружаем в S3
-            variant_name = photo.image.name.replace('.', f'_{variant}.')
+            variant_name = photo.image.name.replace(".", f"_{variant}.")
             storage.s3_client.put_object(
                 Bucket=storage.bucket_name,
                 Key=variant_name,
                 Body=output.getvalue(),
-                ContentType='image/jpeg',
-                CacheControl='max-age=31536000'
+                ContentType="image/jpeg",
+                CacheControl="max-age=31536000",
             )
 
         logger.info(f"Generated variants for photo {photo_id}")

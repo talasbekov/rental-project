@@ -14,7 +14,7 @@ from .utils import send_telegram_message
 
 def show_admins_list(chat_id: int) -> None:
     """Вывести список всех администраторов."""
-    admins = UserProfile.objects.filter(role='admin').select_related('user')
+    admins = UserProfile.objects.filter(role="admin").select_related("user")
     if not admins:
         send_telegram_message(chat_id, "Список администраторов пуст.")
         return
@@ -35,9 +35,11 @@ def add_admin(chat_id: int, target_user_id: int) -> None:
         send_telegram_message(chat_id, "Пользователь не найден.")
         return
 
-    profile.role = 'admin'
+    profile.role = "admin"
     profile.save()
-    send_telegram_message(chat_id, f"Пользователь {user.username} назначен администратором.")
+    send_telegram_message(
+        chat_id, f"Пользователь {user.username} назначен администратором."
+    )
 
 
 def remove_admin(chat_id: int, target_user_id: int) -> None:
@@ -49,19 +51,25 @@ def remove_admin(chat_id: int, target_user_id: int) -> None:
         send_telegram_message(chat_id, "Пользователь не найден.")
         return
 
-    if profile.role != 'admin':
-        send_telegram_message(chat_id, "Указанный пользователь не является администратором.")
+    if profile.role != "admin":
+        send_telegram_message(
+            chat_id, "Указанный пользователь не является администратором."
+        )
         return
-    profile.role = 'user'
+    profile.role = "user"
     profile.save()
-    send_telegram_message(chat_id, f"Пользователь {user.username} больше не администратор.")
+    send_telegram_message(
+        chat_id, f"Пользователь {user.username} больше не администратор."
+    )
 
 
 def show_ko_factor(chat_id: int) -> None:
     """Показать KO‑фактор (долю отмен) для всех гостей."""
-    guests = UserProfile.objects.filter(role='user').exclude(ko_factor=0)
+    guests = UserProfile.objects.filter(role="user").exclude(ko_factor=0)
     if not guests:
-        send_telegram_message(chat_id, "KO‑фактор ещё не рассчитан ни для одного гостя.")
+        send_telegram_message(
+            chat_id, "KO‑фактор ещё не рассчитан ни для одного гостя."
+        )
         return
     lines = ["📊 *KO‑фактор гостей:*\n"]
     for prof in guests:

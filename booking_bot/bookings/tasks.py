@@ -20,26 +20,29 @@ def cancel_expired_booking(booking_id):
         booking = Booking.objects.get(id=booking_id)
 
         # Проверяем, что бронирование все еще в статусе ожидания оплаты
-        if booking.status == 'pending_payment':
+        if booking.status == "pending_payment":
             if booking.expires_at and datetime.now() >= booking.expires_at:
                 booking.cancel(
                     user=None,  # Системная отмена
-                    reason='payment_issues',
-                    reason_text='Истекло время оплаты'
+                    reason="payment_issues",
+                    reason_text="Истекло время оплаты",
                 )
 
-                logger.info(f"Booking {booking_id} auto-cancelled due to payment timeout")
+                logger.info(
+                    f"Booking {booking_id} auto-cancelled due to payment timeout"
+                )
 
                 # Отправляем уведомление пользователю
                 from booking_bot.notifications.service import NotificationService
+
                 NotificationService.schedule(
-                    event='booking_cancelled',
+                    event="booking_cancelled",
                     user=booking.user,
                     context={
-                        'booking': booking,
-                        'property': booking.property,
-                        'reason': 'Истекло время оплаты'
-                    }
+                        "booking": booking,
+                        "property": booking.property,
+                        "reason": "Истекло время оплаты",
+                    },
                 )
 
     except Booking.DoesNotExist:
@@ -54,14 +57,15 @@ def check_all_expired_bookings():
     from booking_bot.bookings.models import Booking
 
     expired_bookings = Booking.objects.filter(
-        status='pending_payment',
-        expires_at__lt=datetime.now()
+        status="pending_payment", expires_at__lt=datetime.now()
     )
 
     for booking in expired_bookings:
         cancel_expired_booking.delay(booking.id)
 
-    logger.info(f"Found and scheduled cancellation for {expired_bookings.count()} expired bookings")
+    logger.info(
+        f"Found and scheduled cancellation for {expired_bookings.count()} expired bookings"
+    )
 
 
 @shared_task
@@ -73,26 +77,20 @@ def update_booking_statuses():
     today = date.today()
 
     # Завершаем бронирования, где выезд был вчера
-    completed_bookings = Booking.objects.filter(
-        status='confirmed',
-        end_date__lt=today
-    )
+    completed_bookings = Booking.objects.filter(status="confirmed", end_date__lt=today)
 
     for booking in completed_bookings:
-        booking.status = 'completed'
+        booking.status = "completed"
         booking.save()
 
         # Добавляем время на уборку
         PropertyCalendarManager.add_cleaning_buffer(
-            booking.property,
-            booking.end_date,
-            hours=4
+            booking.property, booking.end_date, hours=4
         )
 
         # Запланируем запрос отзыва на завтра
         send_review_request.apply_async(
-            args=[booking.id],
-            eta=datetime.now() + timedelta(days=1)
+            args=[booking.id], eta=datetime.now() + timedelta(days=1)
         )
 
         logger.info(f"Booking {booking.id} marked as completed")
@@ -118,8 +116,12 @@ def send_review_request(booking_id):
 
         # Формируем кнопки для оценки
         keyboard = [
-            [InlineKeyboardButton(f"⭐ {i}", callback_data=f"review_{booking_id}_{i}")
-             for i in range(1, 6)]
+            [
+                InlineKeyboardButton(
+                    f"⭐ {i}", callback_data=f"review_{booking_id}_{i}"
+                )
+                for i in range(1, 6)
+            ]
         ]
         markup = InlineKeyboardMarkup(keyboard)
 
@@ -129,11 +131,11 @@ def send_review_request(booking_id):
         )
 
         # Отправляем через Telegram
-        if hasattr(booking.user, 'profile') and booking.user.profile.telegram_chat_id:
+        if hasattr(booking.user, "profile") and booking.user.profile.telegram_chat_id:
             send_telegram_message(
                 booking.user.profile.telegram_chat_id,
                 text,
-                reply_markup=markup.to_dict()
+                reply_markup=markup.to_dict(),
             )
 
         logger.info(f"Review request sent for booking {booking_id}")
@@ -152,23 +154,29 @@ def send_extend_reminder():
     two_days_ahead = date.today() + timedelta(days=2)
 
     bookings = Booking.objects.filter(
-        end_date=two_days_ahead,
-        status='confirmed'
-    ).select_related('property', 'user__profile')
+        end_date=two_days_ahead, status="confirmed"
+    ).select_related("property", "user__profile")
 
     for booking in bookings:
         # Проверяем доступность для продления
         check_date = booking.end_date + timedelta(days=1)
-        conflicts = Booking.objects.filter(
-            property=booking.property,
-            status__in=['confirmed', 'pending_payment'],
-            start_date__lte=check_date,
-            end_date__gt=check_date
-        ).exclude(id=booking.id).exists()
+        conflicts = (
+            Booking.objects.filter(
+                property=booking.property,
+                status__in=["confirmed", "pending_payment"],
+                start_date__lte=check_date,
+                end_date__gt=check_date,
+            )
+            .exclude(id=booking.id)
+            .exists()
+        )
 
         if not conflicts:
             # Можно продлить
-            if hasattr(booking.user, 'profile') and booking.user.profile.telegram_chat_id:
+            if (
+                hasattr(booking.user, "profile")
+                and booking.user.profile.telegram_chat_id
+            ):
                 text = (
                     f"📅 *Напоминание о выезде*\n\n"
                     f"Через 2 дня заканчивается ваше проживание в:\n"
@@ -180,13 +188,15 @@ def send_extend_reminder():
 
                 keyboard = [
                     [KeyboardButton(f"/extend_{booking.id}")],
-                    [KeyboardButton("🧭 Главное меню")]
+                    [KeyboardButton("🧭 Главное меню")],
                 ]
 
                 send_telegram_message(
                     booking.user.profile.telegram_chat_id,
                     text,
-                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+                    reply_markup=ReplyKeyboardMarkup(
+                        keyboard, resize_keyboard=True
+                    ).to_dict(),
                 )
 
                 logger.info(f"Extend reminder sent for booking {booking.id}")
@@ -204,7 +214,7 @@ def check_low_demand_properties():
     start_date = date.today() - timedelta(days=30)
     end_date = date.today()
 
-    properties = Property.objects.filter(status='Свободна')
+    properties = Property.objects.filter(status="Свободна")
 
     for property_obj in properties:
         # Проверяем загрузку
@@ -218,13 +228,13 @@ def check_low_demand_properties():
         if occupancy < 30:  # Менее 30% загрузки
             # Уведомляем владельца
             NotificationService.schedule(
-                event='low_occupancy',
+                event="low_occupancy",
                 user=property_obj.owner,
                 context={
-                    'property': property_obj,
-                    'occupancy_rate': occupancy,
-                    'recommendation': 'Рекомендуем обновить фотографии или снизить цену'
-                }
+                    "property": property_obj,
+                    "occupancy_rate": occupancy,
+                    "recommendation": "Рекомендуем обновить фотографии или снизить цену",
+                },
             )
 
             logger.info(f"Low demand alert sent for property {property_obj.id}")
@@ -248,15 +258,14 @@ def analyze_guest_ko_factor():
     for user in users_with_bookings:
         # Подсчитываем статистику
         total_bookings = Booking.objects.filter(
-            user=user,
-            created_at__gte=six_months_ago
+            user=user, created_at__gte=six_months_ago
         ).count()
 
         cancelled_bookings = Booking.objects.filter(
             user=user,
             created_at__gte=six_months_ago,
-            status='cancelled',
-            cancelled_by=user  # Отменено самим пользователем
+            status="cancelled",
+            cancelled_by=user,  # Отменено самим пользователем
         ).count()
 
         if total_bookings >= 3:  # Анализируем только если было минимум 3 бронирования
@@ -266,31 +275,33 @@ def analyze_guest_ko_factor():
             # Обновляем профиль пользователя
             profile, _ = UserProfile.objects.get_or_create(user=user)
             profile.telegram_state = profile.telegram_state or {}
-            profile.telegram_state['ko_factor'] = ko_factor
-            profile.telegram_state['requires_prepayment'] = ko_factor > 50
+            profile.telegram_state["ko_factor"] = ko_factor
+            profile.telegram_state["requires_prepayment"] = ko_factor > 50
             profile.save()
 
             # Уведомляем пользователя о требовании предоплаты
             if ko_factor > 50 and profile.telegram_chat_id:
                 from booking_bot.telegram_bot.utils import send_telegram_message
+
                 send_telegram_message(
                     profile.telegram_chat_id,
                     f"⚠️ Внимание! Из-за частых отмен ({ko_factor:.0f}%) "
-                    f"для будущих бронирований потребуется 100% предоплата."
+                    f"для будущих бронирований потребуется 100% предоплата.",
                 )
 
             if ko_factor > 50:
                 # Уведомляем администраторов
                 from booking_bot.notifications.service import NotificationService
+
                 NotificationService.schedule(
-                    event='high_ko_factor',
+                    event="high_ko_factor",
                     user=None,  # Отправляем всем админам
                     context={
-                        'guest_user': user,
-                        'ko_factor': ko_factor,
-                        'total_bookings': total_bookings,
-                        'cancelled_bookings': cancelled_bookings
-                    }
+                        "guest_user": user,
+                        "ko_factor": ko_factor,
+                        "total_bookings": total_bookings,
+                        "cancelled_bookings": cancelled_bookings,
+                    },
                 )
 
                 logger.warning(f"High KO-factor {ko_factor}% for user {user.username}")
@@ -307,7 +318,13 @@ def generate_monthly_report():
     from django.db.models import Sum, Count, Avg
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.platypus import (
+        SimpleDocTemplate,
+        Table,
+        TableStyle,
+        Paragraph,
+        Spacer,
+    )
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
@@ -319,7 +336,8 @@ def generate_monthly_report():
     try:
         # Используем системный шрифт или добавляем свой
         from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-        pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
+
+        pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
     except:
         pass  # Используем стандартный шрифт
 
@@ -333,30 +351,34 @@ def generate_monthly_report():
         report_year = today.year
 
     first_day = date(report_year, report_month, 1)
-    last_day = date(report_year, report_month, calendar.monthrange(report_year, report_month)[1])
+    last_day = date(
+        report_year, report_month, calendar.monthrange(report_year, report_month)[1]
+    )
 
     # Собираем данные
     bookings = Booking.objects.filter(
-        created_at__date__gte=first_day,
-        created_at__date__lte=last_day
+        created_at__date__gte=first_day, created_at__date__lte=last_day
     )
 
     # Основные метрики
-    total_revenue = bookings.filter(
-        status__in=['confirmed', 'completed']
-    ).aggregate(Sum('total_price'))['total_price__sum'] or 0
+    total_revenue = (
+        bookings.filter(status__in=["confirmed", "completed"]).aggregate(
+            Sum("total_price")
+        )["total_price__sum"]
+        or 0
+    )
 
     total_bookings = bookings.count()
-    confirmed_bookings = bookings.filter(status__in=['confirmed', 'completed']).count()
-    cancelled_bookings = bookings.filter(status='cancelled').count()
+    confirmed_bookings = bookings.filter(status__in=["confirmed", "completed"]).count()
+    cancelled_bookings = bookings.filter(status="cancelled").count()
 
     # Топ квартиры
-    top_properties = bookings.filter(
-        status__in=['confirmed', 'completed']
-    ).values('property__name').annotate(
-        revenue=Sum('total_price'),
-        count=Count('id')
-    ).order_by('-revenue')[:5]
+    top_properties = (
+        bookings.filter(status__in=["confirmed", "completed"])
+        .values("property__name")
+        .annotate(revenue=Sum("total_price"), count=Count("id"))
+        .order_by("-revenue")[:5]
+    )
 
     # Генерируем PDF
     buffer = BytesIO()
@@ -366,57 +388,67 @@ def generate_monthly_report():
 
     # Заголовок
     title = Paragraph(
-        f"<b>Report ZhilieGO - {report_month}/{report_year}</b>",
-        styles['Title']
+        f"<b>Report ZhilieGO - {report_month}/{report_year}</b>", styles["Title"]
     )
     story.append(title)
     story.append(Spacer(1, 20))
 
     # Основные показатели
     data = [
-        ['Metric', 'Value'],
-        ['Total Revenue', f'{total_revenue:,.0f} KZT'],
-        ['Total Bookings', str(total_bookings)],
-        ['Confirmed', str(confirmed_bookings)],
-        ['Cancelled', str(cancelled_bookings)],
-        ['Conversion', f'{(confirmed_bookings / total_bookings * 100):.1f}%' if total_bookings else '0%'],
+        ["Metric", "Value"],
+        ["Total Revenue", f"{total_revenue:,.0f} KZT"],
+        ["Total Bookings", str(total_bookings)],
+        ["Confirmed", str(confirmed_bookings)],
+        ["Cancelled", str(cancelled_bookings)],
+        [
+            "Conversion",
+            (
+                f"{(confirmed_bookings / total_bookings * 100):.1f}%"
+                if total_bookings
+                else "0%"
+            ),
+        ],
     ]
 
     table = Table(data, colWidths=[200, 150])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 14),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-    ]))
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 14),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+                ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
+                ("GRID", (0, 0), (-1, -1), 1, colors.black),
+            ]
+        )
+    )
     story.append(table)
     story.append(Spacer(1, 20))
 
     # Топ квартиры
     if top_properties:
-        story.append(Paragraph("<b>TOP-5 Properties:</b>", styles['Heading2']))
+        story.append(Paragraph("<b>TOP-5 Properties:</b>", styles["Heading2"]))
 
-        top_data = [['Property', 'Revenue', 'Bookings']]
+        top_data = [["Property", "Revenue", "Bookings"]]
         for prop in top_properties:
-            name = prop['property__name'][:30] if prop['property__name'] else 'Unknown'
-            top_data.append([
-                name,
-                f"{prop['revenue']:,.0f} KZT",
-                str(prop['count'])
-            ])
+            name = prop["property__name"][:30] if prop["property__name"] else "Unknown"
+            top_data.append([name, f"{prop['revenue']:,.0f} KZT", str(prop["count"])])
 
         top_table = Table(top_data, colWidths=[200, 100, 100])
-        top_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ]))
+        top_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                ]
+            )
+        )
         story.append(top_table)
 
     # Генерируем PDF
@@ -426,17 +458,17 @@ def generate_monthly_report():
 
     # Сохраняем файл временно
     import tempfile
+
     temp_file = tempfile.NamedTemporaryFile(
-        delete=False,
-        suffix='.pdf',
-        prefix=f'report_{report_year}_{report_month}_'
+        delete=False, suffix=".pdf", prefix=f"report_{report_year}_{report_month}_"
     )
     temp_file.write(pdf_content)
     temp_file.close()
 
     # Отправляем админам через Telegram
     from booking_bot.telegram_bot.utils import send_telegram_message
-    admins = UserProfile.objects.filter(role__in=['admin', 'super_admin'])
+
+    admins = UserProfile.objects.filter(role__in=["admin", "super_admin"])
 
     for admin in admins:
         if admin.telegram_chat_id:
@@ -447,11 +479,17 @@ def generate_monthly_report():
                 bot_token = TELEGRAM_BOT_TOKEN
                 url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
 
-                with open(temp_file.name, 'rb') as f:
-                    files = {'document': (f'report_{report_month}_{report_year}.pdf', f, 'application/pdf')}
+                with open(temp_file.name, "rb") as f:
+                    files = {
+                        "document": (
+                            f"report_{report_month}_{report_year}.pdf",
+                            f,
+                            "application/pdf",
+                        )
+                    }
                     data = {
-                        'chat_id': admin.telegram_chat_id,
-                        'caption': f'📊 Отчет за {report_month}/{report_year}'
+                        "chat_id": admin.telegram_chat_id,
+                        "caption": f"📊 Отчет за {report_month}/{report_year}",
                     }
                     response = requests.post(url, data=data, files=files)
 
@@ -482,21 +520,18 @@ def send_checkin_reminder():
     tomorrow = date.today() + timedelta(days=1)
 
     # Находим все бронирования с заездом завтра
-    upcoming_bookings = Booking.objects.filter(
-        start_date=tomorrow,
-        status='confirmed'
-    )
+    upcoming_bookings = Booking.objects.filter(start_date=tomorrow, status="confirmed")
 
     for booking in upcoming_bookings:
         # Отправляем напоминание с кодами доступа
         NotificationService.schedule(
-            event='checkin_reminder',
+            event="checkin_reminder",
             user=booking.user,
             context={
-                'booking': booking,
-                'property': booking.property,
-                'access_codes': booking.property.get_access_codes(booking.user)
-            }
+                "booking": booking,
+                "property": booking.property,
+                "access_codes": booking.property.get_access_codes(booking.user),
+            },
         )
 
         logger.info(f"Checkin reminder sent for booking {booking.id}")
@@ -513,57 +548,53 @@ def check_property_updates_needed():
 
     # Квартиры без фото или с малым количеством фото
     properties_need_photos = Property.objects.annotate(
-        photo_count=Count('photos')
+        photo_count=Count("photos")
     ).filter(
-        status='Свободна',
-        photo_count__lt=3  # Менее 3 фотографий
+        status="Свободна", photo_count__lt=3  # Менее 3 фотографий
     )
 
     for property_obj in properties_need_photos:
         NotificationService.schedule(
-            event='update_photos_needed',
+            event="update_photos_needed",
             user=property_obj.owner,
             context={
-                'property': property_obj,
-                'photo_count': property_obj.photo_count,
-                'recommendation': 'Добавьте минимум 6 качественных фотографий'
-            }
+                "property": property_obj,
+                "photo_count": property_obj.photo_count,
+                "recommendation": "Добавьте минимум 6 качественных фотографий",
+            },
         )
 
     # Квартиры с ценой выше средней по району
     districts = District.objects.all()
     for district in districts:
         avg_price = Property.objects.filter(
-            district=district,
-            status='Свободна'
-        ).aggregate(Avg('price_per_day'))['price_per_day__avg']
+            district=district, status="Свободна"
+        ).aggregate(Avg("price_per_day"))["price_per_day__avg"]
 
         if avg_price:
             overpriced = Property.objects.filter(
                 district=district,
                 price_per_day__gt=avg_price * 1.3,  # На 30% выше средней
-                status='Свободна'
+                status="Свободна",
             )
 
             for property_obj in overpriced:
                 # Проверяем загрузку
                 occupancy = PropertyCalendarManager.get_occupancy_rate(
-                    property_obj,
-                    date.today() - timedelta(days=30),
-                    date.today()
+                    property_obj, date.today() - timedelta(days=30), date.today()
                 )
 
                 if occupancy < 40:  # Низкая загрузка при высокой цене
                     NotificationService.schedule(
-                        event='update_price_needed',
+                        event="update_price_needed",
                         user=property_obj.owner,
                         context={
-                            'property': property_obj,
-                            'current_price': property_obj.price_per_day,
-                            'avg_price': avg_price,
-                            'occupancy': occupancy,
-                            'recommendation': f'Рекомендуемая цена: {avg_price:.0f} ₸'
-                        }
+                            "property": property_obj,
+                            "current_price": property_obj.price_per_day,
+                            "avg_price": avg_price,
+                            "occupancy": occupancy,
+                            "recommendation": f"Рекомендуемая цена: {avg_price:.0f} ₸",
+                        },
                     )
 
     return True

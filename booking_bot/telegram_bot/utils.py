@@ -8,9 +8,11 @@ logger = logging.getLogger(__name__)
 
 BOT_URL = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}"
 
+
 def escape_markdown(text: str) -> str:
     """Экранирует символы, имеющие специальное значение в Markdown."""
-    return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
+    return re.sub(r"([_*\[\]()~`>#+\-=|{}.!])", r"\\\1", text)
+
 
 def send_telegram_message(chat_id, text, reply_markup=None):
     """Send a text message via Telegram Bot API"""
@@ -18,7 +20,7 @@ def send_telegram_message(chat_id, text, reply_markup=None):
         "chat_id": chat_id,
         "text": text,
         "parse_mode": "Markdown",
-        "disable_web_page_preview": True
+        "disable_web_page_preview": True,
     }
     if reply_markup:
         payload["reply_markup"] = reply_markup
@@ -39,7 +41,7 @@ def _edit_message(chat_id, message_id, text, reply_markup=None):
         "message_id": message_id,
         "text": text,
         "parse_mode": "Markdown",
-        "disable_web_page_preview": True
+        "disable_web_page_preview": True,
     }
     if reply_markup:
         payload["reply_markup"] = reply_markup
@@ -55,10 +57,7 @@ def _edit_message(chat_id, message_id, text, reply_markup=None):
 
 def send_photo(chat_id, photo_url, caption=None, reply_markup=None):
     """Send a photo via Telegram Bot API"""
-    payload = {
-        "chat_id": chat_id,
-        "photo": photo_url
-    }
+    payload = {"chat_id": chat_id, "photo": photo_url}
     if caption:
         payload["caption"] = caption
         payload["parse_mode"] = "Markdown"
@@ -84,27 +83,30 @@ def send_photo_group(chat_id, photo_urls, caption=None):
     for url in photo_urls[:10]:  # Telegram limit is 10 photos
         if url and isinstance(url, str):
             # Проверяем, что URL начинается с http/https или является относительным путем
-            if url.startswith(('http://', 'https://')):
+            if url.startswith(("http://", "https://")):
                 # Это полный URL - проверяем доступность
                 try:
                     import requests
+
                     response = requests.head(url, timeout=3)
                     if response.status_code == 200:
                         valid_urls.append(url)
                         logger.info(f"Valid photo URL: {url}")
                     else:
-                        logger.warning(f"Photo URL not accessible: {url} (status: {response.status_code})")
+                        logger.warning(
+                            f"Photo URL not accessible: {url} (status: {response.status_code})"
+                        )
                 except Exception as e:
                     logger.warning(f"Failed to validate photo URL {url}: {e}")
 
-            elif url.startswith('/media/'):
+            elif url.startswith("/media/"):
                 # Это относительный путь к файлу - формируем полный URL
                 from django.conf import settings
 
                 try:
                     # Получаем домен из настроек
-                    domain = getattr(settings, 'DOMAIN', None)
-                    site_url = getattr(settings, 'SITE_URL', None)
+                    domain = getattr(settings, "DOMAIN", None)
+                    site_url = getattr(settings, "SITE_URL", None)
 
                     if site_url:
                         full_url = f"{site_url.rstrip('/')}{url}"
@@ -112,17 +114,22 @@ def send_photo_group(chat_id, photo_urls, caption=None):
                         full_url = f"{domain.rstrip('/')}{url}"
                     else:
                         # Fallback - пропускаем это фото
-                        logger.warning(f"No DOMAIN or SITE_URL configured for relative path: {url}")
+                        logger.warning(
+                            f"No DOMAIN or SITE_URL configured for relative path: {url}"
+                        )
                         continue
 
                     # Проверяем доступность полного URL
                     import requests
+
                     response = requests.head(full_url, timeout=3)
                     if response.status_code == 200:
                         valid_urls.append(full_url)
                         logger.info(f"Valid photo URL from relative path: {full_url}")
                     else:
-                        logger.warning(f"Photo file not accessible: {full_url} (status: {response.status_code})")
+                        logger.warning(
+                            f"Photo file not accessible: {full_url} (status: {response.status_code})"
+                        )
 
                 except Exception as e:
                     logger.warning(f"Failed to process relative path {url}: {e}")
@@ -143,20 +150,14 @@ def send_photo_group(chat_id, photo_urls, caption=None):
     # Формируем media group
     media = []
     for i, url in enumerate(valid_urls):
-        media_item = {
-            "type": "photo",
-            "media": url
-        }
+        media_item = {"type": "photo", "media": url}
         # Add caption only to the first photo
         if i == 0 and caption:
             media_item["caption"] = caption
             media_item["parse_mode"] = "Markdown"
         media.append(media_item)
 
-    payload = {
-        "chat_id": chat_id,
-        "media": media
-    }
+    payload = {"chat_id": chat_id, "media": media}
 
     try:
         response = requests.post(f"{BOT_URL}/sendMediaGroup", json=payload, timeout=15)
@@ -180,10 +181,7 @@ def send_photo_group(chat_id, photo_urls, caption=None):
 
 def send_document(chat_id, document_url, caption=None, filename=None):
     """Send a document via Telegram Bot API"""
-    payload = {
-        "chat_id": chat_id,
-        "document": document_url
-    }
+    payload = {"chat_id": chat_id, "document": document_url}
     if caption:
         payload["caption"] = caption
         payload["parse_mode"] = "Markdown"
@@ -201,15 +199,15 @@ def send_document(chat_id, document_url, caption=None, filename=None):
 
 def answer_callback_query(callback_query_id, text=None, show_alert=False):
     """Answer a callback query (remove loading state from inline button)"""
-    payload = {
-        "callback_query_id": callback_query_id
-    }
+    payload = {"callback_query_id": callback_query_id}
     if text:
         payload["text"] = text
         payload["show_alert"] = show_alert
 
     try:
-        response = requests.post(f"{BOT_URL}/answerCallbackQuery", json=payload, timeout=5)
+        response = requests.post(
+            f"{BOT_URL}/answerCallbackQuery", json=payload, timeout=5
+        )
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -219,10 +217,7 @@ def answer_callback_query(callback_query_id, text=None, show_alert=False):
 
 def delete_message(chat_id, message_id):
     """Delete a message"""
-    payload = {
-        "chat_id": chat_id,
-        "message_id": message_id
-    }
+    payload = {"chat_id": chat_id, "message_id": message_id}
 
     try:
         response = requests.post(f"{BOT_URL}/deleteMessage", json=payload, timeout=5)
@@ -236,7 +231,9 @@ def delete_message(chat_id, message_id):
 def get_file_url(file_id):
     """Get download URL for a file uploaded to Telegram"""
     try:
-        response = requests.get(f"{BOT_URL}/getFile", params={"file_id": file_id}, timeout=10)
+        response = requests.get(
+            f"{BOT_URL}/getFile", params={"file_id": file_id}, timeout=10
+        )
         response.raise_for_status()
         result = response.json()
 
@@ -252,15 +249,12 @@ def get_file_url(file_id):
 
 def set_chat_menu_button(chat_id):
     """Set menu button for the chat"""
-    payload = {
-        "chat_id": chat_id,
-        "menu_button": {
-            "type": "commands"
-        }
-    }
+    payload = {"chat_id": chat_id, "menu_button": {"type": "commands"}}
 
     try:
-        response = requests.post(f"{BOT_URL}/setChatMenuButton", json=payload, timeout=5)
+        response = requests.post(
+            f"{BOT_URL}/setChatMenuButton", json=payload, timeout=5
+        )
         response.raise_for_status()
         return response.json()
     except Exception as e:

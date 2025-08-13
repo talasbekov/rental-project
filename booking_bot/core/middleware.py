@@ -6,15 +6,16 @@ class AuditMiddleware:
 
     def __call__(self, request):
         # Сохраняем информацию о запросе для последующего использования
-        if hasattr(request, 'user') and request.user.is_authenticated:
+        if hasattr(request, "user") and request.user.is_authenticated:
             # Добавляем пользователя к объектам Property для логирования
             from booking_bot.listings.models import Property
+
             Property._accessing_user = request.user
 
         response = self.get_response(request)
 
         # Очищаем временную информацию
-        if hasattr(Property, '_accessing_user'):
-            delattr(Property, '_accessing_user')
+        if hasattr(Property, "_accessing_user"):
+            delattr(Property, "_accessing_user")
 
         return response

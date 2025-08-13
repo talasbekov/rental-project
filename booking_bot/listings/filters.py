@@ -1,9 +1,10 @@
 import django_filters
 from .models import Property
 
+
 class PropertyFilter(django_filters.FilterSet):
-    area_min = django_filters.NumberFilter(field_name="area", lookup_expr='gte')
-    area_max = django_filters.NumberFilter(field_name="area", lookup_expr='lte')
+    area_min = django_filters.NumberFilter(field_name="area", lookup_expr="gte")
+    area_max = django_filters.NumberFilter(field_name="area", lookup_expr="lte")
     # For CharFields with choices, 'exact' is usually appropriate.
     # The field name in 'fields' will automatically create a filter for it.
     # If more control is needed (e.g. lookup_expr), define them explicitly like area_min/max.
@@ -13,13 +14,14 @@ class PropertyFilter(django_filters.FilterSet):
         # Define fields and their default lookup_expr if not 'exact'
         # For choice fields, 'exact' is the default and usually what's needed.
         fields = {
-            'district': ['exact'], # Filter by district ID
-            'number_of_rooms': ['exact'],
-            'property_class': ['exact'], # Filter by class key e.g. 'economy'
-            'status': ['exact'], # Filter by status key e.g. 'Свободна'
-            'price_per_day': ['gte', 'lte'],
+            "district": ["exact"],  # Filter by district ID
+            "number_of_rooms": ["exact"],
+            "property_class": ["exact"],  # Filter by class key e.g. 'economy'
+            "status": ["exact"],  # Filter by status key e.g. 'Свободна'
+            "price_per_day": ["gte", "lte"],
             # area is handled by area_min, area_max above
         }
+
 
 # Example of explicit definition if needed:
 # class PropertyFilter(django_filters.FilterSet):

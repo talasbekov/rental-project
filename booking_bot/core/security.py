@@ -16,7 +16,7 @@ class EncryptionService:
 
     def __init__(self):
         # Получаем ключ из настроек или генерируем новый
-        key = getattr(settings, 'ENCRYPTION_KEY', None)
+        key = getattr(settings, "ENCRYPTION_KEY", None)
         if not key:
             key = Fernet.generate_key()
             logger.warning("No ENCRYPTION_KEY in settings, generated new one")
@@ -29,7 +29,7 @@ class EncryptionService:
     def encrypt(self, data: str) -> str:
         """Зашифровать строку"""
         if not data:
-            return ''
+            return ""
 
         encrypted = self.cipher.encrypt(data.encode())
         return encrypted.decode()
@@ -37,14 +37,14 @@ class EncryptionService:
     def decrypt(self, encrypted_data: str) -> str:
         """Расшифровать строку"""
         if not encrypted_data:
-            return ''
+            return ""
 
         try:
             decrypted = self.cipher.decrypt(encrypted_data.encode())
             return decrypted.decode()
         except Exception as e:
             logger.error(f"Decryption failed: {e}")
-            return ''
+            return ""
 
     def rotate_key(self, old_key: bytes, new_key: bytes):
         """Ротация ключа шифрования"""
@@ -58,13 +58,21 @@ class EncryptionService:
         for prop in properties:
             # Расшифровываем старым ключом
             if prop._encrypted_key_safe_code:
-                decrypted = old_cipher.decrypt(prop._encrypted_key_safe_code.encode()).decode()
+                decrypted = old_cipher.decrypt(
+                    prop._encrypted_key_safe_code.encode()
+                ).decode()
                 # Шифруем новым ключом
-                prop._encrypted_key_safe_code = new_cipher.encrypt(decrypted.encode()).decode()
+                prop._encrypted_key_safe_code = new_cipher.encrypt(
+                    decrypted.encode()
+                ).decode()
 
             if prop._encrypted_digital_lock_code:
-                decrypted = old_cipher.decrypt(prop._encrypted_digital_lock_code.encode()).decode()
-                prop._encrypted_digital_lock_code = new_cipher.encrypt(decrypted.encode()).decode()
+                decrypted = old_cipher.decrypt(
+                    prop._encrypted_digital_lock_code.encode()
+                ).decode()
+                prop._encrypted_digital_lock_code = new_cipher.encrypt(
+                    decrypted.encode()
+                ).decode()
 
             prop.save()
 

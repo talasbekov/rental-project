@@ -7,18 +7,18 @@ from django.urls import reverse
 
 
 class Command(BaseCommand):
-    help = 'Настройка webhook для WhatsApp Business API'
+    help = "Настройка webhook для WhatsApp Business API"
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--domain',
+            "--domain",
             type=str,
-            help='Домен для webhook (например, https://example.com)',
-            required=True
+            help="Домен для webhook (например, https://example.com)",
+            required=True,
         )
 
     def handle(self, *args, **options):
-        domain = options['domain'].rstrip('/')
+        domain = options["domain"].rstrip("/")
 
         # Формируем URL webhook
         webhook_url = f"{domain}/whatsapp/webhook/"
@@ -28,7 +28,7 @@ class Command(BaseCommand):
 
         headers = {
             "Authorization": f"Bearer {settings.WHATSAPP_ACCESS_TOKEN}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         # Подписываемся на приложение
@@ -36,7 +36,7 @@ class Command(BaseCommand):
 
         if response.status_code == 200:
             self.stdout.write(
-                self.style.SUCCESS(f'Успешно настроен webhook для {webhook_url}')
+                self.style.SUCCESS(f"Успешно настроен webhook для {webhook_url}")
             )
 
             # Выводим информацию для настройки в Facebook Developer Console
@@ -53,6 +53,6 @@ class Command(BaseCommand):
         else:
             self.stdout.write(
                 self.style.ERROR(
-                    f'Ошибка настройки webhook: {response.status_code} - {response.text}'
+                    f"Ошибка настройки webhook: {response.status_code} - {response.text}"
                 )
             )

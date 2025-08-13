@@ -15,11 +15,19 @@ from booking_bot.listings.models import Property, City, District, PropertyPhoto
 from booking_bot.bookings.models import Booking
 from .constants import (
     STATE_MAIN_MENU,
-    STATE_ADMIN_ADD_PROPERTY, STATE_ADMIN_ADD_DESC, STATE_ADMIN_ADD_ADDRESS,
-    STATE_ADMIN_ADD_CITY, STATE_ADMIN_ADD_DISTRICT, STATE_ADMIN_ADD_CLASS,
-    STATE_ADMIN_ADD_ROOMS, STATE_ADMIN_ADD_AREA, STATE_ADMIN_ADD_PRICE,
-    STATE_ADMIN_ADD_PHOTOS, _get_profile, log_handler,
-    start_command_handler
+    STATE_ADMIN_ADD_PROPERTY,
+    STATE_ADMIN_ADD_DESC,
+    STATE_ADMIN_ADD_ADDRESS,
+    STATE_ADMIN_ADD_CITY,
+    STATE_ADMIN_ADD_DISTRICT,
+    STATE_ADMIN_ADD_CLASS,
+    STATE_ADMIN_ADD_ROOMS,
+    STATE_ADMIN_ADD_AREA,
+    STATE_ADMIN_ADD_PRICE,
+    STATE_ADMIN_ADD_PHOTOS,
+    _get_profile,
+    log_handler,
+    start_command_handler, User,
 )
 from .utils import send_telegram_message, send_document
 from ..settings import TELEGRAM_BOT_TOKEN
@@ -27,18 +35,18 @@ from ..settings import TELEGRAM_BOT_TOKEN
 logger = logging.getLogger(__name__)
 
 # Новые состояния для кодов доступа
-STATE_ADMIN_ADD_ENTRY_FLOOR = 'admin_add_entry_floor'
-STATE_ADMIN_ADD_ENTRY_CODE = 'admin_add_entry_code'
-STATE_ADMIN_ADD_KEY_SAFE = 'admin_add_key_safe'
-STATE_ADMIN_ADD_OWNER_PHONE = 'admin_add_owner_phone'
-STATE_ADMIN_ADD_INSTRUCTIONS = 'admin_add_instructions'
+STATE_ADMIN_ADD_ENTRY_FLOOR = "admin_add_entry_floor"
+STATE_ADMIN_ADD_ENTRY_CODE = "admin_add_entry_code"
+STATE_ADMIN_ADD_KEY_SAFE = "admin_add_key_safe"
+STATE_ADMIN_ADD_OWNER_PHONE = "admin_add_owner_phone"
+STATE_ADMIN_ADD_INSTRUCTIONS = "admin_add_instructions"
 
 
 @log_handler
 def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
     profile = _get_profile(chat_id)
     state_data = profile.telegram_state or {}
-    state = state_data.get('state')
+    state = state_data.get("state")
 
     admin_states = {
         STATE_ADMIN_ADD_PROPERTY,
@@ -60,24 +68,25 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
 
     # Триггер на первый шаг
     if text == "➕ Добавить квартиру" and state not in admin_states:
-        if profile.role not in ('admin', 'super_admin'):
+        if profile.role not in ("admin", "super_admin"):
             send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
             return True
-        jwt = (state_data or {}).get('jwt_access_token')
-        new_state = {'state': STATE_ADMIN_ADD_PROPERTY, 'new_property': {}}
-        if jwt: new_state['jwt_access_token'] = jwt
+        jwt = (state_data or {}).get("jwt_access_token")
+        new_state = {"state": STATE_ADMIN_ADD_PROPERTY, "new_property": {}}
+        if jwt:
+            new_state["jwt_access_token"] = jwt
         profile.telegram_state = new_state
         profile.save()
         rm = ReplyKeyboardMarkup(
             [[KeyboardButton("❌ Отмена")]],
             resize_keyboard=True,
-            input_field_placeholder="Например: Уютная студия"
+            input_field_placeholder="Например: Уютная студия",
         ).to_dict()
         send_telegram_message(
             chat_id,
             "➕ *Добавление новой квартиры*\n\n"
             "Шаг 1/15: Введите *название* квартиры:",
-            reply_markup=rm
+            reply_markup=rm,
         )
         return True
 
@@ -93,42 +102,48 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
 
     # 1→2: Название → Описание
     if state == STATE_ADMIN_ADD_PROPERTY:
-        state_data['new_property']['name'] = text.strip()
-        state_data['state'] = STATE_ADMIN_ADD_DESC
+        state_data["new_property"]["name"] = text.strip()
+        state_data["state"] = STATE_ADMIN_ADD_DESC
         profile.telegram_state = state_data
         profile.save()
         rm = ReplyKeyboardMarkup(
             [[KeyboardButton("❌ Отмена")]],
             resize_keyboard=True,
-            input_field_placeholder="Введите описание"
+            input_field_placeholder="Введите описание",
         ).to_dict()
-        send_telegram_message(chat_id, "Шаг 2/15: Введите *описание* квартиры:", reply_markup=rm)
+        send_telegram_message(
+            chat_id, "Шаг 2/15: Введите *описание* квартиры:", reply_markup=rm
+        )
         return True
 
     # 2→3: Описание → Адрес
     if state == STATE_ADMIN_ADD_DESC:
-        state_data['new_property']['description'] = text.strip()
-        state_data['state'] = STATE_ADMIN_ADD_ADDRESS
+        state_data["new_property"]["description"] = text.strip()
+        state_data["state"] = STATE_ADMIN_ADD_ADDRESS
         profile.telegram_state = state_data
         profile.save()
         rm = ReplyKeyboardMarkup(
             [[KeyboardButton("❌ Отмена")]],
             resize_keyboard=True,
-            input_field_placeholder="Введите адрес"
+            input_field_placeholder="Введите адрес",
         ).to_dict()
-        send_telegram_message(chat_id, "Шаг 3/15: Введите *адрес* квартиры:", reply_markup=rm)
+        send_telegram_message(
+            chat_id, "Шаг 3/15: Введите *адрес* квартиры:", reply_markup=rm
+        )
         return True
 
     # 3→4: Адрес → Город
     if state == STATE_ADMIN_ADD_ADDRESS:
-        state_data['new_property']['address'] = text.strip()
-        state_data['state'] = STATE_ADMIN_ADD_CITY
+        state_data["new_property"]["address"] = text.strip()
+        state_data["state"] = STATE_ADMIN_ADD_CITY
         profile.telegram_state = state_data
         profile.save()
-        cities = City.objects.all().order_by('name')
+        cities = City.objects.all().order_by("name")
         kb = [[KeyboardButton(c.name)] for c in cities]
         kb.append([KeyboardButton("❌ Отмена")])
-        rm = ReplyKeyboardMarkup(kb, resize_keyboard=True, input_field_placeholder="Выберите город").to_dict()
+        rm = ReplyKeyboardMarkup(
+            kb, resize_keyboard=True, input_field_placeholder="Выберите город"
+        ).to_dict()
         send_telegram_message(chat_id, "Шаг 4/15: Выберите *город*:", reply_markup=rm)
         return True
 
@@ -136,15 +151,19 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
     if state == STATE_ADMIN_ADD_CITY:
         try:
             city = City.objects.get(name=text)
-            state_data['new_property']['city_id'] = city.id
-            state_data['state'] = STATE_ADMIN_ADD_DISTRICT
+            state_data["new_property"]["city_id"] = city.id
+            state_data["state"] = STATE_ADMIN_ADD_DISTRICT
             profile.telegram_state = state_data
             profile.save()
-            districts = District.objects.filter(city=city).order_by('name')
+            districts = District.objects.filter(city=city).order_by("name")
             kb = [[KeyboardButton(d.name)] for d in districts]
             kb.append([KeyboardButton("❌ Отмена")])
-            rm = ReplyKeyboardMarkup(kb, resize_keyboard=True, input_field_placeholder="Выберите район").to_dict()
-            send_telegram_message(chat_id, f"Шаг 5/15: Выберите *район* в {city.name}:", reply_markup=rm)
+            rm = ReplyKeyboardMarkup(
+                kb, resize_keyboard=True, input_field_placeholder="Выберите район"
+            ).to_dict()
+            send_telegram_message(
+                chat_id, f"Шаг 5/15: Выберите *район* в {city.name}:", reply_markup=rm
+            )
         except City.DoesNotExist:
             send_telegram_message(chat_id, "Город не найден. Попробуйте ещё раз.")
         return True
@@ -152,32 +171,46 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
     # 5→6: Район → Класс
     if state == STATE_ADMIN_ADD_DISTRICT:
         try:
-            district = District.objects.get(name=text, city_id=state_data['new_property']['city_id'])
-            state_data['new_property']['district_id'] = district.id
-            state_data['state'] = STATE_ADMIN_ADD_CLASS
+            district = District.objects.get(
+                name=text, city_id=state_data["new_property"]["city_id"]
+            )
+            state_data["new_property"]["district_id"] = district.id
+            state_data["state"] = STATE_ADMIN_ADD_CLASS
             profile.telegram_state = state_data
             profile.save()
-            classes = [('comfort', 'Комфорт'), ('business', 'Бизнес'), ('premium', 'Премиум')]
+            classes = [
+                ("comfort", "Комфорт"),
+                ("business", "Бизнес"),
+                ("premium", "Премиум"),
+            ]
             kb = [[KeyboardButton(lbl)] for _, lbl in classes]
             kb.append([KeyboardButton("❌ Отмена")])
-            rm = ReplyKeyboardMarkup(kb, resize_keyboard=True, input_field_placeholder="Выберите класс").to_dict()
-            send_telegram_message(chat_id, "Шаг 6/15: Выберите *класс* жилья:", reply_markup=rm)
+            rm = ReplyKeyboardMarkup(
+                kb, resize_keyboard=True, input_field_placeholder="Выберите класс"
+            ).to_dict()
+            send_telegram_message(
+                chat_id, "Шаг 6/15: Выберите *класс* жилья:", reply_markup=rm
+            )
         except District.DoesNotExist:
             send_telegram_message(chat_id, "Район не найден. Попробуйте ещё раз.")
         return True
 
     # 6→7: Класс → Комнаты
     if state == STATE_ADMIN_ADD_CLASS:
-        mapping = {'Комфорт': 'comfort', 'Бизнес': 'business', 'Премиум': 'premium'}
+        mapping = {"Комфорт": "comfort", "Бизнес": "business", "Премиум": "premium"}
         if text in mapping:
-            state_data['new_property']['property_class'] = mapping[text]
-            state_data['state'] = STATE_ADMIN_ADD_ROOMS
+            state_data["new_property"]["property_class"] = mapping[text]
+            state_data["state"] = STATE_ADMIN_ADD_ROOMS
             profile.telegram_state = state_data
             profile.save()
-            kb = [[KeyboardButton(str(n))] for n in [1, 2, 3, '4+']]
+            kb = [[KeyboardButton(str(n))] for n in [1, 2, 3, "4+"]]
             kb.append([KeyboardButton("❌ Отмена")])
-            rm = ReplyKeyboardMarkup(kb, resize_keyboard=True, input_field_placeholder="Сколько комнат?").to_dict()
-            send_telegram_message(chat_id, "Шаг 7/15: Сколько *комнат*?", reply_markup=rm)
+            rm = ReplyKeyboardMarkup(
+                kb, resize_keyboard=True, input_field_placeholder="Сколько комнат?"
+            ).to_dict()
+            send_telegram_message(
+                chat_id, "Шаг 7/15: Сколько *комнат*?", reply_markup=rm
+            )
         else:
             send_telegram_message(chat_id, "Неверный выбор. Попробуйте ещё раз.")
         return True
@@ -185,35 +218,41 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
     # 7→8: Комнаты → Площадь
     if state == STATE_ADMIN_ADD_ROOMS:
         try:
-            rooms = 4 if text == '4+' else int(text)
-            state_data['new_property']['number_of_rooms'] = rooms
-            state_data['state'] = STATE_ADMIN_ADD_AREA
+            rooms = 4 if text == "4+" else int(text)
+            state_data["new_property"]["number_of_rooms"] = rooms
+            state_data["state"] = STATE_ADMIN_ADD_AREA
             profile.telegram_state = state_data
             profile.save()
             rm = ReplyKeyboardMarkup(
                 [[KeyboardButton("❌ Отмена")]],
                 resize_keyboard=True,
-                input_field_placeholder="Введите площадь"
+                input_field_placeholder="Введите площадь",
             ).to_dict()
-            send_telegram_message(chat_id, "Шаг 8/15: Введите *площадь* (м²):", reply_markup=rm)
+            send_telegram_message(
+                chat_id, "Шаг 8/15: Введите *площадь* (м²):", reply_markup=rm
+            )
         except ValueError:
-            send_telegram_message(chat_id, "Неверный формат. Выберите количество комнат.")
+            send_telegram_message(
+                chat_id, "Неверный формат. Выберите количество комнат."
+            )
         return True
 
     # 8→9: Площадь → Цена
     if state == STATE_ADMIN_ADD_AREA:
         try:
-            area = float(text.replace(',', '.'))
-            state_data['new_property']['area'] = area
-            state_data['state'] = STATE_ADMIN_ADD_PRICE
+            area = float(text.replace(",", "."))
+            state_data["new_property"]["area"] = area
+            state_data["state"] = STATE_ADMIN_ADD_PRICE
             profile.telegram_state = state_data
             profile.save()
             rm = ReplyKeyboardMarkup(
                 [[KeyboardButton("❌ Отмена")]],
                 resize_keyboard=True,
-                input_field_placeholder="Введите цену"
+                input_field_placeholder="Введите цену",
             ).to_dict()
-            send_telegram_message(chat_id, "Шаг 9/15: Введите *цену* за сутки (₸):", reply_markup=rm)
+            send_telegram_message(
+                chat_id, "Шаг 9/15: Введите *цену* за сутки (₸):", reply_markup=rm
+            )
         except ValueError:
             send_telegram_message(chat_id, "Неверный формат площади. Введите число.")
         return True
@@ -221,20 +260,20 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
     # 9→10: Цена → Этаж
     if state == STATE_ADMIN_ADD_PRICE:
         try:
-            price = float(text.replace(',', '.'))
-            state_data['new_property']['price_per_day'] = price
-            state_data['state'] = STATE_ADMIN_ADD_ENTRY_FLOOR
+            price = float(text.replace(",", "."))
+            state_data["new_property"]["price_per_day"] = price
+            state_data["state"] = STATE_ADMIN_ADD_ENTRY_FLOOR
             profile.telegram_state = state_data
             profile.save()
             rm = ReplyKeyboardMarkup(
                 [[KeyboardButton("Пропустить")], [KeyboardButton("❌ Отмена")]],
                 resize_keyboard=True,
-                input_field_placeholder="Введите этаж"
+                input_field_placeholder="Введите этаж",
             ).to_dict()
             send_telegram_message(
                 chat_id,
                 "Шаг 10/15: Введите *этаж* квартиры или нажмите 'Пропустить':",
-                reply_markup=rm
+                reply_markup=rm,
             )
         except ValueError:
             send_telegram_message(chat_id, "Неверный формат цены. Введите число.")
@@ -245,115 +284,118 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
         if text != "Пропустить":
             try:
                 floor = int(text)
-                state_data['new_property']['entry_floor'] = floor
+                state_data["new_property"]["entry_floor"] = floor
             except ValueError:
-                send_telegram_message(chat_id, "Неверный формат этажа. Введите число или нажмите 'Пропустить'.")
+                send_telegram_message(
+                    chat_id,
+                    "Неверный формат этажа. Введите число или нажмите 'Пропустить'.",
+                )
                 return True
 
-        state_data['state'] = STATE_ADMIN_ADD_ENTRY_CODE
+        state_data["state"] = STATE_ADMIN_ADD_ENTRY_CODE
         profile.telegram_state = state_data
         profile.save()
         rm = ReplyKeyboardMarkup(
             [[KeyboardButton("Пропустить")], [KeyboardButton("❌ Отмена")]],
             resize_keyboard=True,
-            input_field_placeholder="Введите код домофона"
+            input_field_placeholder="Введите код домофона",
         ).to_dict()
         send_telegram_message(
             chat_id,
             "Шаг 11/15: Введите *код домофона* или нажмите 'Пропустить':",
-            reply_markup=rm
+            reply_markup=rm,
         )
         return True
 
     # 11→12: Код домофона → Код сейфа
     if state == STATE_ADMIN_ADD_ENTRY_CODE:
         if text != "Пропустить":
-            state_data['new_property']['entry_code'] = text.strip()
+            state_data["new_property"]["entry_code"] = text.strip()
 
-        state_data['state'] = STATE_ADMIN_ADD_KEY_SAFE
+        state_data["state"] = STATE_ADMIN_ADD_KEY_SAFE
         profile.telegram_state = state_data
         profile.save()
         rm = ReplyKeyboardMarkup(
             [[KeyboardButton("Пропустить")], [KeyboardButton("❌ Отмена")]],
             resize_keyboard=True,
-            input_field_placeholder="Введите код сейфа с ключами"
+            input_field_placeholder="Введите код сейфа с ключами",
         ).to_dict()
         send_telegram_message(
             chat_id,
             "Шаг 12/15: Введите *код сейфа с ключами* или нажмите 'Пропустить':",
-            reply_markup=rm
+            reply_markup=rm,
         )
         return True
 
     # 12→13: Код сейфа → Телефон владельца
     if state == STATE_ADMIN_ADD_KEY_SAFE:
         if text != "Пропустить":
-            state_data['new_property']['key_safe_code'] = text.strip()
+            state_data["new_property"]["key_safe_code"] = text.strip()
 
-        state_data['state'] = STATE_ADMIN_ADD_OWNER_PHONE
+        state_data["state"] = STATE_ADMIN_ADD_OWNER_PHONE
         profile.telegram_state = state_data
         profile.save()
         rm = ReplyKeyboardMarkup(
             [[KeyboardButton("Пропустить")], [KeyboardButton("❌ Отмена")]],
             resize_keyboard=True,
-            input_field_placeholder="+7 XXX XXX XX XX"
+            input_field_placeholder="+7 XXX XXX XX XX",
         ).to_dict()
         send_telegram_message(
             chat_id,
             "Шаг 13/15: Введите *телефон владельца/риелтора* или нажмите 'Пропустить':",
-            reply_markup=rm
+            reply_markup=rm,
         )
         return True
 
     # 13→14: Телефон → Инструкции
     if state == STATE_ADMIN_ADD_OWNER_PHONE:
         if text != "Пропустить":
-            state_data['new_property']['owner_phone'] = text.strip()
+            state_data["new_property"]["owner_phone"] = text.strip()
 
-        state_data['state'] = STATE_ADMIN_ADD_INSTRUCTIONS
+        state_data["state"] = STATE_ADMIN_ADD_INSTRUCTIONS
         profile.telegram_state = state_data
         profile.save()
         rm = ReplyKeyboardMarkup(
             [[KeyboardButton("Пропустить")], [KeyboardButton("❌ Отмена")]],
             resize_keyboard=True,
-            input_field_placeholder="Введите инструкции по заселению"
+            input_field_placeholder="Введите инструкции по заселению",
         ).to_dict()
         send_telegram_message(
             chat_id,
             "Шаг 14/15: Введите *инструкции по заселению* (как найти квартиру, особенности) или нажмите 'Пропустить':",
-            reply_markup=rm
+            reply_markup=rm,
         )
         return True
 
     # 14→15: Инструкции → Создание и фото
     if state == STATE_ADMIN_ADD_INSTRUCTIONS:
         if text != "Пропустить":
-            state_data['new_property']['entry_instructions'] = text.strip()
+            state_data["new_property"]["entry_instructions"] = text.strip()
 
         # Создаем квартиру в БД
         try:
-            np = state_data['new_property']
+            np = state_data["new_property"]
             prop = Property.objects.create(
-                name=np['name'],
-                description=np['description'],
-                address=np['address'],
-                district_id=np['district_id'],
-                property_class=np['property_class'],
-                number_of_rooms=np['number_of_rooms'],
-                area=np['area'],
-                price_per_day=np['price_per_day'],
-                entry_floor=np.get('entry_floor'),
-                entry_code=np.get('entry_code'),
-                key_safe_code=np.get('key_safe_code'),
-                owner_phone=np.get('owner_phone'),
-                entry_instructions=np.get('entry_instructions'),
+                name=np["name"],
+                description=np["description"],
+                address=np["address"],
+                district_id=np["district_id"],
+                property_class=np["property_class"],
+                number_of_rooms=np["number_of_rooms"],
+                area=np["area"],
+                price_per_day=np["price_per_day"],
+                entry_floor=np.get("entry_floor"),
+                entry_code=np.get("entry_code"),
+                key_safe_code=np.get("key_safe_code"),
+                owner_phone=np.get("owner_phone"),
+                entry_instructions=np.get("entry_instructions"),
                 owner=profile.user,
-                status='Свободна'
+                status="Свободна",
             )
 
-            state_data['new_property']['id'] = prop.id
-            state_data['state'] = STATE_ADMIN_ADD_PHOTOS
-            state_data.pop('photo_mode', None)
+            state_data["new_property"]["id"] = prop.id
+            state_data["state"] = STATE_ADMIN_ADD_PHOTOS
+            state_data.pop("photo_mode", None)
             profile.telegram_state = state_data
             profile.save()
 
@@ -363,15 +405,15 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
                     [KeyboardButton("📎 Отправить по URL")],
                     [KeyboardButton("📷 Загрузить фото с устройства")],
                     [KeyboardButton("⏭️ Пропустить фото")],
-                    [KeyboardButton("❌ Отмена")]
+                    [KeyboardButton("❌ Отмена")],
                 ],
                 resize_keyboard=True,
-                input_field_placeholder="Выберите способ"
+                input_field_placeholder="Выберите способ",
             ).to_dict()
             send_telegram_message(
                 chat_id,
                 "Шаг 15/15: Выберите способ добавления фотографий:",
-                reply_markup=rm
+                reply_markup=rm,
             )
         except Exception as e:
             logger.error(f"Error creating property: {e}", exc_info=True)
@@ -380,71 +422,66 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
 
     # 15: добавление фотографий
     if state == STATE_ADMIN_ADD_PHOTOS:
-        prop_id = state_data['new_property'].get('id')
+        prop_id = state_data["new_property"].get("id")
         if not prop_id:
             send_telegram_message(chat_id, "Не удалось найти созданную квартиру.")
             profile.telegram_state = {}
             profile.save()
             return True
 
-        photo_mode = state_data.get('photo_mode')
+        photo_mode = state_data.get("photo_mode")
 
         # Пользователь выбирает способ загрузки
         if photo_mode is None:
             if text == "📎 Отправить по URL":
-                state_data['photo_mode'] = 'url'
+                state_data["photo_mode"] = "url"
                 profile.telegram_state = state_data
                 profile.save()
                 rm = ReplyKeyboardMarkup(
-                    [
-                        [KeyboardButton("✅ Завершить")],
-                        [KeyboardButton("❌ Отмена")]
-                    ],
+                    [[KeyboardButton("✅ Завершить")], [KeyboardButton("❌ Отмена")]],
                     resize_keyboard=True,
-                    input_field_placeholder="Отправьте URL фотографий"
+                    input_field_placeholder="Отправьте URL фотографий",
                 ).to_dict()
                 send_telegram_message(
                     chat_id,
                     "Отправьте *URL* фотографий (через пробел или по одному):\n\n"
-                    "Когда закончите, нажмите \"✅ Завершить\"",
-                    reply_markup=rm
+                    'Когда закончите, нажмите "✅ Завершить"',
+                    reply_markup=rm,
                 )
             elif text == "📷 Загрузить фото с устройства":
-                state_data['photo_mode'] = 'device'
+                state_data["photo_mode"] = "device"
                 profile.telegram_state = state_data
                 profile.save()
                 rm = ReplyKeyboardMarkup(
-                    [
-                        [KeyboardButton("✅ Завершить")],
-                        [KeyboardButton("❌ Отмена")]
-                    ],
-                    resize_keyboard=True
+                    [[KeyboardButton("✅ Завершить")], [KeyboardButton("❌ Отмена")]],
+                    resize_keyboard=True,
                 ).to_dict()
                 send_telegram_message(
                     chat_id,
                     "Пришлите фотографии с устройства (до 6 штук):\n\n"
-                    "Когда закончите, нажмите \"✅ Завершить\"",
-                    reply_markup=rm
+                    'Когда закончите, нажмите "✅ Завершить"',
+                    reply_markup=rm,
                 )
             elif text == "⏭️ Пропустить фото":
                 send_telegram_message(
                     chat_id,
                     f"✅ Квартира успешно создана!\n\n"
-                    f"Вы можете добавить фотографии позже."
+                    f"Вы можете добавить фотографии позже.",
                 )
                 profile.telegram_state = {}
                 profile.save()
                 show_admin_menu(chat_id)
             else:
-                send_telegram_message(chat_id, "Пожалуйста, выберите способ загрузки фотографий.")
+                send_telegram_message(
+                    chat_id, "Пожалуйста, выберите способ загрузки фотографий."
+                )
             return True
 
         # Завершение добавления фото
         if text == "✅ Завершить":
             photos_count = PropertyPhoto.objects.filter(property_id=prop_id).count()
             send_telegram_message(
-                chat_id,
-                f"✅ Квартира создана с {photos_count} фотографиями!"
+                chat_id, f"✅ Квартира создана с {photos_count} фотографиями!"
             )
             profile.telegram_state = {}
             profile.save()
@@ -452,8 +489,8 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
             return True
 
         # Режим URL: обрабатываем текст со ссылками
-        if photo_mode == 'url' and text and text not in ["✅ Завершить", "❌ Отмена"]:
-            urls = [u.strip() for u in text.split() if u.strip().startswith('http')]
+        if photo_mode == "url" and text and text not in ["✅ Завершить", "❌ Отмена"]:
+            urls = [u.strip() for u in text.split() if u.strip().startswith("http")]
             created = 0
             for url in urls[:6]:  # Максимум 6 фото согласно ТЗ
                 try:
@@ -468,26 +505,29 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
                     send_telegram_message(
                         chat_id,
                         f"✅ Добавлено максимальное количество фото (6).\n"
-                        "Нажмите \"✅ Завершить\" для завершения."
+                        'Нажмите "✅ Завершить" для завершения.',
                     )
                 else:
                     send_telegram_message(
                         chat_id,
                         f"✅ Добавлено {created} фото. Всего: {total_photos}/6\n"
-                        "Можете отправить еще URL или нажать \"✅ Завершить\""
+                        'Можете отправить еще URL или нажать "✅ Завершить"',
                     )
             else:
                 send_telegram_message(
                     chat_id,
-                    "Не удалось добавить фотографии. Проверьте корректность URL."
+                    "Не удалось добавить фотографии. Проверьте корректность URL.",
                 )
             return True
 
         # Режим device: информируем что фото нужно отправлять не текстом
-        if photo_mode == 'device' and text and text not in ["✅ Завершить", "❌ Отмена"]:
+        if (
+            photo_mode == "device"
+            and text
+            and text not in ["✅ Завершить", "❌ Отмена"]
+        ):
             send_telegram_message(
-                chat_id,
-                "Пожалуйста, отправьте фотографии как изображения, а не текст."
+                chat_id, "Пожалуйста, отправьте фотографии как изображения, а не текст."
             )
             return True
 
@@ -499,16 +539,16 @@ def handle_photo_upload(chat_id, update, context):
     """Обработка загружаемых фотографий с устройства."""
     profile = _get_profile(chat_id)
     state_data = profile.telegram_state or {}
-    state = state_data.get('state')
+    state = state_data.get("state")
 
     if state != STATE_ADMIN_ADD_PHOTOS:
         return False
 
-    photo_mode = state_data.get('photo_mode')
-    if photo_mode != 'device':
+    photo_mode = state_data.get("photo_mode")
+    if photo_mode != "device":
         return False
 
-    prop_id = state_data['new_property'].get('id')
+    prop_id = state_data["new_property"].get("id")
     if not prop_id:
         send_telegram_message(chat_id, "Ошибка: квартира не найдена.")
         return True
@@ -517,8 +557,7 @@ def handle_photo_upload(chat_id, update, context):
     current_photos = PropertyPhoto.objects.filter(property_id=prop_id).count()
     if current_photos >= 6:
         send_telegram_message(
-            chat_id,
-            "Достигнут лимит в 6 фотографий. Нажмите \"✅ Завершить\""
+            chat_id, 'Достигнут лимит в 6 фотографий. Нажмите "✅ Завершить"'
         )
         return True
 
@@ -529,26 +568,31 @@ def handle_photo_upload(chat_id, update, context):
         bot = context.bot
 
         try:
-            best_photo = max(photos, key=lambda p: getattr(p, 'file_size', 0) or 0)
+            best_photo = max(photos, key=lambda p: getattr(p, "file_size", 0) or 0)
 
             # Проверяем размер файла
-            if hasattr(best_photo, 'file_size') and best_photo.file_size > 5 * 1024 * 1024:
+            if (
+                hasattr(best_photo, "file_size")
+                and best_photo.file_size > 5 * 1024 * 1024
+            ):
                 send_telegram_message(
-                    chat_id,
-                    "❌ Фото слишком большое! Максимальный размер 5 МБ."
+                    chat_id, "❌ Фото слишком большое! Максимальный размер 5 МБ."
                 )
                 return True
 
             file = bot.get_file(best_photo.file_id)
 
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
             file.download(custom_path=tmp.name)
 
-            with open(tmp.name, 'rb') as f:
-                django_file = File(f, name=f"property_{prop_id}_{best_photo.file_id}.jpg")
+            with open(tmp.name, "rb") as f:
+                django_file = File(
+                    f, name=f"property_{prop_id}_{best_photo.file_id}.jpg"
+                )
                 PropertyPhoto.objects.create(property_id=prop_id, image=django_file)
 
             import os
+
             os.unlink(tmp.name)
             created = 1
 
@@ -561,19 +605,17 @@ def handle_photo_upload(chat_id, update, context):
             if total_photos >= 6:
                 send_telegram_message(
                     chat_id,
-                    f"✅ Добавлено максимум фото (6)!\n"
-                    "Нажмите \"✅ Завершить\""
+                    f"✅ Добавлено максимум фото (6)!\n" 'Нажмите "✅ Завершить"',
                 )
             else:
                 send_telegram_message(
                     chat_id,
                     f"✅ Фотография добавлена! Всего: {total_photos}/6\n"
-                    "Можете отправить еще или нажать \"✅ Завершить\""
+                    'Можете отправить еще или нажать "✅ Завершить"',
                 )
         else:
             send_telegram_message(
-                chat_id,
-                "❌ Не удалось сохранить фотографию. Попробуйте еще раз."
+                chat_id, "❌ Не удалось сохранить фотографию. Попробуйте еще раз."
             )
 
         return True
@@ -590,24 +632,26 @@ def show_admin_menu(chat_id):
         [KeyboardButton("➕ Добавить квартиру")],
         [KeyboardButton("📊 Статистика")],
         [KeyboardButton("🏠 Мои квартиры")],
-        [KeyboardButton("📈 Расширенная аналитика")]
+        [KeyboardButton("📈 Расширенная аналитика")],
     ]
-    if profile.role == 'super_admin':
+    if profile.role == "super_admin":
         keyboard.append([KeyboardButton("👥 Управление админами")])
         keyboard.append([KeyboardButton("📊 KO-фактор гостей")])
     keyboard.append([KeyboardButton("🧭 Главное меню")])
     send_telegram_message(
         chat_id,
         text,
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True,
-                                         input_field_placeholder="Выберите действие").to_dict()
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard, resize_keyboard=True, input_field_placeholder="Выберите действие"
+        ).to_dict(),
     )
+
 
 @log_handler
 def show_admin_panel(chat_id):
     """Отобразить меню администратора."""
     profile = _get_profile(chat_id)
-    if profile.role not in ('admin', 'super_admin'):
+    if profile.role not in ("admin", "super_admin"):
         send_telegram_message(chat_id, "У вас нет доступа к админ‑панели.")
         return
 
@@ -615,16 +659,18 @@ def show_admin_panel(chat_id):
     buttons = [
         [KeyboardButton("➕ Добавить квартиру"), KeyboardButton("🏠 Мои квартиры")],
         [KeyboardButton("📊 Статистика"), KeyboardButton("📈 Расширенная статистика")],
-        [KeyboardButton("📝 Отзывы о гостях"), KeyboardButton("📥 Скачать CSV")],  # Новая кнопка
-        [KeyboardButton("🧭 Главное меню")]
+        [
+            KeyboardButton("📝 Отзывы о гостях"),
+            KeyboardButton("📥 Скачать CSV"),
+        ],  # Новая кнопка
+        [KeyboardButton("🧭 Главное меню")],
     ]
     send_telegram_message(
         chat_id,
         text,
         reply_markup=ReplyKeyboardMarkup(
-            buttons, resize_keyboard=True,
-            input_field_placeholder="Выберите действие"
-        ).to_dict()
+            buttons, resize_keyboard=True, input_field_placeholder="Выберите действие"
+        ).to_dict(),
     )
 
 
@@ -632,21 +678,27 @@ def show_admin_panel(chat_id):
 def show_admin_properties(chat_id):
     """Показать список квартир админа с возможностью просмотра календаря"""
     profile = _get_profile(chat_id)
-    if profile.role not in ('admin', 'super_admin'):
+    if profile.role not in ("admin", "super_admin"):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
 
-    props = Property.objects.filter(owner=profile.user) if profile.role == 'admin' else Property.objects.all()
+    props = (
+        Property.objects.filter(owner=profile.user)
+        if profile.role == "admin"
+        else Property.objects.all()
+    )
 
     if not props.exists():
         send_telegram_message(
             chat_id,
             "У вас пока нет квартир.",
             reply_markup=ReplyKeyboardMarkup(
-                [[KeyboardButton("🛠 Панель администратора")],
-                 [KeyboardButton("🧭 Главное меню")]],
-                resize_keyboard=True
-            ).to_dict()
+                [
+                    [KeyboardButton("🛠 Панель администратора")],
+                    [KeyboardButton("🧭 Главное меню")],
+                ],
+                resize_keyboard=True,
+            ).to_dict(),
         )
         return
 
@@ -661,10 +713,12 @@ def show_admin_properties(chat_id):
             f"   Статус: {prop.status}\n"
         )
         # Кнопки для каждой квартиры
-        keyboard.append([
-            KeyboardButton(f"📅 Календарь #{prop.id}"),
-            KeyboardButton(f"✏️ Изменить #{prop.id}")
-        ])
+        keyboard.append(
+            [
+                KeyboardButton(f"📅 Календарь #{prop.id}"),
+                KeyboardButton(f"✏️ Изменить #{prop.id}"),
+            ]
+        )
 
     text = "\n".join(lines)
 
@@ -674,7 +728,7 @@ def show_admin_properties(chat_id):
     send_telegram_message(
         chat_id,
         text,
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
     )
 
 
@@ -683,13 +737,13 @@ def show_property_calendar(chat_id, property_id, year=None, month=None):
     """Показать календарь занятости квартиры"""
     profile = _get_profile(chat_id)
 
-    if profile.role not in ('admin', 'super_admin'):
+    if profile.role not in ("admin", "super_admin"):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
 
     try:
         # Проверяем доступ к квартире
-        if profile.role == 'admin':
+        if profile.role == "admin":
             prop = Property.objects.get(id=property_id, owner=profile.user)
         else:
             prop = Property.objects.get(id=property_id)
@@ -718,11 +772,11 @@ def show_property_calendar(chat_id, property_id, year=None, month=None):
 
         # Легенда статусов
         status_emoji = {
-            'free': '⬜',  # Свободно
-            'booked': '🟨',  # Забронировано
-            'occupied': '🟥',  # Занято
-            'blocked': '⬛',  # Заблокировано
-            'cleaning': '🟦',  # Уборка
+            "free": "⬜",  # Свободно
+            "booked": "🟨",  # Забронировано
+            "occupied": "🟥",  # Занято
+            "blocked": "⬛",  # Заблокировано
+            "cleaning": "🟦",  # Уборка
         }
 
         # Формируем календарь
@@ -732,8 +786,8 @@ def show_property_calendar(chat_id, property_id, year=None, month=None):
                 if day_info is None:
                     week_text += "    "  # Пустое место
                 else:
-                    emoji = status_emoji.get(day_info['status'], '⬜')
-                    if day_info['is_today']:
+                    emoji = status_emoji.get(day_info["status"], "⬜")
+                    if day_info["is_today"]:
                         # Выделяем сегодняшний день
                         week_text += f"[{day_info['day']:2}]"
                     else:
@@ -751,7 +805,7 @@ def show_property_calendar(chat_id, property_id, year=None, month=None):
         occupancy_rate = PropertyCalendarManager.get_occupancy_rate(
             prop,
             date(year, month, 1),
-            date(year, month + 1, 1) if month < 12 else date(year + 1, 1, 1)
+            date(year, month + 1, 1) if month < 12 else date(year + 1, 1, 1),
         )
         text += f"\n📊 Загрузка: {occupancy_rate:.1f}%"
 
@@ -781,17 +835,17 @@ def show_property_calendar(chat_id, property_id, year=None, month=None):
 
         # Сохраняем состояние для навигации
         profile.telegram_state = {
-            'state': 'viewing_calendar',
-            'calendar_property_id': property_id,
-            'calendar_year': year,
-            'calendar_month': month
+            "state": "viewing_calendar",
+            "calendar_property_id": property_id,
+            "calendar_year": year,
+            "calendar_month": month,
         }
         profile.save()
 
         send_telegram_message(
             chat_id,
             text,
-            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
         )
 
     except Property.DoesNotExist:
@@ -804,12 +858,13 @@ def show_calendar_booking_details(chat_id, property_id, year, month):
     profile = _get_profile(chat_id)
 
     try:
-        if profile.role == 'admin':
+        if profile.role == "admin":
             prop = Property.objects.get(id=property_id, owner=profile.user)
         else:
             prop = Property.objects.get(id=property_id)
 
         from datetime import date
+
         start_date = date(year, month, 1)
         if month == 12:
             end_date = date(year + 1, 1, 1)
@@ -820,10 +875,11 @@ def show_calendar_booking_details(chat_id, property_id, year, month):
             property=prop,
             start_date__lt=end_date,
             end_date__gte=start_date,
-            status__in=['confirmed', 'completed']
-        ).order_by('start_date')
+            status__in=["confirmed", "completed"],
+        ).order_by("start_date")
 
         import calendar
+
         month_name = calendar.month_name[month]
 
         text = f"📋 *Бронирования - {month_name} {year}*\n"
@@ -843,13 +899,13 @@ def show_calendar_booking_details(chat_id, property_id, year, month):
 
         keyboard = [
             [KeyboardButton("📅 Назад к календарю")],
-            [KeyboardButton("🏠 Мои квартиры")]
+            [KeyboardButton("🏠 Мои квартиры")],
         ]
 
         send_telegram_message(
             chat_id,
             text,
-            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
         )
 
     except Property.DoesNotExist:
@@ -857,26 +913,34 @@ def show_calendar_booking_details(chat_id, property_id, year, month):
 
 
 @log_handler
-def show_detailed_statistics(chat_id, period='month'):
+def show_detailed_statistics(chat_id, period="month"):
     """Показать детальную статистику и кнопки выбора периода."""
     profile = _get_profile(chat_id)
-    if profile.role not in ('admin', 'super_admin'):
+    if profile.role not in ("admin", "super_admin"):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
     today = date.today()
-    if period == 'week': start = today - timedelta(days=7)
-    elif period == 'month': start = today - timedelta(days=30)
-    elif period == 'quarter': start = today - timedelta(days=90)
-    else: start = today - timedelta(days=365)
-    if profile.role == 'admin':
+    if period == "week":
+        start = today - timedelta(days=7)
+    elif period == "month":
+        start = today - timedelta(days=30)
+    elif period == "quarter":
+        start = today - timedelta(days=90)
+    else:
+        start = today - timedelta(days=365)
+    if profile.role == "admin":
         props = Property.objects.filter(owner=profile.user)
     else:
         props = Property.objects.all()
-    bookings = Booking.objects.filter(property__in=props, created_at__gte=start, status__in=['confirmed','completed'])
-    total_revenue = bookings.aggregate(Sum('total_price'))['total_price__sum'] or 0
+    bookings = Booking.objects.filter(
+        property__in=props, created_at__gte=start, status__in=["confirmed", "completed"]
+    )
+    total_revenue = bookings.aggregate(Sum("total_price"))["total_price__sum"] or 0
     total_bookings = bookings.count()
-    canceled = Booking.objects.filter(property__in=props, created_at__gte=start, status='cancelled').count()
-    avg_value = total_revenue/total_bookings if total_bookings else 0
+    canceled = Booking.objects.filter(
+        property__in=props, created_at__gte=start, status="cancelled"
+    ).count()
+    avg_value = total_revenue / total_bookings if total_bookings else 0
     # Текст
     text = (
         f"📊 *Статистика за {period}:*\n"
@@ -885,67 +949,74 @@ def show_detailed_statistics(chat_id, period='month'):
         f"Средний чек: {avg_value:,.0f} ₸"
     )
 
-    profile.telegram_state = {'state': 'detailed_stats', 'period': period}
+    profile.telegram_state = {"state": "detailed_stats", "period": period}
     profile.save()
 
     buttons = [
-        [KeyboardButton("Неделя") , KeyboardButton("Месяц")],
+        [KeyboardButton("Неделя"), KeyboardButton("Месяц")],
         [KeyboardButton("Квартал"), KeyboardButton("Год")],
         [KeyboardButton("📥 Скачать CSV")],
-        [KeyboardButton("🧭 Главное меню")]
+        [KeyboardButton("🧭 Главное меню")],
     ]
     send_telegram_message(
         chat_id,
         text,
-        reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True, input_field_placeholder="Выберите действие").to_dict()
+        reply_markup=ReplyKeyboardMarkup(
+            buttons, resize_keyboard=True, input_field_placeholder="Выберите действие"
+        ).to_dict(),
     )
 
+
 @log_handler
-def show_extended_statistics(chat_id, period='month'):
+def show_extended_statistics(chat_id, period="month"):
     """Показать расширенную статистику для администратора."""
     profile = _get_profile(chat_id)
     # Доступ только для админа или супер‑админа
-    if profile.role not in ('admin', 'super_admin'):
+    if profile.role not in ("admin", "super_admin"):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
 
     today = date.today()
-    if period == 'week':
+    if period == "week":
         start = today - timedelta(days=7)
-    elif period == 'month':
+    elif period == "month":
         start = today - timedelta(days=30)
-    elif period == 'quarter':
+    elif period == "quarter":
         start = today - timedelta(days=90)
     else:
         start = today - timedelta(days=365)
 
     # Фильтр по объектам владельца (админа) или все объекты (супер‑админ)
-    props = Property.objects.filter(owner=profile.user) if profile.role == 'admin' else Property.objects.all()
+    props = (
+        Property.objects.filter(owner=profile.user)
+        if profile.role == "admin"
+        else Property.objects.all()
+    )
 
     # Подтверждённые и завершённые брони за период
     bookings = Booking.objects.filter(
-        property__in=props,
-        created_at__gte=start,
-        status__in=['confirmed', 'completed']
+        property__in=props, created_at__gte=start, status__in=["confirmed", "completed"]
     )
 
-    total_revenue = bookings.aggregate(Sum('total_price'))['total_price__sum'] or 0
+    total_revenue = bookings.aggregate(Sum("total_price"))["total_price__sum"] or 0
     total_bookings = bookings.count()
     canceled = Booking.objects.filter(
-        property__in=props,
-        created_at__gte=start,
-        status='cancelled'
+        property__in=props, created_at__gte=start, status="cancelled"
     ).count()
     avg_check = total_revenue / total_bookings if total_bookings else 0
 
     # Рассчитываем длительность каждого бронирования и время между бронированием и заездом
-    duration_expr = ExpressionWrapper(F('end_date') - F('start_date'), output_field=DurationField())
-    lead_expr = ExpressionWrapper(F('start_date') - F('created_at'), output_field=DurationField())
+    duration_expr = ExpressionWrapper(
+        F("end_date") - F("start_date"), output_field=DurationField()
+    )
+    lead_expr = ExpressionWrapper(
+        F("start_date") - F("created_at"), output_field=DurationField()
+    )
     bookings = bookings.annotate(duration_days=duration_expr, lead_days=lead_expr)
 
-    total_nights = bookings.aggregate(Sum('duration_days'))['duration_days__sum']
-    avg_stay = bookings.aggregate(Avg('duration_days'))['duration_days__avg']
-    avg_lead = bookings.aggregate(Avg('lead_days'))['lead_days__avg']
+    total_nights = bookings.aggregate(Sum("duration_days"))["duration_days__sum"]
+    avg_stay = bookings.aggregate(Avg("duration_days"))["duration_days__avg"]
+    avg_lead = bookings.aggregate(Avg("lead_days"))["lead_days__avg"]
 
     # Конвертируем результаты в дни
     total_nights = total_nights.days if total_nights else 0
@@ -954,21 +1025,29 @@ def show_extended_statistics(chat_id, period='month'):
 
     # Коэффициент занятости (в процентах)
     period_days = (today - start).days or 1
-    total_available = period_days * props.count()  # сколько ночей было доступно суммарно
+    total_available = (
+        period_days * props.count()
+    )  # сколько ночей было доступно суммарно
     occupancy_rate = (total_nights / total_available * 100) if total_available else 0
 
     # Доход по классам жилья
-    class_revenue_qs = bookings.values('property__property_class').annotate(total=Sum('total_price'))
-    class_names = {'economy': 'Комфорт', 'business': 'Бизнес', 'luxury': 'Премиум'}
+    class_revenue_qs = bookings.values("property__property_class").annotate(
+        total=Sum("total_price")
+    )
+    class_names = {"economy": "Комфорт", "business": "Бизнес", "luxury": "Премиум"}
     class_revenue_text = ""
     for entry in class_revenue_qs:
-        cls = class_names.get(entry['property__property_class'], entry['property__property_class'])
+        cls = class_names.get(
+            entry["property__property_class"], entry["property__property_class"]
+        )
         class_revenue_text += f"{cls}: {entry['total']:,.0f} ₸\n"
 
     # Топ‑3 квартиры по доходу
-    top_props = (bookings.values('property__name')
-                          .annotate(total=Sum('total_price'))
-                          .order_by('-total')[:3])
+    top_props = (
+        bookings.values("property__name")
+        .annotate(total=Sum("total_price"))
+        .order_by("-total")[:3]
+    )
     top_text = ""
     for idx, item in enumerate(top_props, start=1):
         top_text += f"{idx}. {item['property__name']}: {item['total']:,.0f} ₸\n"
@@ -986,19 +1065,21 @@ def show_extended_statistics(chat_id, period='month'):
         f"🏆 Топ‑квартиры по доходу:\n{top_text or 'нет данных'}"
     )
 
-    profile.telegram_state = {'state': 'extended_stats', 'period': period}
+    profile.telegram_state = {"state": "extended_stats", "period": period}
     profile.save()
 
     buttons = [
         [KeyboardButton("Неделя"), KeyboardButton("Месяц")],
         [KeyboardButton("Квартал"), KeyboardButton("Год")],
         [KeyboardButton("📥 Скачать CSV")],
-        [KeyboardButton("🧭 Главное меню")]
+        [KeyboardButton("🧭 Главное меню")],
     ]
     send_telegram_message(
         chat_id,
         text,
-        reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True, input_field_placeholder="Выберите период").to_dict()
+        reply_markup=ReplyKeyboardMarkup(
+            buttons, resize_keyboard=True, input_field_placeholder="Выберите период"
+        ).to_dict(),
     )
 
 
@@ -1006,7 +1087,7 @@ def show_extended_statistics(chat_id, period='month'):
 def show_pending_guest_reviews(chat_id):
     """Показать список гостей, ожидающих отзыв"""
     profile = _get_profile(chat_id)
-    if profile.role not in ('admin', 'super_admin'):
+    if profile.role not in ("admin", "super_admin"):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
 
@@ -1017,21 +1098,22 @@ def show_pending_guest_reviews(chat_id):
     # Брони за последние 30 дней
     cutoff_date = date.today() - timedelta(days=30)
 
-    if profile.role == 'admin':
-        bookings = Booking.objects.filter(
-            property__owner=profile.user,
-            status='completed',
-            end_date__gte=cutoff_date
-        ).exclude(
-            guest_review__isnull=False
-        ).select_related('user', 'property')[:10]
+    if profile.role == "admin":
+        bookings = (
+            Booking.objects.filter(
+                property__owner=profile.user,
+                status="completed",
+                end_date__gte=cutoff_date,
+            )
+            .exclude(guest_review__isnull=False)
+            .select_related("user", "property")[:10]
+        )
     else:  # super_admin
-        bookings = Booking.objects.filter(
-            status='completed',
-            end_date__gte=cutoff_date
-        ).exclude(
-            guest_review__isnull=False
-        ).select_related('user', 'property')[:10]
+        bookings = (
+            Booking.objects.filter(status="completed", end_date__gte=cutoff_date)
+            .exclude(guest_review__isnull=False)
+            .select_related("user", "property")[:10]
+        )
 
     if not bookings:
         text = "📝 Нет гостей, ожидающих отзыв."
@@ -1054,7 +1136,7 @@ def show_pending_guest_reviews(chat_id):
     send_telegram_message(
         chat_id,
         text,
-        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
+        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict(),
     )
 
 
@@ -1064,22 +1146,17 @@ def handle_guest_review_start(chat_id, booking_id):
     profile = _get_profile(chat_id)
 
     try:
-        if profile.role == 'admin':
+        if profile.role == "admin":
             booking = Booking.objects.get(
-                id=booking_id,
-                property__owner=profile.user,
-                status='completed'
+                id=booking_id, property__owner=profile.user, status="completed"
             )
         else:  # super_admin
-            booking = Booking.objects.get(
-                id=booking_id,
-                status='completed'
-            )
+            booking = Booking.objects.get(id=booking_id, status="completed")
 
         # Сохраняем в состояние
         profile.telegram_state = {
-            'state': 'guest_review_rating',
-            'guest_review_booking_id': booking_id
+            "state": "guest_review_rating",
+            "guest_review_booking_id": booking_id,
         }
         profile.save()
 
@@ -1095,13 +1172,13 @@ def handle_guest_review_start(chat_id, booking_id):
         kb = [
             [KeyboardButton("⭐"), KeyboardButton("⭐⭐"), KeyboardButton("⭐⭐⭐")],
             [KeyboardButton("⭐⭐⭐⭐"), KeyboardButton("⭐⭐⭐⭐⭐")],
-            [KeyboardButton("❌ Отмена")]
+            [KeyboardButton("❌ Отмена")],
         ]
 
         send_telegram_message(
             chat_id,
             text,
-            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
+            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict(),
         )
 
     except Booking.DoesNotExist:
@@ -1120,8 +1197,8 @@ def handle_guest_review_rating(chat_id, text):
         return
 
     sd = profile.telegram_state
-    sd['guest_review_rating'] = rating
-    sd['state'] = 'guest_review_text'
+    sd["guest_review_rating"] = rating
+    sd["state"] = "guest_review_text"
     profile.telegram_state = sd
     profile.save()
 
@@ -1130,15 +1207,14 @@ def handle_guest_review_rating(chat_id, text):
         "Напишите короткий комментарий о госте (или отправьте 'Пропустить'):"
     )
 
-    kb = [
-        [KeyboardButton("Пропустить")],
-        [KeyboardButton("❌ Отмена")]
-    ]
+    kb = [[KeyboardButton("Пропустить")], [KeyboardButton("❌ Отмена")]]
 
     send_telegram_message(
         chat_id,
         text,
-        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True, input_field_placeholder="Ваш комментарий").to_dict()
+        reply_markup=ReplyKeyboardMarkup(
+            kb, resize_keyboard=True, input_field_placeholder="Ваш комментарий"
+        ).to_dict(),
     )
 
 
@@ -1148,8 +1224,8 @@ def handle_guest_review_text(chat_id, text):
     profile = _get_profile(chat_id)
     sd = profile.telegram_state
 
-    booking_id = sd.get('guest_review_booking_id')
-    rating = sd.get('guest_review_rating')
+    booking_id = sd.get("guest_review_booking_id")
+    rating = sd.get("guest_review_rating")
 
     if text == "Пропустить":
         text = ""
@@ -1158,21 +1234,19 @@ def handle_guest_review_text(chat_id, text):
         booking = Booking.objects.get(id=booking_id)
 
         from booking_bot.listings.models import GuestReview
+
         GuestReview.objects.create(
             guest=booking.user,
             admin=profile.user,
             booking=booking,
             rating=rating,
-            text=text
+            text=text,
         )
 
         # Обновляем KO-фактор гостя
         update_guest_ko_factor(booking.user)
 
-        send_telegram_message(
-            chat_id,
-            "✅ Отзыв о госте сохранен!"
-        )
+        send_telegram_message(chat_id, "✅ Отзыв о госте сохранен!")
 
         # Очищаем состояние
         profile.telegram_state = {}
@@ -1195,19 +1269,15 @@ def update_guest_ko_factor(user):
     six_months_ago = date.today() - timedelta(days=180)
 
     total_bookings = Booking.objects.filter(
-        user=user,
-        created_at__gte=six_months_ago
+        user=user, created_at__gte=six_months_ago
     ).count()
 
     cancelled_bookings = Booking.objects.filter(
-        user=user,
-        created_at__gte=six_months_ago,
-        status='cancelled',
-        cancelled_by=user
+        user=user, created_at__gte=six_months_ago, status="cancelled", cancelled_by=user
     ).count()
 
     if total_bookings > 0:
-        ko_factor = (cancelled_bookings / total_bookings)
+        ko_factor = cancelled_bookings / total_bookings
 
         # Обновляем профиль
         profile = user.profile
@@ -1221,7 +1291,7 @@ def update_guest_ko_factor(user):
 def show_top_users_statistics(chat_id):
     """Показать ТОП пользователей"""
     profile = _get_profile(chat_id)
-    if profile.role != 'super_admin':
+    if profile.role != "super_admin":
         send_telegram_message(chat_id, "❌ Нет доступа")
         return
 
@@ -1229,18 +1299,20 @@ def show_top_users_statistics(chat_id):
     from booking_bot.bookings.models import Booking
 
     # ТОП-5 по заселениям
-    top_by_count = (Booking.objects
-    .filter(status__in=['confirmed', 'completed'])
-    .values('user__username')
-    .annotate(count=Count('id'))
-    .order_by('-count')[:5])
+    top_by_count = (
+        Booking.objects.filter(status__in=["confirmed", "completed"])
+        .values("user__username")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
+    )
 
     # ТОП-5 по тратам
-    top_by_sum = (Booking.objects
-    .filter(status__in=['confirmed', 'completed'])
-    .values('user__username')
-    .annotate(total=Sum('total_price'))
-    .order_by('-total')[:5])
+    top_by_sum = (
+        Booking.objects.filter(status__in=["confirmed", "completed"])
+        .values("user__username")
+        .annotate(total=Sum("total_price"))
+        .order_by("-total")[:5]
+    )
 
     text = "👥 *ТОП пользователей*\n\n"
     text += "*По количеству заселений:*\n"
@@ -1255,10 +1327,10 @@ def show_top_users_statistics(chat_id):
 
 
 @log_handler
-def export_statistics_csv(chat_id: int, context=None, period: str = 'month'):
+def export_statistics_csv(chat_id: int, context=None, period: str = "month"):
     """Генерация и отправка CSV со статистикой"""
     profile = _get_profile(chat_id)
-    if profile.role not in ('admin', 'super_admin'):
+    if profile.role not in ("admin", "super_admin"):
         send_telegram_message(chat_id, "У вас нет доступа.")
         return
 
@@ -1269,25 +1341,23 @@ def export_statistics_csv(chat_id: int, context=None, period: str = 'month'):
 
     # Определяем период
     today = date.today()
-    if period == 'week':
+    if period == "week":
         start = today - timedelta(days=7)
-    elif period == 'month':
+    elif period == "month":
         start = today - timedelta(days=30)
-    elif period == 'quarter':
+    elif period == "quarter":
         start = today - timedelta(days=90)
     else:
         start = today - timedelta(days=365)
 
     # Получаем данные
-    if profile.role == 'admin':
+    if profile.role == "admin":
         props = Property.objects.filter(owner=profile.user)
     else:
         props = Property.objects.all()
 
     bookings = Booking.objects.filter(
-        property__in=props,
-        created_at__gte=start,
-        status__in=['confirmed', 'completed']
+        property__in=props, created_at__gte=start, status__in=["confirmed", "completed"]
     )
 
     # Создаем CSV
@@ -1295,48 +1365,47 @@ def export_statistics_csv(chat_id: int, context=None, period: str = 'month'):
     writer = csv.writer(output)
 
     # Заголовки
-    writer.writerow(['ID', 'Квартира', 'Гость', 'Заезд', 'Выезд', 'Сумма', 'Статус'])
+    writer.writerow(["ID", "Квартира", "Гость", "Заезд", "Выезд", "Сумма", "Статус"])
 
     # Данные
     for booking in bookings:
-        writer.writerow([
-            booking.id,
-            booking.property.name,
-            booking.user.username,
-            booking.start_date.strftime('%d.%m.%Y'),
-            booking.end_date.strftime('%d.%m.%Y'),
-            float(booking.total_price),
-            booking.get_status_display()
-        ])
+        writer.writerow(
+            [
+                booking.id,
+                booking.property.name,
+                booking.user.username,
+                booking.start_date.strftime("%d.%m.%Y"),
+                booking.end_date.strftime("%d.%m.%Y"),
+                float(booking.total_price),
+                booking.get_status_display(),
+            ]
+        )
 
     # Конвертируем в bytes
     output.seek(0)
-    file_data = output.getvalue().encode('utf-8-sig')  # UTF-8 с BOM для Excel
+    file_data = output.getvalue().encode("utf-8-sig")  # UTF-8 с BOM для Excel
 
     # Отправляем файл через Telegram API
     import requests
+
     bot_token = TELEGRAM_BOT_TOKEN
     url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
 
-    files = {
-        'document': (f'statistics_{period}.csv', file_data, 'text/csv')
-    }
-    data = {
-        'chat_id': chat_id,
-        'caption': f'📊 Статистика за {period}'
-    }
+    files = {"document": (f"statistics_{period}.csv", file_data, "text/csv")}
+    data = {"chat_id": chat_id, "caption": f"📊 Статистика за {period}"}
 
     response = requests.post(url, data=data, files=files)
 
     if response.status_code != 200:
         send_telegram_message(chat_id, "Ошибка при отправке файла")
 
+
 @log_handler
 def show_property_management(chat_id, property_id):
     """Показать управление конкретной квартирой."""
     profile = _get_profile(chat_id)
     try:
-        if profile.role == 'admin':
+        if profile.role == "admin":
             prop = Property.objects.get(id=property_id, owner=profile.user)
         else:
             prop = Property.objects.get(id=property_id)
@@ -1345,7 +1414,12 @@ def show_property_management(chat_id, property_id):
         return
     # Собираем текст
     month = date.today() - timedelta(days=30)
-    rev = Booking.objects.filter(property=prop, created_at__gte=month, status__in=['confirmed','completed']).aggregate(Sum('total_price'))['total_price__sum'] or 0
+    rev = (
+        Booking.objects.filter(
+            property=prop, created_at__gte=month, status__in=["confirmed", "completed"]
+        ).aggregate(Sum("total_price"))["total_price__sum"]
+        or 0
+    )
     text = (
         f"🏠 *{prop.name}*\n"
         f"🛏 {prop.number_of_rooms} комн., {prop.area} м²\n"
@@ -1356,10 +1430,12 @@ def show_property_management(chat_id, property_id):
         [KeyboardButton("Изменить цену")],
         [KeyboardButton("Изменить описание")],
         [KeyboardButton("Управление фото")],
-        [KeyboardButton("🧭 Главное меню")]
+        [KeyboardButton("🧭 Главное меню")],
     ]
-    send_telegram_message(chat_id, text,
-        reply_markup=ReplyKeyboardMarkup(buttons,resize_keyboard=True).to_dict()
+    send_telegram_message(
+        chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True).to_dict(),
     )
 
 
@@ -1367,7 +1443,7 @@ def show_property_management(chat_id, property_id):
 def show_super_admin_menu(chat_id):
     """Показать меню супер-админа"""
     profile = _get_profile(chat_id)
-    if profile.role != 'super_admin':
+    if profile.role != "super_admin":
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
 
@@ -1381,13 +1457,13 @@ def show_super_admin_menu(chat_id):
         [KeyboardButton("📈 Общая статистика")],
         [KeyboardButton("🎯 План-факт")],
         [KeyboardButton("📊 KO-фактор гостей")],
-        [KeyboardButton("🧭 Главное меню")]
+        [KeyboardButton("🧭 Главное меню")],
     ]
 
     send_telegram_message(
         chat_id,
         text,
-        reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True).to_dict()
+        reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True).to_dict(),
     )
 
 
@@ -1395,10 +1471,10 @@ def show_super_admin_menu(chat_id):
 def handle_add_admin(chat_id):
     """Начать процесс добавления админа"""
     profile = _get_profile(chat_id)
-    if profile.role != 'super_admin':
+    if profile.role != "super_admin":
         return
 
-    profile.telegram_state = {'state': 'add_admin_username'}
+    profile.telegram_state = {"state": "add_admin_username"}
     profile.save()
 
     keyboard = [[KeyboardButton("❌ Отмена")]]
@@ -1406,7 +1482,7 @@ def handle_add_admin(chat_id):
     send_telegram_message(
         chat_id,
         "Введите username пользователя Telegram (без @) для назначения админом:",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
     )
 
 
@@ -1415,30 +1491,31 @@ def process_add_admin(chat_id, username):
     """Добавить админа по username"""
     try:
         # Ищем пользователя
-        target_profile = UserProfile.objects.filter(
-            telegram_chat_id__isnull=False
-        ).filter(
-            user__username__iexact=f"telegram_{username}"
-        ).first()
+        target_profile = (
+            UserProfile.objects.filter(telegram_chat_id__isnull=False)
+            .filter(user__username__iexact=f"telegram_{username}")
+            .first()
+        )
 
         if not target_profile:
             send_telegram_message(
                 chat_id,
                 f"❌ Пользователь с username {username} не найден.\n"
-                "Он должен сначала запустить бота."
+                "Он должен сначала запустить бота.",
             )
             return
 
-        if target_profile.role == 'admin':
-            send_telegram_message(chat_id, "Этот пользователь уже является администратором")
+        if target_profile.role == "admin":
+            send_telegram_message(
+                chat_id, "Этот пользователь уже является администратором"
+            )
             return
 
-        target_profile.role = 'admin'
+        target_profile.role = "admin"
         target_profile.save()
 
         send_telegram_message(
-            chat_id,
-            f"✅ Пользователь {username} назначен администратором"
+            chat_id, f"✅ Пользователь {username} назначен администратором"
         )
 
         # Уведомляем нового админа
@@ -1446,7 +1523,7 @@ def process_add_admin(chat_id, username):
             send_telegram_message(
                 target_profile.telegram_chat_id,
                 "🎉 Вы назначены администратором системы ЖильеGO!\n"
-                "Теперь вам доступна панель администратора."
+                "Теперь вам доступна панель администратора.",
             )
 
     except Exception as e:
@@ -1457,7 +1534,7 @@ def process_add_admin(chat_id, username):
 @log_handler
 def show_admins_list(chat_id):
     """Показать список администраторов"""
-    admins = UserProfile.objects.filter(role='admin')
+    admins = UserProfile.objects.filter(role="admin")
 
     if not admins.exists():
         send_telegram_message(chat_id, "Список администраторов пуст")
@@ -1467,7 +1544,7 @@ def show_admins_list(chat_id):
 
     for admin in admins:
         props_count = Property.objects.filter(owner=admin.user).count()
-        username = admin.user.username.replace('telegram_', '@')
+        username = admin.user.username.replace("telegram_", "@")
         text += f"• {username} - {props_count} объектов\n"
 
     keyboard = [[KeyboardButton("🧭 Главное меню")]]
@@ -1475,15 +1552,15 @@ def show_admins_list(chat_id):
     send_telegram_message(
         chat_id,
         text,
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
     )
 
 
 @log_handler
-def show_city_statistics(chat_id, period='month'):
+def show_city_statistics(chat_id, period="month"):
     """Показать статистику по городам для супер-админа"""
     profile = _get_profile(chat_id)
-    if profile.role != 'super_admin':
+    if profile.role != "super_admin":
         send_telegram_message(chat_id, "❌ Нет доступа")
         return
 
@@ -1492,11 +1569,11 @@ def show_city_statistics(chat_id, period='month'):
 
     # Определяем период
     today = date.today()
-    if period == 'week':
+    if period == "week":
         start = today - timedelta(days=7)
-    elif period == 'month':
+    elif period == "month":
         start = today - timedelta(days=30)
-    elif period == 'quarter':
+    elif period == "quarter":
         start = today - timedelta(days=90)
     else:
         start = today - timedelta(days=365)
@@ -1513,10 +1590,10 @@ def show_city_statistics(chat_id, period='month'):
         city_bookings = Booking.objects.filter(
             property__district__city=city,
             created_at__gte=start,
-            status__in=['confirmed', 'completed']
+            status__in=["confirmed", "completed"],
         )
 
-        revenue = city_bookings.aggregate(Sum('total_price'))['total_price__sum'] or 0
+        revenue = city_bookings.aggregate(Sum("total_price"))["total_price__sum"] or 0
         bookings_count = city_bookings.count()
 
         # Средняя загрузка
@@ -1529,28 +1606,32 @@ def show_city_statistics(chat_id, period='month'):
 
             occupied = Booking.objects.filter(
                 property=prop,
-                status__in=['confirmed', 'completed'],
+                status__in=["confirmed", "completed"],
                 start_date__lte=today,
-                end_date__gte=start
+                end_date__gte=start,
             ).count()
             occupied_nights += occupied
 
         occupancy = (occupied_nights / total_nights * 100) if total_nights > 0 else 0
 
         # Средняя цена
-        avg_price = city_properties.aggregate(Avg('price_per_day'))['price_per_day__avg'] or 0
+        avg_price = (
+            city_properties.aggregate(Avg("price_per_day"))["price_per_day__avg"] or 0
+        )
 
-        cities_data.append({
-            'name': city.name,
-            'properties': city_properties.count(),
-            'revenue': revenue,
-            'bookings': bookings_count,
-            'occupancy': occupancy,
-            'avg_price': avg_price
-        })
+        cities_data.append(
+            {
+                "name": city.name,
+                "properties": city_properties.count(),
+                "revenue": revenue,
+                "bookings": bookings_count,
+                "occupancy": occupancy,
+                "avg_price": avg_price,
+            }
+        )
 
     # Сортируем по доходу
-    cities_data.sort(key=lambda x: x['revenue'], reverse=True)
+    cities_data.sort(key=lambda x: x["revenue"], reverse=True)
 
     # Формируем сообщение
     text = f"📊 *Статистика по городам за {period}*\n\n"
@@ -1566,8 +1647,8 @@ def show_city_statistics(chat_id, period='month'):
         )
 
     # Общий итог
-    total_revenue = sum(c['revenue'] for c in cities_data)
-    total_bookings = sum(c['bookings'] for c in cities_data)
+    total_revenue = sum(c["revenue"] for c in cities_data)
+    total_bookings = sum(c["bookings"] for c in cities_data)
 
     text += (
         f"📈 *ИТОГО:*\n"
@@ -1580,17 +1661,17 @@ def show_city_statistics(chat_id, period='month'):
         [KeyboardButton("🏙 Неделя"), KeyboardButton("🏙 Месяц")],
         [KeyboardButton("🏙 Квартал"), KeyboardButton("🏙 Год")],
         [KeyboardButton("📥 Экспорт в CSV")],
-        [KeyboardButton("🧭 Главное меню")]
+        [KeyboardButton("🧭 Главное меню")],
     ]
 
     # Сохраняем состояние для переключения периодов
-    profile.telegram_state = {'state': 'city_stats', 'period': period}
+    profile.telegram_state = {"state": "city_stats", "period": period}
     profile.save()
 
     send_telegram_message(
         chat_id,
         text,
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
     )
 
 
@@ -1598,7 +1679,7 @@ def show_city_statistics(chat_id, period='month'):
 def show_plan_fact(chat_id):
     """Показать план-факт анализ"""
     profile = _get_profile(chat_id)
-    if profile.role not in ('admin', 'super_admin'):
+    if profile.role not in ("admin", "super_admin"):
         send_telegram_message(chat_id, "❌ Нет доступа")
         return
 
@@ -1612,7 +1693,7 @@ def show_plan_fact(chat_id):
     month_start = date(today.year, today.month, 1)
 
     # Определяем квартиры для анализа
-    if profile.role == 'admin':
+    if profile.role == "admin":
         properties = Property.objects.filter(owner=profile.user)
     else:
         properties = Property.objects.all()
@@ -1625,10 +1706,7 @@ def show_plan_fact(chat_id):
     for prop in properties[:10]:  # Ограничиваем 10 объектами
         # Получаем цель
         try:
-            target = PropertyTarget.objects.get(
-                property=prop,
-                month=month_start
-            )
+            target = PropertyTarget.objects.get(property=prop, month=month_start)
             plan_revenue = target.target_revenue
             plan_occupancy = target.target_occupancy
         except PropertyTarget.DoesNotExist:
@@ -1642,12 +1720,12 @@ def show_plan_fact(chat_id):
             property=prop,
             created_at__month=today.month,
             created_at__year=today.year,
-            status__in=['confirmed', 'completed']
+            status__in=["confirmed", "completed"],
         )
 
-        fact_revenue = fact_bookings.aggregate(
-            Sum('total_price')
-        )['total_price__sum'] or 0
+        fact_revenue = (
+            fact_bookings.aggregate(Sum("total_price"))["total_price__sum"] or 0
+        )
 
         # Расчет загрузки
         days_passed = today.day
@@ -1655,16 +1733,15 @@ def show_plan_fact(chat_id):
 
         for booking in fact_bookings:
             if booking.start_date.month == today.month:
-                days = min(
-                    (booking.end_date - booking.start_date).days,
-                    days_passed
-                )
+                days = min((booking.end_date - booking.start_date).days, days_passed)
                 occupied_days += days
 
         fact_occupancy = (occupied_days / days_passed * 100) if days_passed > 0 else 0
 
         # Выполнение плана
-        revenue_completion = (fact_revenue / plan_revenue * 100) if plan_revenue > 0 else 0
+        revenue_completion = (
+            (fact_revenue / plan_revenue * 100) if plan_revenue > 0 else 0
+        )
 
         # Эмодзи статуса
         if revenue_completion >= 100:
@@ -1685,7 +1762,9 @@ def show_plan_fact(chat_id):
         total_fact_revenue += fact_revenue
 
     # Итоги
-    total_completion = (total_fact_revenue / total_plan_revenue * 100) if total_plan_revenue > 0 else 0
+    total_completion = (
+        (total_fact_revenue / total_plan_revenue * 100) if total_plan_revenue > 0 else 0
+    )
 
     text += (
         f"📊 *ИТОГО:*\n"
@@ -1697,13 +1776,13 @@ def show_plan_fact(chat_id):
     keyboard = [
         [KeyboardButton("🎯 Установить цели")],
         [KeyboardButton("📈 Прогноз на месяц")],
-        [KeyboardButton("🧭 Главное меню")]
+        [KeyboardButton("🧭 Главное меню")],
     ]
 
     send_telegram_message(
         chat_id,
         text,
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
     )
 
 
@@ -1712,7 +1791,7 @@ def set_property_targets(chat_id):
     """Начать процесс установки целей"""
     profile = _get_profile(chat_id)
 
-    if profile.role == 'admin':
+    if profile.role == "admin":
         properties = Property.objects.filter(owner=profile.user)
     else:
         properties = Property.objects.all()
@@ -1728,13 +1807,13 @@ def set_property_targets(chat_id):
 
     keyboard.append([KeyboardButton("❌ Отмена")])
 
-    profile.telegram_state = {'state': 'select_property_for_target'}
+    profile.telegram_state = {"state": "select_property_for_target"}
     profile.save()
 
     send_telegram_message(
         chat_id,
         "Выберите объект для установки целей:",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
     )
 
 
@@ -1742,7 +1821,8 @@ def set_property_targets(chat_id):
 def handle_target_property_selection(chat_id, text):
     """Обработка выбора объекта для целей"""
     import re
-    match = re.search(r'Цель для (\d+):', text)
+
+    match = re.search(r"Цель для (\d+):", text)
 
     if not match:
         send_telegram_message(chat_id, "Неверный выбор")
@@ -1752,8 +1832,8 @@ def handle_target_property_selection(chat_id, text):
     profile = _get_profile(chat_id)
 
     profile.telegram_state = {
-        'state': 'set_target_revenue',
-        'target_property_id': property_id
+        "state": "set_target_revenue",
+        "target_property_id": property_id,
     }
     profile.save()
 
@@ -1762,7 +1842,7 @@ def handle_target_property_selection(chat_id, text):
     send_telegram_message(
         chat_id,
         "Введите целевую выручку на месяц (в тенге):",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
     )
 
 
@@ -1770,14 +1850,14 @@ def handle_target_property_selection(chat_id, text):
 def save_property_target(chat_id, revenue_text):
     """Сохранить цель для объекта"""
     try:
-        revenue = float(revenue_text.replace(',', '').replace(' ', ''))
+        revenue = float(revenue_text.replace(",", "").replace(" ", ""))
     except ValueError:
         send_telegram_message(chat_id, "Неверный формат суммы")
         return
 
     profile = _get_profile(chat_id)
     sd = profile.telegram_state or {}
-    property_id = sd.get('target_property_id')
+    property_id = sd.get("target_property_id")
 
     if not property_id:
         return
@@ -1791,28 +1871,26 @@ def save_property_target(chat_id, revenue_text):
         property_id=property_id,
         month=month_start,
         defaults={
-            'target_revenue': revenue,
-            'target_occupancy': 60  # По умолчанию 60%
-        }
+            "target_revenue": revenue,
+            "target_occupancy": 60,  # По умолчанию 60%
+        },
     )
 
-    send_telegram_message(
-        chat_id,
-        f"✅ Цель установлена: {revenue:,.0f} ₸/месяц"
-    )
+    send_telegram_message(chat_id, f"✅ Цель установлена: {revenue:,.0f} ₸/месяц")
 
     profile.telegram_state = {}
     profile.save()
     show_plan_fact(chat_id)
 
+
 @log_handler
 def handle_remove_admin(chat_id):
     """Начать процесс удаления админа"""
     profile = _get_profile(chat_id)
-    if profile.role != 'super_admin':
+    if profile.role != "super_admin":
         return
 
-    admins = UserProfile.objects.filter(role='admin')
+    admins = UserProfile.objects.filter(role="admin")
 
     if not admins.exists():
         send_telegram_message(chat_id, "Нет администраторов для удаления")
@@ -1820,18 +1898,18 @@ def handle_remove_admin(chat_id):
 
     keyboard = []
     for admin in admins:
-        username = admin.user.username.replace('telegram_', '')
+        username = admin.user.username.replace("telegram_", "")
         keyboard.append([KeyboardButton(f"Удалить {username}")])
 
     keyboard.append([KeyboardButton("❌ Отмена")])
 
-    profile.telegram_state = {'state': 'remove_admin'}
+    profile.telegram_state = {"state": "remove_admin"}
     profile.save()
 
     send_telegram_message(
         chat_id,
         "Выберите администратора для удаления:",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
     )
 
 
@@ -1843,23 +1921,21 @@ def process_remove_admin(chat_id, text):
 
         try:
             target_profile = UserProfile.objects.get(
-                user__username=f"telegram_{username}",
-                role='admin'
+                user__username=f"telegram_{username}", role="admin"
             )
 
-            target_profile.role = 'user'
+            target_profile.role = "user"
             target_profile.save()
 
             send_telegram_message(
-                chat_id,
-                f"✅ Пользователь {username} больше не администратор"
+                chat_id, f"✅ Пользователь {username} больше не администратор"
             )
 
             # Уведомляем бывшего админа
             if target_profile.telegram_chat_id:
                 send_telegram_message(
                     target_profile.telegram_chat_id,
-                    "Ваши административные права отозваны."
+                    "Ваши административные права отозваны.",
                 )
 
         except UserProfile.DoesNotExist:
@@ -1870,24 +1946,25 @@ def process_remove_admin(chat_id, text):
 def prompt_guest_review(chat_id, booking_id):
     """Запрос отзыва об госте от админа"""
     profile = _get_profile(chat_id)
-    if profile.role not in ('admin', 'super_admin'):
+    if profile.role not in ("admin", "super_admin"):
         return
 
     try:
         booking = Booking.objects.get(id=booking_id)
 
         # Проверяем, что это квартира админа
-        if booking.property.owner != profile.user and profile.role != 'super_admin':
+        if booking.property.owner != profile.user and profile.role != "super_admin":
             return
 
         # Проверяем, что нет отзыва
         from booking_bot.listings.models import GuestReview
+
         if GuestReview.objects.filter(booking=booking).exists():
             return
 
         profile.telegram_state = {
-            'state': 'admin_guest_review',
-            'review_booking_id': booking_id
+            "state": "admin_guest_review",
+            "review_booking_id": booking_id,
         }
         profile.save()
 
@@ -1902,13 +1979,13 @@ def prompt_guest_review(chat_id, booking_id):
         keyboard = [
             [KeyboardButton("1⭐"), KeyboardButton("2⭐"), KeyboardButton("3⭐")],
             [KeyboardButton("4⭐"), KeyboardButton("5⭐")],
-            [KeyboardButton("❌ Пропустить")]
+            [KeyboardButton("❌ Пропустить")],
         ]
 
         send_telegram_message(
             chat_id,
             text,
-            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
         )
 
     except Booking.DoesNotExist:
@@ -1930,20 +2007,17 @@ def handle_guest_review_rating(chat_id, text):
     # Извлекаем рейтинг
     if "⭐" in text:
         rating = int(text[0])
-        sd['guest_rating'] = rating
-        sd['state'] = 'admin_guest_review_text'
+        sd["guest_rating"] = rating
+        sd["state"] = "admin_guest_review_text"
         profile.telegram_state = sd
         profile.save()
 
-        keyboard = [
-            [KeyboardButton("Без комментария")],
-            [KeyboardButton("❌ Отмена")]
-        ]
+        keyboard = [[KeyboardButton("Без комментария")], [KeyboardButton("❌ Отмена")]]
 
         send_telegram_message(
             chat_id,
             f"Оценка: {rating}⭐\n\nДобавьте комментарий или нажмите 'Без комментария':",
-            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
         )
 
 
@@ -1953,8 +2027,8 @@ def save_guest_review(chat_id, text):
     profile = _get_profile(chat_id)
     sd = profile.telegram_state or {}
 
-    booking_id = sd.get('review_booking_id')
-    rating = sd.get('guest_rating')
+    booking_id = sd.get("review_booking_id")
+    rating = sd.get("guest_rating")
 
     if text == "Без комментария":
         text = ""
@@ -1968,7 +2042,7 @@ def save_guest_review(chat_id, text):
             reviewer=profile.user,
             guest=booking.user,
             rating=rating,
-            text=text
+            text=text,
         )
 
         send_telegram_message(chat_id, "✅ Отзыв о госте сохранен")
@@ -1976,9 +2050,9 @@ def save_guest_review(chat_id, text):
         # Обновляем KO-фактор если нужно
         guest_profile = booking.user.profile
         # Логика подсчета рейтинга гостя
-        avg_rating = GuestReview.objects.filter(
-            guest=booking.user
-        ).aggregate(Avg('rating'))['rating__avg']
+        avg_rating = GuestReview.objects.filter(guest=booking.user).aggregate(
+            Avg("rating")
+        )["rating__avg"]
 
         if avg_rating and avg_rating < 3:  # Низкий рейтинг
             guest_profile.ko_factor = 0.7  # Повышаем KO-фактор
@@ -1996,23 +2070,23 @@ def save_guest_review(chat_id, text):
 def show_ko_factor_report(chat_id):
     """Показать отчет по KO-фактору гостей"""
     profile = _get_profile(chat_id)
-    if profile.role != 'super_admin':
+    if profile.role != "super_admin":
         send_telegram_message(chat_id, "❌ Нет доступа")
         return
 
     from django.db.models import Count, Q
 
     # Получаем пользователей с высоким KO-фактором
-    users_with_bookings = User.objects.filter(
-        bookings__isnull=False
-    ).annotate(
-        total_bookings=Count('bookings'),
-        cancelled_bookings=Count('bookings', filter=Q(
-            bookings__status='cancelled',
-            bookings__cancelled_by=F('id')
-        ))
-    ).filter(
-        total_bookings__gte=3  # Минимум 3 бронирования
+    users_with_bookings = (
+        User.objects.filter(bookings__isnull=False)
+        .annotate(
+            total_bookings=Count("bookings"),
+            cancelled_bookings=Count(
+                "bookings",
+                filter=Q(bookings__status="cancelled", bookings__cancelled_by=F("id")),
+            ),
+        )
+        .filter(total_bookings__gte=3)  # Минимум 3 бронирования
     )
 
     high_ko_users = []
@@ -2021,15 +2095,17 @@ def show_ko_factor_report(chat_id):
         if user.cancelled_bookings > 0:
             ko_factor = (user.cancelled_bookings / user.total_bookings) * 100
             if ko_factor > 30:  # Показываем с KO > 30%
-                high_ko_users.append({
-                    'user': user,
-                    'ko_factor': ko_factor,
-                    'total': user.total_bookings,
-                    'cancelled': user.cancelled_bookings
-                })
+                high_ko_users.append(
+                    {
+                        "user": user,
+                        "ko_factor": ko_factor,
+                        "total": user.total_bookings,
+                        "cancelled": user.cancelled_bookings,
+                    }
+                )
 
     # Сортируем по KO-фактору
-    high_ko_users.sort(key=lambda x: x['ko_factor'], reverse=True)
+    high_ko_users.sort(key=lambda x: x["ko_factor"], reverse=True)
 
     text = "📊 *KO-фактор гостей*\n\n"
 
@@ -2037,8 +2113,8 @@ def show_ko_factor_report(chat_id):
         text += "Нет гостей с высоким процентом отмен"
     else:
         for data in high_ko_users[:15]:  # Топ-15
-            user = data['user']
-            emoji = "🔴" if data['ko_factor'] > 50 else "🟡"
+            user = data["user"]
+            emoji = "🔴" if data["ko_factor"] > 50 else "🟡"
 
             text += (
                 f"{emoji} {user.first_name} {user.last_name}\n"
@@ -2046,18 +2122,18 @@ def show_ko_factor_report(chat_id):
                 f"({data['cancelled']}/{data['total']} отмен)\n"
             )
 
-            if data['ko_factor'] > 50:
+            if data["ko_factor"] > 50:
                 text += "⚠️ Требуется предоплата\n"
 
             text += "\n"
 
     keyboard = [
         [KeyboardButton("📥 Экспорт KO-факторов")],
-        [KeyboardButton("🧭 Главное меню")]
+        [KeyboardButton("🧭 Главное меню")],
     ]
 
     send_telegram_message(
         chat_id,
         text,
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
     )

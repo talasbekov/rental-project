@@ -22,20 +22,19 @@ class TelegramSender(BaseSender):
     def send(self, notification):
         try:
             if not notification.telegram_chat_id:
-                return {'success': False, 'error': 'No telegram_chat_id'}
+                return {"success": False, "error": "No telegram_chat_id"}
 
             result = send_telegram_message(
-                notification.telegram_chat_id,
-                notification.message
+                notification.telegram_chat_id, notification.message
             )
 
             return {
-                'success': bool(result),
-                'message': 'Sent via Telegram',
-                'response': result
+                "success": bool(result),
+                "message": "Sent via Telegram",
+                "response": result,
             }
         except Exception as e:
-            return {'success': False, 'error': str(e)}
+            return {"success": False, "error": str(e)}
 
 
 class WhatsAppSender(BaseSender):
@@ -43,20 +42,22 @@ class WhatsAppSender(BaseSender):
 
     def send(self, notification):
         try:
-            phone = notification.phone_number or notification.user.profile.whatsapp_phone
+            phone = (
+                notification.phone_number or notification.user.profile.whatsapp_phone
+            )
 
             if not phone:
-                return {'success': False, 'error': 'No phone number'}
+                return {"success": False, "error": "No phone number"}
 
             result = send_whatsapp_message(phone, notification.message)
 
             return {
-                'success': bool(result),
-                'message': 'Sent via WhatsApp',
-                'response': result
+                "success": bool(result),
+                "message": "Sent via WhatsApp",
+                "response": result,
             }
         except Exception as e:
-            return {'success': False, 'error': str(e)}
+            return {"success": False, "error": str(e)}
 
 
 class EmailSender(BaseSender):
@@ -68,19 +69,19 @@ class EmailSender(BaseSender):
 
         try:
             if not notification.email:
-                return {'success': False, 'error': 'No email'}
+                return {"success": False, "error": "No email"}
 
             send_mail(
-                subject=notification.context.get('subject', 'ЖильеGO'),
+                subject=notification.context.get("subject", "ЖильеGO"),
                 message=notification.message,
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[notification.email],
                 fail_silently=False,
             )
 
-            return {'success': True, 'message': 'Sent via Email'}
+            return {"success": True, "message": "Sent via Email"}
         except Exception as e:
-            return {'success': False, 'error': str(e)}
+            return {"success": False, "error": str(e)}
 
 
 class SMSSender(BaseSender):
@@ -88,5 +89,4 @@ class SMSSender(BaseSender):
 
     def send(self, notification):
         # Интеграция с SMS провайдером (Twilio, Mobizon и т.д.)
-        return {'success': False, 'error': 'SMS not implemented'}
-    
+        return {"success": False, "error": "SMS not implemented"}

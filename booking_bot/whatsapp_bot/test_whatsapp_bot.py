@@ -11,7 +11,7 @@ class WhatsAppBotTester:
         self.api_url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
         self.headers = {
             "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
     def send_text_message(self, to_phone, text):
@@ -20,7 +20,7 @@ class WhatsAppBotTester:
             "messaging_product": "whatsapp",
             "to": to_phone,
             "type": "text",
-            "text": {"body": text}
+            "text": {"body": text},
         }
 
         response = requests.post(self.api_url, headers=self.headers, json=payload)
@@ -39,15 +39,12 @@ class WhatsAppBotTester:
                     "buttons": [
                         {
                             "type": "reply",
-                            "reply": {
-                                "id": btn["id"],
-                                "title": btn["title"][:20]
-                            }
+                            "reply": {"id": btn["id"], "title": btn["title"][:20]},
                         }
                         for btn in buttons[:3]
                     ]
-                }
-            }
+                },
+            },
         }
 
         response = requests.post(self.api_url, headers=self.headers, json=payload)

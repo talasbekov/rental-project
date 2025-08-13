@@ -1,6 +1,7 @@
 from django.db import models
 
 from django.contrib.auth import get_user_model
+
 User = get_user_model()
 
 
@@ -9,19 +10,16 @@ class AuditLog(models.Model):
     """Журнал аудита доступа к конфиденциальным данным"""
 
     ACTION_CHOICES = [
-        ('view_code', 'Просмотр кода доступа'),
-        ('send_code', 'Отправка кода доступа'),
-        ('update_code', 'Изменение кода доступа'),
-        ('view_phone', 'Просмотр телефона'),
-        ('export_data', 'Экспорт данных'),
-        ('view_payment', 'Просмотр платежных данных'),
+        ("view_code", "Просмотр кода доступа"),
+        ("send_code", "Отправка кода доступа"),
+        ("update_code", "Изменение кода доступа"),
+        ("view_phone", "Просмотр телефона"),
+        ("export_data", "Экспорт данных"),
+        ("view_payment", "Просмотр платежных данных"),
     ]
 
     user = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name='audit_logs'
+        User, on_delete=models.SET_NULL, null=True, related_name="audit_logs"
     )
     action = models.CharField(max_length=50, choices=ACTION_CHOICES)
     object_type = models.CharField(max_length=50)  # 'property', 'booking', etc.
@@ -37,11 +35,11 @@ class AuditLog(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=['user', 'timestamp']),
-            models.Index(fields=['action', 'timestamp']),
-            models.Index(fields=['object_type', 'object_id']),
+            models.Index(fields=["user", "timestamp"]),
+            models.Index(fields=["action", "timestamp"]),
+            models.Index(fields=["object_type", "object_id"]),
         ]
-        ordering = ['-timestamp']
+        ordering = ["-timestamp"]
 
     def __str__(self):
         return f"{self.user} - {self.action} - {self.timestamp}"
@@ -54,12 +52,12 @@ class AuditLog(models.Model):
             action=action,
             object_type=obj.__class__.__name__.lower(),
             object_id=obj.id,
-            details=details or {}
+            details=details or {},
         )
 
         if request:
             log_entry.ip_address = cls.get_client_ip(request)
-            log_entry.user_agent = request.META.get('HTTP_USER_AGENT', '')
+            log_entry.user_agent = request.META.get("HTTP_USER_AGENT", "")
 
         # Добавляем дополнительные поля
         for key, value in kwargs.items():
@@ -72,9 +70,9 @@ class AuditLog(models.Model):
     @staticmethod
     def get_client_ip(request):
         """Получение IP адреса клиента"""
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
         if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
+            ip = x_forwarded_for.split(",")[0]
         else:
-            ip = request.META.get('REMOTE_ADDR')
+            ip = request.META.get("REMOTE_ADDR")
         return ip

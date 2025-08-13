@@ -15,17 +15,17 @@ test_message = {
             "id": 1016528941,
             "is_bot": False,
             "first_name": "Test",
-            "last_name": "User"
+            "last_name": "User",
         },
         "chat": {
             "id": 1016528941,
             "first_name": "Test",
             "last_name": "User",
-            "type": "private"
+            "type": "private",
         },
         "date": 1640995200,
-        "text": "/start"
-    }
+        "text": "/start",
+    },
 }
 
 
@@ -33,16 +33,13 @@ def test_webhook():
     print(f"Testing webhook: {WEBHOOK_URL}")
 
     headers = {
-        'Content-Type': 'application/json',
-        'User-Agent': 'TelegramBot (like TwitterBot)'
+        "Content-Type": "application/json",
+        "User-Agent": "TelegramBot (like TwitterBot)",
     }
 
     try:
         response = requests.post(
-            WEBHOOK_URL,
-            json=test_message,
-            headers=headers,
-            timeout=10
+            WEBHOOK_URL, json=test_message, headers=headers, timeout=10
         )
 
         print(f"Status Code: {response.status_code}")

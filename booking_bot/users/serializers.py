@@ -3,23 +3,35 @@ from django.contrib.auth.models import User
 from .models import UserProfile
 from django.db import transaction
 
+
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        fields = ('role', 'phone_number') # User field will be implicitly linked
+        fields = ("role", "phone_number")  # User field will be implicitly linked
+
 
 class UserSerializer(serializers.ModelSerializer):
-    profile = UserProfileSerializer() # Now it's a nested writable serializer
+    profile = UserProfileSerializer()  # Now it's a nested writable serializer
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'password', 'profile')
-        extra_kwargs = {'password': {'write_only': True}}
+        fields = (
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "password",
+            "profile",
+        )
+        extra_kwargs = {"password": {"write_only": True}}
 
     @transaction.atomic
     def create(self, validated_data):
-        profile_data = validated_data.pop('profile')
-        user = User.objects.create_user(**validated_data) # Use create_user to handle password hashing
+        profile_data = validated_data.pop("profile")
+        user = User.objects.create_user(
+            **validated_data
+        )  # Use create_user to handle password hashing
         UserProfile.objects.create(user=user, **profile_data)
         return user
 
@@ -41,7 +53,9 @@ class TelegramUserSerializer(serializers.Serializer):
     telegram_chat_id = serializers.CharField(max_length=255)
     first_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
     last_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
-    phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True, allow_null=True)
+    phone_number = serializers.CharField(
+        max_length=20, required=False, allow_blank=True, allow_null=True
+    )
 
     def validate_telegram_chat_id(self, value):
         # Basic validation, can be expanded (e.g. check if numeric)

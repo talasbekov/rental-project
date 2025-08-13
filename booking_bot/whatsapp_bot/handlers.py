@@ -12,10 +12,10 @@ def message_handler(phone_number, text, message_data=None):
     """Основной обработчик сообщений WhatsApp"""
     profile = _get_or_create_local_profile(phone_number)
     state_data = profile.whatsapp_state or {}
-    state = state_data.get('state', STATE_MAIN_MENU)
+    state = state_data.get("state", STATE_MAIN_MENU)
 
     # Обработка фотографий (если есть)
-    if message_data and message_data.get('type') == 'image':
+    if message_data and message_data.get("type") == "image":
         if handle_photo_upload(phone_number, message_data):
             return
 
@@ -24,11 +24,11 @@ def message_handler(phone_number, text, message_data=None):
         return
 
     # Обработка кнопок быстрого ответа (interactive replies)
-    if message_data and message_data.get('type') == 'interactive':
-        interactive = message_data.get('interactive', {})
-        reply = interactive.get('button_reply') or interactive.get('list_reply')
+    if message_data and message_data.get("type") == "interactive":
+        interactive = message_data.get("interactive", {})
+        reply = interactive.get("button_reply") or interactive.get("list_reply")
         if reply:
-            button_id = reply.get('id')
+            button_id = reply.get("id")
             return handle_button_click(phone_number, button_id, profile)
 
     # Команды отмены
@@ -47,7 +47,9 @@ def message_handler(phone_number, text, message_data=None):
         if text == "Оплатить Kaspi":
             handle_payment_confirmation(phone_number)
         else:
-            send_whatsapp_message(phone_number, "Пожалуйста, используйте кнопки для выбора действия.")
+            send_whatsapp_message(
+                phone_number, "Пожалуйста, используйте кнопки для выбора действия."
+            )
         return
 
     # Обработка главного меню
@@ -56,15 +58,18 @@ def message_handler(phone_number, text, message_data=None):
             prompt_city(phone_number, profile)
             return
         elif text == "Мои бронирования":
-            show_user_bookings(phone_number, 'completed')
+            show_user_bookings(phone_number, "completed")
             return
         elif text == "Статус текущей брони":
-            show_user_bookings(phone_number, 'active')
+            show_user_bookings(phone_number, "active")
             return
         elif text == "Помощь":
             help_command_handler(phone_number)
             return
-        elif text == "Панель администратора" and profile.role in ('admin', 'super_admin'):
+        elif text == "Панель администратора" and profile.role in (
+            "admin",
+            "super_admin",
+        ):
             show_admin_panel(phone_number)
             return
 
@@ -94,7 +99,10 @@ def message_handler(phone_number, text, message_data=None):
         return
 
     # Fallback
-    send_whatsapp_message(phone_number, "Используйте кнопки для навигации или отправьте 'Старт' для начала.")
+    send_whatsapp_message(
+        phone_number,
+        "Используйте кнопки для навигации или отправьте 'Старт' для начала.",
+    )
     return None
 
 
@@ -104,9 +112,9 @@ def handle_button_click(phone_number, button_id, profile):
     if button_id == "search_apartments":
         prompt_city(phone_number, profile)
     elif button_id == "my_bookings":
-        show_user_bookings(phone_number, 'completed')
+        show_user_bookings(phone_number, "completed")
     elif button_id == "current_status":
-        show_user_bookings(phone_number, 'active')
+        show_user_bookings(phone_number, "active")
     elif button_id == "help":
         help_command_handler(phone_number)
     elif button_id == "admin_panel":
@@ -150,7 +158,7 @@ def clear_user_state(chat_id: int):
 
 def send_city_selection(user_profile, twilio_messaging_response):
     """Sends city selection prompt and buttons."""
-    cities = City.objects.all().order_by('name')
+    cities = City.objects.all().order_by("name")
     city_names = [city.name for city in cities]
 
     prompt_text = "Please select a city:"
@@ -162,7 +170,7 @@ def send_district_selection(user_profile, twilio_messaging_response, selected_ci
     """Sends district selection prompt and buttons."""
     try:
         city = City.objects.get(name=selected_city)
-        districts = District.objects.filter(city=city).order_by('name')
+        districts = District.objects.filter(city=city).order_by("name")
         district_names = [d.name for d in districts]
 
         prompt_text = f"You selected {selected_city}. Now, please select a district:"
@@ -174,15 +182,17 @@ def send_district_selection(user_profile, twilio_messaging_response, selected_ci
 
 
 def display_available_apartments(user_profile, twilio_messaging_response, user_state):
-    data = user_state['data']
-    district_name = data.get('district')
-    city_id = data.get('city_id')
-    rooms_str = data.get('rooms')
-    offset = data.get('offset', 0)
+    data = user_state["data"]
+    district_name = data.get("district")
+    city_id = data.get("city_id")
+    rooms_str = data.get("rooms")
+    offset = data.get("offset", 0)
 
     if not district_name or not city_id or not rooms_str:
         logger.error(f"State error: missing data for display_available_apartments")
-        twilio_messaging_response.message("Sorry, there was an error. Please try again.")
+        twilio_messaging_response.message(
+            "Sorry, there was an error. Please try again."
+        )
         # send_welcome_message(user_profile, twilio_messaging_response)
         return
 
@@ -195,10 +205,10 @@ def display_available_apartments(user_profile, twilio_messaging_response, user_s
         apartments_query = Property.objects.filter(
             district=district,  # Используем district вместо region
             number_of_rooms=rooms,
-            status='Свободна'  # Правильный статус
-        ).order_by('id')
+            status="Свободна",  # Правильный статус
+        ).order_by("id")
 
-        apartments_page = list(apartments_query[offset: offset])
+        apartments_page = list(apartments_query[offset:offset])
         total_matching_apartments = apartments_query.count()
 
     except District.DoesNotExist:
@@ -212,36 +222,39 @@ def display_available_apartments(user_profile, twilio_messaging_response, user_s
         # send_welcome_message(user_profile, twilio_messaging_response)
         return
 
+
 @log_handler
 def prompt_city(phone_number, profile):
     """Показать выбор города"""
     if profile.whatsapp_state is None:
         profile.whatsapp_state = {}
 
-    profile.whatsapp_state.update({'state': STATE_SELECT_CITY})
+    profile.whatsapp_state.update({"state": STATE_SELECT_CITY})
     profile.save()
 
-    cities = City.objects.all().order_by('name')
+    cities = City.objects.all().order_by("name")
 
     # Если городов мало (до 10), используем список кнопок
     if cities.count() <= 10:
-        sections = [{
-            "title": "Города",
-            "rows": [
-                {
-                    "id": f"city_{city.id}",
-                    "title": city.name[:24]  # Максимум 24 символа для списка
-                }
-                for city in cities
-            ]
-        }]
+        sections = [
+            {
+                "title": "Города",
+                "rows": [
+                    {
+                        "id": f"city_{city.id}",
+                        "title": city.name[:24],  # Максимум 24 символа для списка
+                    }
+                    for city in cities
+                ],
+            }
+        ]
 
         send_whatsapp_list_message(
             phone_number,
             "Выберите город для поиска квартир:",
             "Выбрать город",
             sections,
-            header="🏙️ Выбор города"
+            header="🏙️ Выбор города",
         )
     else:
         # Если городов много, просим ввести название
@@ -249,7 +262,7 @@ def prompt_city(phone_number, profile):
             phone_number,
             "🏙️ *Выбор города*\n\n"
             "Введите название города для поиска квартир.\n"
-            "Например: Алматы, Астана, Караганда"
+            "Например: Алматы, Астана, Караганда",
         )
 
 
@@ -260,26 +273,28 @@ def select_city(phone_number, profile, text):
         city = City.objects.get(name__icontains=text)
         select_city_by_id(phone_number, profile, str(city.id))
     except City.DoesNotExist:
-        send_whatsapp_message(phone_number, "❌ Город не найден. Попробуйте ещё раз или выберите из списка.")
+        send_whatsapp_message(
+            phone_number,
+            "❌ Город не найден. Попробуйте ещё раз или выберите из списка.",
+        )
     except City.MultipleObjectsReturned:
         # Если найдено несколько городов
         cities = City.objects.filter(name__icontains=text)[:10]
-        sections = [{
-            "title": "Найденные города",
-            "rows": [
-                {
-                    "id": f"city_{city.id}",
-                    "title": city.name[:24]
-                }
-                for city in cities
-            ]
-        }]
+        sections = [
+            {
+                "title": "Найденные города",
+                "rows": [
+                    {"id": f"city_{city.id}", "title": city.name[:24]}
+                    for city in cities
+                ],
+            }
+        ]
 
         send_whatsapp_list_message(
             phone_number,
             f"Найдено несколько городов по запросу '{text}'.\nВыберите нужный:",
             "Выбрать город",
-            sections
+            sections,
         )
 
 
@@ -288,37 +303,38 @@ def select_city_by_id(phone_number, profile, city_id):
     """Выбрать город по ID"""
     try:
         city = City.objects.get(id=city_id)
-        profile.whatsapp_state.update({'city_id': city.id, 'state': STATE_SELECT_DISTRICT})
+        profile.whatsapp_state.update(
+            {"city_id": city.id, "state": STATE_SELECT_DISTRICT}
+        )
         profile.save()
 
-        districts = District.objects.filter(city=city).order_by('name')
+        districts = District.objects.filter(city=city).order_by("name")
         if not districts.exists():
             send_whatsapp_message(
                 phone_number,
                 f"❌ В городе «{city.name}» пока нет доступных районов.\n"
-                "Попробуйте выбрать другой город."
+                "Попробуйте выбрать другой город.",
             )
             prompt_city(phone_number, profile)
             return
 
         # Формируем список районов
-        sections = [{
-            "title": f"Районы {city.name}",
-            "rows": [
-                {
-                    "id": f"district_{district.id}",
-                    "title": district.name[:24]
-                }
-                for district in districts[:10]  # WhatsApp ограничение
-            ]
-        }]
+        sections = [
+            {
+                "title": f"Районы {city.name}",
+                "rows": [
+                    {"id": f"district_{district.id}", "title": district.name[:24]}
+                    for district in districts[:10]  # WhatsApp ограничение
+                ],
+            }
+        ]
 
         send_whatsapp_list_message(
             phone_number,
             f"Город: *{city.name}*\n\nВыберите район:",
             "Выбрать район",
             sections,
-            header="📍 Выбор района"
+            header="📍 Выбор района",
         )
 
     except City.DoesNotExist:
@@ -328,7 +344,7 @@ def select_city_by_id(phone_number, profile, city_id):
 @log_handler
 def select_district(phone_number, profile, text):
     """Обработать выбор района по тексту"""
-    city_id = profile.whatsapp_state.get('city_id')
+    city_id = profile.whatsapp_state.get("city_id")
     try:
         district = District.objects.get(name__icontains=text, city_id=city_id)
         select_district_by_id(phone_number, profile, str(district.id))
@@ -336,22 +352,21 @@ def select_district(phone_number, profile, text):
         send_whatsapp_message(phone_number, "❌ Район не найден. Выберите из списка.")
     except District.MultipleObjectsReturned:
         districts = District.objects.filter(name__icontains=text, city_id=city_id)[:10]
-        sections = [{
-            "title": "Найденные районы",
-            "rows": [
-                {
-                    "id": f"district_{district.id}",
-                    "title": district.name[:24]
-                }
-                for district in districts
-            ]
-        }]
+        sections = [
+            {
+                "title": "Найденные районы",
+                "rows": [
+                    {"id": f"district_{district.id}", "title": district.name[:24]}
+                    for district in districts
+                ],
+            }
+        ]
 
         send_whatsapp_list_message(
             phone_number,
             f"Найдено несколько районов по запросу '{text}'.\nВыберите нужный:",
             "Выбрать район",
-            sections
+            sections,
         )
 
 
@@ -360,21 +375,23 @@ def select_district_by_id(phone_number, profile, district_id):
     """Выбрать район по ID"""
     try:
         district = District.objects.get(id=district_id)
-        profile.whatsapp_state.update({'district_id': district.id, 'state': STATE_SELECT_CLASS})
+        profile.whatsapp_state.update(
+            {"district_id": district.id, "state": STATE_SELECT_CLASS}
+        )
         profile.save()
 
         # Отправляем выбор класса жилья как кнопки
         buttons = [
             {"id": "class_economy", "title": "Комфорт"},
             {"id": "class_business", "title": "Бизнес"},
-            {"id": "class_luxury", "title": "Премиум"}
+            {"id": "class_luxury", "title": "Премиум"},
         ]
 
         send_whatsapp_button_message(
             phone_number,
             f"Район: *{district.name}*\n\nВыберите класс жилья:",
             buttons,
-            header="🏠 Класс жилья"
+            header="🏠 Класс жилья",
         )
 
     except District.DoesNotExist:
@@ -384,32 +401,38 @@ def select_district_by_id(phone_number, profile, district_id):
 @log_handler
 def select_class(phone_number, profile, text):
     """Обработать выбор класса по тексту"""
-    mapping = {'комфорт': 'economy', 'бизнес': 'business', 'премиум': 'luxury'}
+    mapping = {"комфорт": "economy", "бизнес": "business", "премиум": "luxury"}
     class_key = text.lower()
     if class_key in mapping:
         select_class_by_id(phone_number, profile, mapping[class_key])
     else:
-        send_whatsapp_message(phone_number, "❌ Неверный класс. Выберите из предложенных вариантов.")
+        send_whatsapp_message(
+            phone_number, "❌ Неверный класс. Выберите из предложенных вариантов."
+        )
 
 
 @log_handler
 def select_class_by_id(phone_number, profile, property_class):
     """Выбрать класс по ID"""
-    profile.whatsapp_state.update({'property_class': property_class, 'state': STATE_SELECT_ROOMS})
+    profile.whatsapp_state.update(
+        {"property_class": property_class, "state": STATE_SELECT_ROOMS}
+    )
     profile.save()
 
     # Кнопки для количества комнат
-    sections = [{
-        "title": "Количество комнат",
-        "rows": [
-            {"id": "rooms_1", "title": "1 комната"},
-            {"id": "rooms_2", "title": "2 комнаты"},
-            {"id": "rooms_3", "title": "3 комнаты"},
-            {"id": "rooms_4", "title": "4+ комнат"}
-        ]
-    }]
+    sections = [
+        {
+            "title": "Количество комнат",
+            "rows": [
+                {"id": "rooms_1", "title": "1 комната"},
+                {"id": "rooms_2", "title": "2 комнаты"},
+                {"id": "rooms_3", "title": "3 комнаты"},
+                {"id": "rooms_4", "title": "4+ комнат"},
+            ],
+        }
+    ]
 
-    class_names = {'economy': 'Комфорт', 'business': 'Бизнес', 'luxury': 'Премиум'}
+    class_names = {"economy": "Комфорт", "business": "Бизнес", "luxury": "Премиум"}
     class_name = class_names.get(property_class, property_class)
 
     send_whatsapp_list_message(
@@ -417,25 +440,27 @@ def select_class_by_id(phone_number, profile, property_class):
         f"Класс: *{class_name}*\n\nВыберите количество комнат:",
         "Выбрать",
         sections,
-        header="🛏️ Количество комнат"
+        header="🛏️ Количество комнат",
     )
 
 
 @log_handler
 def select_rooms(phone_number, profile, text):
     """Обработать выбор количества комнат по тексту"""
-    if text in ['1', '2', '3', '4', '4+']:
-        rooms = 4 if text == '4+' else int(text)
+    if text in ["1", "2", "3", "4", "4+"]:
+        rooms = 4 if text == "4+" else int(text)
         select_rooms_by_id(phone_number, profile, str(rooms))
     else:
-        send_whatsapp_message(phone_number, "❌ Укажите количество комнат: 1, 2, 3 или 4+")
+        send_whatsapp_message(
+            phone_number, "❌ Укажите количество комнат: 1, 2, 3 или 4+"
+        )
 
 
 @log_handler
 def select_rooms_by_id(phone_number, profile, rooms):
     """Выбрать количество комнат по ID"""
     rooms = int(rooms)
-    profile.whatsapp_state.update({'rooms': rooms, 'state': STATE_SHOWING_RESULTS})
+    profile.whatsapp_state.update({"rooms": rooms, "state": STATE_SHOWING_RESULTS})
     profile.save()
 
     send_whatsapp_message(phone_number, "🔍 Ищу подходящие варианты...")
@@ -448,12 +473,12 @@ def show_search_results(phone_number, profile, offset=0):
     sd = profile.whatsapp_state or {}
 
     query = Property.objects.filter(
-        district__city_id=sd.get('city_id'),
-        district_id=sd.get('district_id'),
-        property_class=sd.get('property_class'),
-        number_of_rooms=sd.get('rooms'),
-        status='Свободна'
-    ).order_by('price_per_day')
+        district__city_id=sd.get("city_id"),
+        district_id=sd.get("district_id"),
+        property_class=sd.get("property_class"),
+        number_of_rooms=sd.get("rooms"),
+        status="Свободна",
+    ).order_by("price_per_day")
 
     total = query.count()
     if total == 0:
@@ -461,13 +486,13 @@ def show_search_results(phone_number, profile, offset=0):
             phone_number,
             "❌ По заданным параметрам ничего не найдено.\n\n"
             "Попробуйте изменить параметры поиска.\n"
-            "Отправьте 'Старт' для начала нового поиска."
+            "Отправьте 'Старт' для начала нового поиска.",
         )
         return
 
     # Сохраняем offset
-    sd['search_offset'] = offset
-    sd['total_results'] = total
+    sd["search_offset"] = offset
+    sd["total_results"] = total
     profile.whatsapp_state = sd
     profile.save()
 
@@ -483,13 +508,16 @@ def show_search_results(phone_number, profile, offset=0):
             elif photo.image:
                 # Формируем полный URL для загруженных файлов
                 from django.conf import settings
-                domain = getattr(settings, 'DOMAIN', '')
+
+                domain = getattr(settings, "DOMAIN", "")
                 full_url = f"{domain.rstrip('/')}{photo.image.url}"
                 photo_urls.append(full_url)
 
         if photo_urls:
             # Отправляем первое фото с описанием
-            stats = Review.objects.filter(property=prop).aggregate(avg=Avg('rating'), cnt=Count('id'))
+            stats = Review.objects.filter(property=prop).aggregate(
+                avg=Avg("rating"), cnt=Count("id")
+            )
             caption = (
                 f"*{prop.name}*\n"
                 f"📍 {prop.district.city.name}, {prop.district.name}\n"
@@ -497,8 +525,10 @@ def show_search_results(phone_number, profile, offset=0):
                 f"🛏 Комнат: {prop.number_of_rooms}\n"
                 f"💰 Цена: *{prop.price_per_day} ₸/сутки*"
             )
-            if stats['avg']:
-                caption += f"\n⭐ Рейтинг: {stats['avg']:.1f}/5 ({stats['cnt']} отзывов)"
+            if stats["avg"]:
+                caption += (
+                    f"\n⭐ Рейтинг: {stats['avg']:.1f}/5 ({stats['cnt']} отзывов)"
+                )
 
             send_whatsapp_image(phone_number, photo_urls[0], caption)
 
@@ -509,7 +539,7 @@ def show_search_results(phone_number, profile, offset=0):
     # Формируем кнопки действий
     buttons = []
 
-    if prop.status == 'Свободна':
+    if prop.status == "Свободна":
         buttons.append({"id": f"book_{prop.id}", "title": "📅 Забронировать"})
 
     if Review.objects.filter(property=prop).exists():
@@ -530,37 +560,41 @@ def show_search_results(phone_number, profile, offset=0):
         sections = []
 
         if buttons:
-            sections.append({
-                "title": "Действия",
-                "rows": [
-                    {"id": btn["id"], "title": btn["title"]}
-                    for btn in buttons
-                ]
-            })
+            sections.append(
+                {
+                    "title": "Действия",
+                    "rows": [
+                        {"id": btn["id"], "title": btn["title"]} for btn in buttons
+                    ],
+                }
+            )
 
         if nav_buttons:
-            sections.append({
-                "title": "Навигация",
-                "rows": [
-                    {"id": btn["id"], "title": btn["title"]}
-                    for btn in nav_buttons
-                ]
-            })
+            sections.append(
+                {
+                    "title": "Навигация",
+                    "rows": [
+                        {"id": btn["id"], "title": btn["title"]} for btn in nav_buttons
+                    ],
+                }
+            )
 
-        sections.append({
-            "title": "Меню",
-            "rows": [
-                {"id": "new_search", "title": "🔄 Новый поиск"},
-                {"id": "main_menu", "title": "🏠 Главное меню"}
-            ]
-        })
+        sections.append(
+            {
+                "title": "Меню",
+                "rows": [
+                    {"id": "new_search", "title": "🔄 Новый поиск"},
+                    {"id": "main_menu", "title": "🏠 Главное меню"},
+                ],
+            }
+        )
 
         send_whatsapp_list_message(
             phone_number,
             f"Вариант {offset + 1} из {total}",
             "Выбрать действие",
             sections,
-            footer=f"Найдено квартир: {total}"
+            footer=f"Найдено квартир: {total}",
         )
         return
 
@@ -569,7 +603,7 @@ def show_search_results(phone_number, profile, offset=0):
         phone_number,
         f"Вариант {offset + 1} из {total}",
         buttons,
-        footer="Выберите действие"
+        footer="Выберите действие",
     )
 
 
@@ -577,8 +611,8 @@ def show_search_results(phone_number, profile, offset=0):
 def show_next_property(phone_number, profile):
     """Показать следующую квартиру"""
     sd = profile.whatsapp_state or {}
-    offset = sd.get('search_offset', 0)
-    total = sd.get('total_results', 0)
+    offset = sd.get("search_offset", 0)
+    total = sd.get("total_results", 0)
 
     if offset < total - 1:
         show_search_results(phone_number, profile, offset + 1)
@@ -590,7 +624,7 @@ def show_next_property(phone_number, profile):
 def show_prev_property(phone_number, profile):
     """Показать предыдущую квартиру"""
     sd = profile.whatsapp_state or {}
-    offset = sd.get('search_offset', 0)
+    offset = sd.get("search_offset", 0)
 
     if offset > 0:
         show_search_results(phone_number, profile, offset - 1)
@@ -631,15 +665,16 @@ def handle_booking_start(phone_number, property_id):
     """Начать процесс бронирования"""
     profile = _get_profile(phone_number)
     try:
-        prop = Property.objects.get(id=property_id, status='Свободна')
+        prop = Property.objects.get(id=property_id, status="Свободна")
     except Property.DoesNotExist:
-        send_whatsapp_message(phone_number, "❌ Квартира не найдена или уже забронирована.")
+        send_whatsapp_message(
+            phone_number, "❌ Квартира не найдена или уже забронирована."
+        )
         return
 
-    profile.whatsapp_state.update({
-        'state': STATE_AWAITING_CHECK_IN,
-        'booking_property_id': property_id
-    })
+    profile.whatsapp_state.update(
+        {"state": STATE_AWAITING_CHECK_IN, "booking_property_id": property_id}
+    )
     profile.save()
 
     today = date.today()
@@ -648,7 +683,7 @@ def handle_booking_start(phone_number, property_id):
     buttons = [
         {"id": f"checkin_today", "title": f"Сегодня ({today.strftime('%d.%m')})"},
         {"id": f"checkin_tomorrow", "title": f"Завтра ({tomorrow.strftime('%d.%m')})"},
-        {"id": "cancel", "title": "❌ Отмена"}
+        {"id": "cancel", "title": "❌ Отмена"},
     ]
 
     send_whatsapp_button_message(
@@ -656,7 +691,7 @@ def handle_booking_start(phone_number, property_id):
         f"📅 *Бронирование квартиры*\n{prop.name}\n\n"
         "Выберите дату заезда или введите в формате ДД.ММ.ГГГГ",
         buttons,
-        header="Дата заезда"
+        header="Дата заезда",
     )
 
 
@@ -673,16 +708,15 @@ def handle_checkin_input(phone_number, text):
         else:
             send_whatsapp_message(
                 phone_number,
-                "❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ или выберите из предложенных вариантов."
+                "❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ или выберите из предложенных вариантов.",
             )
             return
 
     profile = _get_profile(phone_number)
     sd = profile.whatsapp_state
-    sd.update({
-        'check_in_date': check_in.isoformat(),
-        'state': STATE_AWAITING_CHECK_OUT
-    })
+    sd.update(
+        {"check_in_date": check_in.isoformat(), "state": STATE_AWAITING_CHECK_OUT}
+    )
     profile.whatsapp_state = sd
     profile.save()
 
@@ -692,7 +726,7 @@ def handle_checkin_input(phone_number, text):
     buttons = [
         {"id": f"checkout_1", "title": f"{tomorrow.strftime('%d.%m')} (+1 день)"},
         {"id": f"checkout_2", "title": f"{after.strftime('%d.%m')} (+2 дня)"},
-        {"id": "cancel", "title": "❌ Отмена"}
+        {"id": "cancel", "title": "❌ Отмена"},
     ]
 
     send_whatsapp_button_message(
@@ -700,7 +734,7 @@ def handle_checkin_input(phone_number, text):
         f"Дата заезда: *{check_in.strftime('%d.%m.%Y')}*\n\n"
         "Выберите дату выезда или введите в формате ДД.ММ.ГГГГ",
         buttons,
-        header="Дата выезда"
+        header="Дата выезда",
     )
 
 
@@ -712,7 +746,7 @@ def handle_checkout_input(phone_number, text):
     profile = _get_profile(phone_number)
     sd = profile.whatsapp_state or {}
 
-    check_in_str = sd.get('check_in_date')
+    check_in_str = sd.get("check_in_date")
     if not check_in_str:
         send_whatsapp_message(phone_number, "❌ Ошибка: дата заезда не найдена.")
         return
@@ -729,23 +763,27 @@ def handle_checkout_input(phone_number, text):
         except ValueError:
             send_whatsapp_message(
                 phone_number,
-                "❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ или выберите из предложенных вариантов."
+                "❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ или выберите из предложенных вариантов.",
             )
             return
 
     if check_out <= check_in:
-        send_whatsapp_message(phone_number, "❌ Дата выезда должна быть позже даты заезда.")
+        send_whatsapp_message(
+            phone_number, "❌ Дата выезда должна быть позже даты заезда."
+        )
         return
 
     # Сохраняем и переходим к подтверждению
     days = (check_out - check_in).days
-    sd.update({
-        'check_out_date': check_out.isoformat(),
-        'state': STATE_CONFIRM_BOOKING,
-        'days': days
-    })
+    sd.update(
+        {
+            "check_out_date": check_out.isoformat(),
+            "state": STATE_CONFIRM_BOOKING,
+            "days": days,
+        }
+    )
 
-    property_id = sd.get('booking_property_id')
+    property_id = sd.get("booking_property_id")
     try:
         prop = Property.objects.get(id=property_id)
     except Property.DoesNotExist:
@@ -753,14 +791,14 @@ def handle_checkout_input(phone_number, text):
         return
 
     total_price = days * prop.price_per_day
-    sd['total_price'] = float(total_price)
+    sd["total_price"] = float(total_price)
     profile.whatsapp_state = sd
     profile.save()
 
     # Отправляем подтверждение
     buttons = [
         {"id": "confirm_payment", "title": "💳 Оплатить"},
-        {"id": "cancel_booking", "title": "❌ Отменить"}
+        {"id": "cancel_booking", "title": "❌ Отменить"},
     ]
 
     send_whatsapp_button_message(
@@ -772,7 +810,7 @@ def handle_checkout_input(phone_number, text):
         f"🌙 Ночей: {days}\n"
         f"💰 Итого: *{total_price:,.0f} ₸*",
         buttons,
-        header="Подтверждение"
+        header="Подтверждение",
     )
 
 
@@ -782,13 +820,15 @@ def handle_payment_confirmation(phone_number):
     profile = _get_profile(phone_number)
     sd = profile.whatsapp_state or {}
 
-    property_id = sd.get('booking_property_id')
-    check_in_str = sd.get('check_in_date')
-    check_out_str = sd.get('check_out_date')
-    total_price = sd.get('total_price')
+    property_id = sd.get("booking_property_id")
+    check_in_str = sd.get("check_in_date")
+    check_out_str = sd.get("check_out_date")
+    total_price = sd.get("total_price")
 
     if not all([property_id, check_in_str, check_out_str, total_price]):
-        send_whatsapp_message(phone_number, "❌ Ошибка: недостаточно данных для бронирования.")
+        send_whatsapp_message(
+            phone_number, "❌ Ошибка: недостаточно данных для бронирования."
+        )
         return
 
     try:
@@ -799,13 +839,15 @@ def handle_payment_confirmation(phone_number):
         # Проверяем доступность дат
         conflicts = Booking.objects.filter(
             property=prop,
-            status__in=['pending_payment', 'confirmed'],
+            status__in=["pending_payment", "confirmed"],
             start_date__lt=check_out,
-            end_date__gt=check_in
+            end_date__gt=check_in,
         ).exists()
 
         if conflicts:
-            send_whatsapp_message(phone_number, "❌ К сожалению, эти даты уже забронированы.")
+            send_whatsapp_message(
+                phone_number, "❌ К сожалению, эти даты уже забронированы."
+            )
             return
 
         with transaction.atomic():
@@ -816,12 +858,11 @@ def handle_payment_confirmation(phone_number):
                 start_date=check_in,
                 end_date=check_out,
                 total_price=total_price,
-                status='pending_payment'
+                status="pending_payment",
             )
 
             send_whatsapp_message(
-                phone_number,
-                "⏳ Создаем платеж...\nПожалуйста, подождите..."
+                phone_number, "⏳ Создаем платеж...\nПожалуйста, подождите..."
             )
 
             try:
@@ -829,23 +870,24 @@ def handle_payment_confirmation(phone_number):
                 payment_info = kaspi_initiate_payment(
                     booking_id=booking.id,
                     amount=float(total_price),
-                    description=f"Бронирование {prop.name}"
+                    description=f"Бронирование {prop.name}",
                 )
 
-                if payment_info and payment_info.get('checkout_url'):
-                    kaspi_payment_id = payment_info.get('payment_id')
+                if payment_info and payment_info.get("checkout_url"):
+                    kaspi_payment_id = payment_info.get("payment_id")
                     if kaspi_payment_id:
                         booking.kaspi_payment_id = kaspi_payment_id
                         booking.save()
 
-                    checkout_url = payment_info['checkout_url']
+                    checkout_url = payment_info["checkout_url"]
 
                     # В режиме разработки автоматически подтверждаем
                     if settings.DEBUG:
                         import time
+
                         time.sleep(2)
 
-                        booking.status = 'confirmed'
+                        booking.status = "confirmed"
                         booking.save()
 
                         send_booking_confirmation(phone_number, booking)
@@ -861,7 +903,7 @@ def handle_payment_confirmation(phone_number):
                             f"💳 Для завершения перейдите по ссылке:\n"
                             f"{checkout_url}\n\n"
                             f"⏰ Ссылка действительна 15 минут",
-                            preview_url=True
+                            preview_url=True,
                         )
 
                         profile.whatsapp_state = {}
@@ -870,14 +912,14 @@ def handle_payment_confirmation(phone_number):
                     raise KaspiPaymentError("Не удалось получить ссылку для оплаты")
 
             except KaspiPaymentError as e:
-                booking.status = 'payment_failed'
+                booking.status = "payment_failed"
                 booking.save()
 
                 send_whatsapp_message(
                     phone_number,
                     f"❌ Ошибка при создании платежа.\n"
                     f"Попробуйте позже или обратитесь в поддержку.\n\n"
-                    f"Код ошибки: {booking.id}"
+                    f"Код ошибки: {booking.id}",
                 )
 
     except Property.DoesNotExist:
@@ -886,8 +928,7 @@ def handle_payment_confirmation(phone_number):
         logger.error(f"Ошибка при создании бронирования: {e}", exc_info=True)
         send_whatsapp_message(
             phone_number,
-            "❌ Произошла ошибка при создании бронирования.\n"
-            "Попробуйте позже."
+            "❌ Произошла ошибка при создании бронирования.\n" "Попробуйте позже.",
         )
 
 
@@ -915,7 +956,10 @@ def send_booking_confirmation(phone_number, booking):
     elif property_obj.key_safe_code:
         text += f"\n🔑 *Код от сейфа:* {property_obj.key_safe_code}"
 
-    if hasattr(property_obj.owner, 'profile') and property_obj.owner.profile.phone_number:
+    if (
+        hasattr(property_obj.owner, "profile")
+        and property_obj.owner.profile.phone_number
+    ):
         text += f"\n\n📞 *Контакт владельца:* {property_obj.owner.profile.phone_number}"
 
     text += "\n\n💬 Желаем приятного отдыха!"
@@ -930,28 +974,26 @@ def send_booking_confirmation(phone_number, booking):
                 send_whatsapp_image(phone_number, photo.image_url)
             elif photo.image:
                 from django.conf import settings
-                domain = getattr(settings, 'DOMAIN', '')
+
+                domain = getattr(settings, "DOMAIN", "")
                 full_url = f"{domain.rstrip('/')}{photo.image.url}"
                 send_whatsapp_image(phone_number, full_url)
 
 
 @log_handler
-def show_user_bookings(phone_number, booking_type='active'):
+def show_user_bookings(phone_number, booking_type="active"):
     """Показать бронирования пользователя"""
     profile = _get_profile(phone_number)
 
-    if booking_type == 'active':
+    if booking_type == "active":
         bookings = Booking.objects.filter(
-            user=profile.user,
-            status='confirmed',
-            end_date__gte=date.today()
-        ).order_by('start_date')
+            user=profile.user, status="confirmed", end_date__gte=date.today()
+        ).order_by("start_date")
         title = "📊 *Текущие бронирования*"
     else:
         bookings = Booking.objects.filter(
-            user=profile.user,
-            status__in=['completed', 'cancelled']
-        ).order_by('-created_at')[:10]
+            user=profile.user, status__in=["completed", "cancelled"]
+        ).order_by("-created_at")[:10]
         title = "📋 *История бронирований*"
 
     if not bookings:
@@ -961,7 +1003,9 @@ def show_user_bookings(phone_number, booking_type='active'):
 
     text = title + "\n\n"
     for b in bookings:
-        emoji = {'confirmed': '✅', 'completed': '✔️', 'cancelled': '❌'}.get(b.status, '•')
+        emoji = {"confirmed": "✅", "completed": "✔️", "cancelled": "❌"}.get(
+            b.status, "•"
+        )
         text += (
             f"{emoji} *{b.property.name}*\n"
             f"📅 {b.start_date.strftime('%d.%m')} - {b.end_date.strftime('%d.%m.%Y')}\n"
@@ -976,7 +1020,7 @@ def show_property_reviews(phone_number, property_id):
     """Показать отзывы о квартире"""
     try:
         prop = Property.objects.get(id=property_id)
-        reviews = Review.objects.filter(property=prop).order_by('-created_at')[:5]
+        reviews = Review.objects.filter(property=prop).order_by("-created_at")[:5]
 
         if not reviews:
             send_whatsapp_message(phone_number, "Отзывов пока нет.")
@@ -984,7 +1028,7 @@ def show_property_reviews(phone_number, property_id):
 
         text = f"*Отзывы о {prop.name}*\n\n"
         for r in reviews:
-            stars = '⭐' * r.rating
+            stars = "⭐" * r.rating
             text += f"{stars} _{r.user.first_name}_ {r.created_at.strftime('%d.%m.%Y')}\n{r.text}\n\n"
 
         send_whatsapp_message(phone_number, text)
@@ -1011,14 +1055,11 @@ def help_command_handler(phone_number):
     buttons = [
         {"id": "search_apartments", "title": "🔍 Поиск"},
         {"id": "my_bookings", "title": "📋 Брони"},
-        {"id": "main_menu", "title": "🏠 Меню"}
+        {"id": "main_menu", "title": "🏠 Меню"},
     ]
 
     send_whatsapp_button_message(
-        phone_number,
-        text,
-        buttons,
-        footer="Выберите действие"
+        phone_number, text, buttons, footer="Выберите действие"
     )
 
 
@@ -1028,24 +1069,42 @@ from django.db import transaction
 from django.db.models import Count, Avg
 
 from .constants import (
-    STATE_MAIN_MENU, STATE_AWAITING_CHECK_IN, STATE_AWAITING_CHECK_OUT,
-    STATE_CONFIRM_BOOKING, STATE_SELECT_CITY, STATE_SELECT_DISTRICT,
-    STATE_SELECT_CLASS, STATE_SELECT_ROOMS, STATE_SHOWING_RESULTS,
-    log_handler, _get_or_create_local_profile, _get_profile, start_command_handler
+    STATE_MAIN_MENU,
+    STATE_AWAITING_CHECK_IN,
+    STATE_AWAITING_CHECK_OUT,
+    STATE_CONFIRM_BOOKING,
+    STATE_SELECT_CITY,
+    STATE_SELECT_DISTRICT,
+    STATE_SELECT_CLASS,
+    STATE_SELECT_ROOMS,
+    STATE_SHOWING_RESULTS,
+    log_handler,
+    _get_or_create_local_profile,
+    _get_profile,
+    start_command_handler,
 )
 from .. import settings
 from booking_bot.listings.models import City, District, Property, PropertyPhoto, Review
 from booking_bot.bookings.models import Booking
-from booking_bot.payments import initiate_payment as kaspi_initiate_payment, KaspiPaymentError
+from booking_bot.payments import (
+    initiate_payment as kaspi_initiate_payment,
+    KaspiPaymentError,
+)
 from .utils import (
-    send_whatsapp_message, send_whatsapp_button_message,
-    send_whatsapp_list_message, send_whatsapp_media_group,
-    send_whatsapp_image, escape_markdown
+    send_whatsapp_message,
+    send_whatsapp_button_message,
+    send_whatsapp_list_message,
+    send_whatsapp_media_group,
+    send_whatsapp_image,
+    escape_markdown,
 )
 from .admin_handlers import (
-    show_admin_panel, handle_add_property_start,
-    handle_photo_upload, show_detailed_statistics,
-    show_extended_statistics, export_statistics_csv,
+    show_admin_panel,
+    handle_add_property_start,
+    handle_photo_upload,
+    show_detailed_statistics,
+    show_extended_statistics,
+    export_statistics_csv,
     show_admin_properties,
 )
 
@@ -1057,10 +1116,10 @@ def message_handler(phone_number, text, message_data=None):
     """Основной обработчик сообщений WhatsApp"""
     profile = _get_or_create_local_profile(phone_number)
     state_data = profile.whatsapp_state or {}
-    state = state_data.get('state', STATE_MAIN_MENU)
+    state = state_data.get("state", STATE_MAIN_MENU)
 
     # Обработка фотографий (если есть)
-    if message_data and message_data.get('type') == 'image':
+    if message_data and message_data.get("type") == "image":
         if handle_photo_upload(phone_number, message_data):
             return
 
@@ -1069,11 +1128,11 @@ def message_handler(phone_number, text, message_data=None):
         return
 
     # Обработка кнопок быстрого ответа (interactive replies)
-    if message_data and message_data.get('type') == 'interactive':
-        interactive = message_data.get('interactive', {})
-        reply = interactive.get('button_reply') or interactive.get('list_reply')
+    if message_data and message_data.get("type") == "interactive":
+        interactive = message_data.get("interactive", {})
+        reply = interactive.get("button_reply") or interactive.get("list_reply")
         if reply:
-            button_id = reply.get('id')
+            button_id = reply.get("id")
             return handle_button_click(phone_number, button_id, profile)
 
     # Команды отмены
@@ -1092,7 +1151,9 @@ def message_handler(phone_number, text, message_data=None):
         if text == "Оплатить Kaspi":
             handle_payment_confirmation(phone_number)
         else:
-            send_whatsapp_message(phone_number, "Пожалуйста, используйте кнопки для выбора действия.")
+            send_whatsapp_message(
+                phone_number, "Пожалуйста, используйте кнопки для выбора действия."
+            )
         return
 
     # Обработка главного меню
@@ -1101,15 +1162,18 @@ def message_handler(phone_number, text, message_data=None):
             prompt_city(phone_number, profile)
             return
         elif text == "Мои бронирования":
-            show_user_bookings(phone_number, 'completed')
+            show_user_bookings(phone_number, "completed")
             return
         elif text == "Статус текущей брони":
-            show_user_bookings(phone_number, 'active')
+            show_user_bookings(phone_number, "active")
             return
         elif text == "Помощь":
             help_command_handler(phone_number)
             return
-        elif text == "Панель администратора" and profile.role in ('admin', 'super_admin'):
+        elif text == "Панель администратора" and profile.role in (
+            "admin",
+            "super_admin",
+        ):
             show_admin_panel(phone_number)
             return
 
@@ -1139,7 +1203,10 @@ def message_handler(phone_number, text, message_data=None):
         return
 
     # Fallback
-    send_whatsapp_message(phone_number, "Используйте кнопки для навигации или отправьте 'Старт' для начала.")
+    send_whatsapp_message(
+        phone_number,
+        "Используйте кнопки для навигации или отправьте 'Старт' для начала.",
+    )
 
 
 @log_handler
@@ -1148,9 +1215,9 @@ def handle_button_click(phone_number, button_id, profile):
     if button_id == "search_apartments":
         prompt_city(phone_number, profile)
     elif button_id == "my_bookings":
-        show_user_bookings(phone_number, 'completed')
+        show_user_bookings(phone_number, "completed")
     elif button_id == "current_status":
-        show_user_bookings(phone_number, 'active')
+        show_user_bookings(phone_number, "active")
     elif button_id == "help":
         help_command_handler(phone_number)
     elif button_id == "admin_panel":
@@ -1191,28 +1258,30 @@ def prompt_city(phone_number, profile):
     if profile.whatsapp_state is None:
         profile.whatsapp_state = {}
 
-    profile.whatsapp_state.update({'state': STATE_SELECT_CITY})
+    profile.whatsapp_state.update({"state": STATE_SELECT_CITY})
     profile.save()
 
-    cities = City.objects.all().order_by('name')
+    cities = City.objects.all().order_by("name")
 
     # Если городов мало (до 10), используем список кнопок
     if cities.count() <= 10:
-        sections = [{
-            "title": "Города",
-            "rows": [
-                {
-                    "id": f"city_{city.id}",
-                    "title": city.name[:24]  # Максимум 24 символа для списка
-                }
-                for city in cities
-            ]
-        }]
+        sections = [
+            {
+                "title": "Города",
+                "rows": [
+                    {
+                        "id": f"city_{city.id}",
+                        "title": city.name[:24],  # Максимум 24 символа для списка
+                    }
+                    for city in cities
+                ],
+            }
+        ]
 
         send_whatsapp_list_message(
             phone_number,
             "Выберите город для поиска квартир:",
             "Выбрать город",
             sections,
-            header="🏙️ Выбор города"
+            header="🏙️ Выбор города",
         )

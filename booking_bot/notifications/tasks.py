@@ -26,21 +26,20 @@ def send_checkin_reminders():
     tomorrow = date.today() + timedelta(days=1)
 
     bookings = Booking.objects.filter(
-        start_date=tomorrow,
-        status='confirmed'
-    ).select_related('property', 'user')
+        start_date=tomorrow, status="confirmed"
+    ).select_related("property", "user")
 
     for booking in bookings:
         NotificationService.schedule(
-            event='checkin_reminder',
+            event="checkin_reminder",
             user=booking.user,
             context={
-                'booking': booking,
-                'property': booking.property,
-                'checkin_date': booking.start_date.strftime('%d.%m.%Y'),
-                'property_name': booking.property.name,
-                'address': booking.property.address,
-            }
+                "booking": booking,
+                "property": booking.property,
+                "checkin_date": booking.start_date.strftime("%d.%m.%Y"),
+                "property_name": booking.property.name,
+                "address": booking.property.address,
+            },
         )
 
     logger.info(f"Scheduled {bookings.count()} checkin reminders")
@@ -57,7 +56,7 @@ def monitor_low_occupancy():
     start_date = date.today() - timedelta(days=30)
     end_date = date.today()
 
-    properties = Property.objects.filter(status='Свободна')
+    properties = Property.objects.filter(status="Свободна")
 
     for property_obj in properties:
         occupancy = PropertyCalendarManager.get_occupancy_rate(
@@ -66,14 +65,14 @@ def monitor_low_occupancy():
 
         if occupancy < 40:  # Порог 40%
             NotificationService.schedule(
-                event='low_occupancy',
+                event="low_occupancy",
                 user=property_obj.owner,
                 context={
-                    'property': property_obj,
-                    'property_name': property_obj.name,
-                    'occupancy_rate': round(occupancy, 1),
-                    'period': '30 дней',
-                }
+                    "property": property_obj,
+                    "property_name": property_obj.name,
+                    "occupancy_rate": round(occupancy, 1),
+                    "period": "30 дней",
+                },
             )
 
     logger.info(f"Checked occupancy for {properties.count()} properties")

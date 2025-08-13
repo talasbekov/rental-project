@@ -16,14 +16,15 @@ from django.urls import reverse
 logger = logging.getLogger(__name__)
 
 # Конфигурация Kaspi API
-KASPI_API_KEY = getattr(settings, 'KASPI_API_KEY', '')
-KASPI_MERCHANT_ID = getattr(settings, 'KASPI_MERCHANT_ID', '')
-KASPI_API_BASE_URL = getattr(settings, 'KASPI_API_BASE_URL', 'https://api.kaspi.kz/v2/')
-KASPI_SECRET_KEY = getattr(settings, 'KASPI_SECRET_KEY', '')
+KASPI_API_KEY = getattr(settings, "KASPI_API_KEY", "")
+KASPI_MERCHANT_ID = getattr(settings, "KASPI_MERCHANT_ID", "")
+KASPI_API_BASE_URL = getattr(settings, "KASPI_API_BASE_URL", "https://api.kaspi.kz/v2/")
+KASPI_SECRET_KEY = getattr(settings, "KASPI_SECRET_KEY", "")
 
 
 class KaspiPaymentError(Exception):
     """Custom exception for Kaspi payment errors."""
+
     pass
 
 
@@ -34,14 +35,16 @@ def generate_signature(data: dict) -> str:
     # Сортируем ключи алфавитно
     sorted_data = sorted(data.items())
     # Формируем строку для подписи
-    sign_string = '&'.join([f"{k}={v}" for k, v in sorted_data])
+    sign_string = "&".join([f"{k}={v}" for k, v in sorted_data])
     # Добавляем секретный ключ
     sign_string += f"&{KASPI_SECRET_KEY}"
     # Генерируем SHA256 хэш
     return hashlib.sha256(sign_string.encode()).hexdigest()
 
 
-def initiate_payment(booking_id: int, amount: float, currency: str = 'KZT', description: str = '') -> dict:
+def initiate_payment(
+    booking_id: int, amount: float, currency: str = "KZT", description: str = ""
+) -> dict:
     """
     Инициирует платеж через Kaspi.kz
 
@@ -54,11 +57,15 @@ def initiate_payment(booking_id: int, amount: float, currency: str = 'KZT', desc
     Returns:
         dict: Информация о платеже включая checkout_url
     """
-    logger.info(f"Инициация платежа Kaspi для бронирования {booking_id}, сумма {amount} {currency}")
+    logger.info(
+        f"Инициация платежа Kaspi для бронирования {booking_id}, сумма {amount} {currency}"
+    )
 
     # Для разработки - эмулируем успешный ответ
     if settings.DEBUG or not KASPI_API_KEY:
-        logger.warning("Используется эмуляция Kaspi API (DEBUG режим или отсутствует API ключ)")
+        logger.warning(
+            "Используется эмуляция Kaspi API (DEBUG режим или отсутствует API ключ)"
+        )
 
         # Генерируем уникальный ID платежа
         payment_id = f"kaspi_{uuid.uuid4().hex[:16]}"
@@ -68,17 +75,17 @@ def initiate_payment(booking_id: int, amount: float, currency: str = 'KZT', desc
 
         # Эмулируем ответ Kaspi
         payment_data = {
-            'payment_id': payment_id,
-            'checkout_url': f"https://pay.kaspi.kz/pay/{payment_id}?amount={amount}&merchant={KASPI_MERCHANT_ID or 'TEST_MERCHANT'}",
-            'status': 'pending',
-            'amount': amount,
-            'currency': currency,
-            'created_at': datetime.now().isoformat(),
-            'expires_at': datetime.now().isoformat(),
-            'callback_url': callback_url,
-            'description': description or f"Оплата бронирования #{booking_id}",
-            'merchant_id': KASPI_MERCHANT_ID or 'TEST_MERCHANT',
-            'order_id': str(booking_id)
+            "payment_id": payment_id,
+            "checkout_url": f"https://pay.kaspi.kz/pay/{payment_id}?amount={amount}&merchant={KASPI_MERCHANT_ID or 'TEST_MERCHANT'}",
+            "status": "pending",
+            "amount": amount,
+            "currency": currency,
+            "created_at": datetime.now().isoformat(),
+            "expires_at": datetime.now().isoformat(),
+            "callback_url": callback_url,
+            "description": description or f"Оплата бронирования #{booking_id}",
+            "merchant_id": KASPI_MERCHANT_ID or "TEST_MERCHANT",
+            "order_id": str(booking_id),
         }
 
         logger.info(f"Эмуляция платежа создана: {payment_data}")
@@ -91,26 +98,26 @@ def initiate_payment(booking_id: int, amount: float, currency: str = 'KZT', desc
 
         # Формируем данные для запроса
         payload = {
-            'merchant_id': KASPI_MERCHANT_ID,
-            'order_id': str(booking_id),
-            'transaction_id': transaction_id,
-            'amount': int(amount * 100),  # Kaspi принимает суммы в тиынах
-            'currency': currency,
-            'description': description or f"Бронирование квартиры #{booking_id}",
-            'return_url': f"{settings.SITE_URL}/payments/success/",
-            'fail_url': f"{settings.SITE_URL}/payments/fail/",
-            'callback_url': f"{settings.SITE_URL}/api/v1/kaspi-webhook/",
-            'language': 'ru',
-            'email_notification': True
+            "merchant_id": KASPI_MERCHANT_ID,
+            "order_id": str(booking_id),
+            "transaction_id": transaction_id,
+            "amount": int(amount * 100),  # Kaspi принимает суммы в тиынах
+            "currency": currency,
+            "description": description or f"Бронирование квартиры #{booking_id}",
+            "return_url": f"{settings.SITE_URL}/payments/success/",
+            "fail_url": f"{settings.SITE_URL}/payments/fail/",
+            "callback_url": f"{settings.SITE_URL}/api/v1/kaspi-webhook/",
+            "language": "ru",
+            "email_notification": True,
         }
 
         # Добавляем подпись
-        payload['signature'] = generate_signature(payload)
+        payload["signature"] = generate_signature(payload)
 
         headers = {
-            'Authorization': f'Bearer {KASPI_API_KEY}',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            "Authorization": f"Bearer {KASPI_API_KEY}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
         }
 
         # Отправляем запрос
@@ -118,27 +125,27 @@ def initiate_payment(booking_id: int, amount: float, currency: str = 'KZT', desc
             f"{KASPI_API_BASE_URL}payments/create",
             json=payload,
             headers=headers,
-            timeout=30
+            timeout=30,
         )
 
         response.raise_for_status()
         result = response.json()
 
-        if result.get('success'):
+        if result.get("success"):
             payment_data = {
-                'payment_id': result.get('payment_id'),
-                'checkout_url': result.get('payment_url'),
-                'status': 'pending',
-                'amount': amount,
-                'currency': currency,
-                'order_id': str(booking_id),
-                'transaction_id': transaction_id
+                "payment_id": result.get("payment_id"),
+                "checkout_url": result.get("payment_url"),
+                "status": "pending",
+                "amount": amount,
+                "currency": currency,
+                "order_id": str(booking_id),
+                "transaction_id": transaction_id,
             }
 
             logger.info(f"Платеж Kaspi успешно создан: {payment_data['payment_id']}")
             return payment_data
         else:
-            error_msg = result.get('error', {}).get('message', 'Unknown error')
+            error_msg = result.get("error", {}).get("message", "Unknown error")
             logger.error(f"Kaspi API вернул ошибку: {error_msg}")
             raise KaspiPaymentError(f"Kaspi error: {error_msg}")
 
@@ -166,18 +173,23 @@ def check_payment_status(kaspi_payment_id: str) -> dict:
     if settings.DEBUG or not KASPI_API_KEY:
         # Эмулируем различные статусы для тестирования
         import random
-        statuses = ['SUCCESS', 'FAILED', 'PENDING']
+
+        statuses = ["SUCCESS", "FAILED", "PENDING"]
         # Для демонстрации всегда возвращаем SUCCESS
-        chosen_status = 'SUCCESS'
+        chosen_status = "SUCCESS"
 
         status_data = {
-            'payment_id': kaspi_payment_id,
-            'status': chosen_status,
-            'amount': 10000.00,  # Примерная сумма
-            'currency': 'KZT',
-            'paid_at': datetime.now().isoformat() if chosen_status == 'SUCCESS' else None,
-            'error_code': None if chosen_status != 'FAILED' else 'INSUFFICIENT_FUNDS',
-            'error_message': None if chosen_status != 'FAILED' else 'Недостаточно средств'
+            "payment_id": kaspi_payment_id,
+            "status": chosen_status,
+            "amount": 10000.00,  # Примерная сумма
+            "currency": "KZT",
+            "paid_at": (
+                datetime.now().isoformat() if chosen_status == "SUCCESS" else None
+            ),
+            "error_code": None if chosen_status != "FAILED" else "INSUFFICIENT_FUNDS",
+            "error_message": (
+                None if chosen_status != "FAILED" else "Недостаточно средств"
+            ),
         }
 
         logger.info(f"Эмуляция статуса платежа: {status_data}")
@@ -185,35 +197,32 @@ def check_payment_status(kaspi_payment_id: str) -> dict:
 
     # Реальная проверка статуса
     try:
-        payload = {
-            'merchant_id': KASPI_MERCHANT_ID,
-            'payment_id': kaspi_payment_id
-        }
-        payload['signature'] = generate_signature(payload)
+        payload = {"merchant_id": KASPI_MERCHANT_ID, "payment_id": kaspi_payment_id}
+        payload["signature"] = generate_signature(payload)
 
         headers = {
-            'Authorization': f'Bearer {KASPI_API_KEY}',
-            'Content-Type': 'application/json'
+            "Authorization": f"Bearer {KASPI_API_KEY}",
+            "Content-Type": "application/json",
         }
 
         response = requests.get(
             f"{KASPI_API_BASE_URL}payments/{kaspi_payment_id}/status",
             params=payload,
             headers=headers,
-            timeout=30
+            timeout=30,
         )
 
         response.raise_for_status()
         result = response.json()
 
         status_data = {
-            'payment_id': kaspi_payment_id,
-            'status': result.get('status'),
-            'amount': result.get('amount', 0) / 100,  # Конвертируем из тиынов
-            'currency': result.get('currency', 'KZT'),
-            'paid_at': result.get('paid_at'),
-            'error_code': result.get('error_code'),
-            'error_message': result.get('error_message')
+            "payment_id": kaspi_payment_id,
+            "status": result.get("status"),
+            "amount": result.get("amount", 0) / 100,  # Конвертируем из тиынов
+            "currency": result.get("currency", "KZT"),
+            "paid_at": result.get("paid_at"),
+            "error_code": result.get("error_code"),
+            "error_message": result.get("error_message"),
         }
 
         logger.info(f"Статус платежа получен: {status_data['status']}")
@@ -248,7 +257,7 @@ def verify_webhook_signature(request_data: dict, signature: str) -> bool:
     return True
 
 
-def cancel_payment(kaspi_payment_id: str, reason: str = '') -> bool:
+def cancel_payment(kaspi_payment_id: str, reason: str = "") -> bool:
     """
     Отменяет платеж в Kaspi
 
@@ -267,28 +276,28 @@ def cancel_payment(kaspi_payment_id: str, reason: str = '') -> bool:
 
     try:
         payload = {
-            'merchant_id': KASPI_MERCHANT_ID,
-            'payment_id': kaspi_payment_id,
-            'reason': reason or 'Отменено пользователем'
+            "merchant_id": KASPI_MERCHANT_ID,
+            "payment_id": kaspi_payment_id,
+            "reason": reason or "Отменено пользователем",
         }
-        payload['signature'] = generate_signature(payload)
+        payload["signature"] = generate_signature(payload)
 
         headers = {
-            'Authorization': f'Bearer {KASPI_API_KEY}',
-            'Content-Type': 'application/json'
+            "Authorization": f"Bearer {KASPI_API_KEY}",
+            "Content-Type": "application/json",
         }
 
         response = requests.post(
             f"{KASPI_API_BASE_URL}payments/{kaspi_payment_id}/cancel",
             json=payload,
             headers=headers,
-            timeout=30
+            timeout=30,
         )
 
         response.raise_for_status()
         result = response.json()
 
-        return result.get('success', False)
+        return result.get("success", False)
 
     except Exception as e:
         logger.error(f"Ошибка при отмене платежа: {e}")

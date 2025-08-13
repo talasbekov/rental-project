@@ -108,8 +108,6 @@ LANGUAGE_CODE = "en-us"
 TIME_ZONE = get_env("DJANGO_TIME_ZONE", "UTC")
 USE_I18N = True
 
-# Для работы за reverse proxy
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_TZ = True
 
 # Static and media files
@@ -165,37 +163,73 @@ CSRF_EXEMPT_URLS = [r"^/telegram/webhook/$"]
 
 # Security hardening
 # SECURE_SSL_REDIRECT = True
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-SESSION_COOKIE_HTTPONLY = True
-SECURE_BROWSER_XSS_FILTER = True
-SECURE_CONTENT_TYPE_NOSNIFF = True
-X_FRAME_OPTIONS = "DENY"
-SECURE_HSTS_SECONDS = 31536000
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = True
+# Security hardening
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+if DEBUG:
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"
+    SECURE_HSTS_SECONDS = 0
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
+    # SECURE_SSL_REDIRECT = False  # при желании
+else:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMАINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_SSL_REDIRECT = get_env("SECURE_SSL_REDIRECT", "True").lower() == "true"
+
 
 # File upload limits
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 
-# Celery configuration
-# Define broker and result backend from environment or default to Redis.
-CELERY_BROKER_URL = get_env("CELERY_BROKER_URL", "redis://redis:6379/0")
-CELERY_RESULT_BACKEND = get_env("CELERY_RESULT_BACKEND", "redis://redis:6379/1")
+# Celery / Redis
+REDIS_HOST = get_env("REDIS_HOST", "redis")
+REDIS_PASSWORD = get_env("REDIS_PASSWORD", "")
+_redis_auth = f":{REDIS_PASSWORD}@" if REDIS_PASSWORD else ""
+
+CELERY_BROKER_URL = get_env("CELERY_BROKER_URL", f"redis://{_redis_auth}{REDIS_HOST}:6379/0")
+CELERY_RESULT_BACKEND = get_env("CELERY_RESULT_BACKEND", f"redis://{_redis_auth}{REDIS_HOST}:6379/1")
+
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_RESULT_SERIALIZER = "json"
 
-# S3/MinIO настройки
-AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
-AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
-AWS_STORAGE_BUCKET_NAME = os.environ.get("AWS_STORAGE_BUCKET_NAME", "zhiliego-photos")
-AWS_S3_REGION_NAME = os.environ.get("AWS_S3_REGION_NAME", "us-east-1")
 
-# Для MinIO (self-hosted S3)
-S3_ENDPOINT_URL = os.environ.get("S3_ENDPOINT_URL", None)  # например: http://minio:9000
+# S3/MinIO
+S3_ENABLED = get_env("S3_ENABLED", "true").lower() == "true"
+
+# Базовый эндпоинт API MinIO/S3 (в Docker — имя сервиса, не localhost)
+S3_ENDPOINT_URL = get_env("S3_ENDPOINT_URL", "http://minio:9000")
+
+# Креды (можно переиспользовать AWS_* если уже заданы)
+S3_ACCESS_KEY = get_env("S3_ACCESS_KEY", get_env("AWS_ACCESS_KEY_ID", ""))
+S3_SECRET_KEY = get_env("S3_SECRET_KEY", get_env("AWS_SECRET_ACCESS_KEY", ""))
+S3_BUCKET_NAME = get_env("S3_BUCKET_NAME", get_env("AWS_STORAGE_BUCKET_NAME", "zhiliego-photos"))
+S3_REGION = get_env("S3_REGION", get_env("AWS_S3_REGION_NAME", "us-east-1"))
+S3_ADDRESSING_STYLE = get_env("S3_ADDRESSING_STYLE", "path")  # 'path' или 'virtual'
+S3_USE_SSL = get_env("S3_USE_SSL", "false").lower() == "true"
+
+# Публичная база для линков (в DEV: localhost:9000, чтобы Telegram мог скачать)
+S3_PUBLIC_BASE = get_env("S3_PUBLIC_BASE", f"http://localhost:9000/{S3_BUCKET_NAME}")
+
+# CloudFront (опционально)
+AWS_CLOUDFRONT_DOMAIN = get_env("AWS_CLOUDFRONT_DOMAIN", None)
+
+# Включаем наш кастомный сторедж по умолчанию (если используете его глобально)
+if S3_ENABLED and S3_ENDPOINT_URL:
+    DEFAULT_FILE_STORAGE = "booking_bot.core.storage.S3Storage"
+
 
 # CloudFront CDN (опционально)
 AWS_CLOUDFRONT_DOMAIN = os.environ.get("AWS_CLOUDFRONT_DOMAIN", None)
@@ -209,12 +243,6 @@ PHOTO_THUMBNAIL_SIZE = (400, 300)  # Размер миниатюры
 AWS_S3_OBJECT_PARAMETERS = {
     "CacheControl": "max-age=86400",  # 1 день
 }
-
-# Для локальной разработки можно использовать MinIO в Docker
-if DEBUG:
-    S3_ENDPOINT_URL = "http://localhost:9000"
-    AWS_ACCESS_KEY_ID = "minioadmin"
-    AWS_SECRET_ACCESS_KEY = "minioadmin"
 
 # Celery beat schedule example tasks. Adjust schedules as needed.
 CELERY_BEAT_SCHEDULE = {

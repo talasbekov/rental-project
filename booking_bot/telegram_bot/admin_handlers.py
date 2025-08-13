@@ -489,10 +489,34 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
             return True
 
         # Режим URL: обрабатываем текст со ссылками
-        if photo_mode == "url" and text and text not in ["✅ Завершить", "❌ Отмена"]:
-            urls = [u.strip() for u in text.split() if u.strip().startswith("http")]
+        if photo_mode == 'url' and text and text not in ["✅ Завершить", "❌ Отмена"]:
+            # Проверяем текущее количество фото перед добавлением
+            current_count = PropertyPhoto.objects.filter(property_id=prop_id).count()
+
+            if current_count >= 6:
+                send_telegram_message(
+                    chat_id,
+                    "❌ *Достигнут максимум!*\n\n"
+                    "Уже загружено 6 фотографий.\n"
+                    "Нажмите «✅ Завершить» для сохранения."
+                )
+                return True
+
+            urls = [u.strip() for u in text.split() if u.strip().startswith('http')]
+
+            # Ограничиваем количество URL
+            available_slots = 6 - current_count
+            if len(urls) > available_slots:
+                send_telegram_message(
+                    chat_id,
+                    f"⚠️ *Слишком много ссылок!*\n\n"
+                    f"Можно добавить еще только {available_slots} фото.\n"
+                    f"Отправьте не более {available_slots} ссылок."
+                )
+                return True
+
             created = 0
-            for url in urls[:6]:  # Максимум 6 фото согласно ТЗ
+            for url in urls[:available_slots]:  # Ограничиваем количество
                 try:
                     PropertyPhoto.objects.create(property_id=prop_id, image_url=url)
                     created += 1
@@ -504,19 +528,24 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
                 if total_photos >= 6:
                     send_telegram_message(
                         chat_id,
-                        f"✅ Добавлено максимальное количество фото (6).\n"
-                        'Нажмите "✅ Завершить" для завершения.',
+                        f"✅ *Максимум фотографий достигнут!*\n\n"
+                        f"Загружено 6/6 фотографий.\n"
+                        "Нажмите «✅ Завершить» для сохранения."
                     )
                 else:
+                    remaining = 6 - total_photos
                     send_telegram_message(
                         chat_id,
-                        f"✅ Добавлено {created} фото. Всего: {total_photos}/6\n"
-                        'Можете отправить еще URL или нажать "✅ Завершить"',
+                        f"✅ Добавлено {created} фото.\n"
+                        f"Всего: {total_photos}/6\n"
+                        f"Можно добавить еще: {remaining}\n\n"
+                        "Отправьте еще URL или нажмите «✅ Завершить»"
                     )
             else:
                 send_telegram_message(
                     chat_id,
-                    "Не удалось добавить фотографии. Проверьте корректность URL.",
+                    "❌ Не удалось добавить фотографии.\n"
+                    "Проверьте корректность URL."
                 )
             return True
 
@@ -536,63 +565,81 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
 
 @log_handler
 def handle_photo_upload(chat_id, update, context):
-    """Обработка загружаемых фотографий с устройства."""
+    """Обработка загружаемых фотографий с проверкой лимита в 6 штук."""
     profile = _get_profile(chat_id)
     state_data = profile.telegram_state or {}
-    state = state_data.get("state")
+    state = state_data.get('state')
 
     if state != STATE_ADMIN_ADD_PHOTOS:
         return False
 
-    photo_mode = state_data.get("photo_mode")
-    if photo_mode != "device":
+    photo_mode = state_data.get('photo_mode')
+    if photo_mode != 'device':
         return False
 
-    prop_id = state_data["new_property"].get("id")
+    prop_id = state_data['new_property'].get('id')
     if not prop_id:
         send_telegram_message(chat_id, "Ошибка: квартира не найдена.")
         return True
 
-    # Проверяем лимит фото
+    # Проверяем текущее количество фото
     current_photos = PropertyPhoto.objects.filter(property_id=prop_id).count()
+
+    # ИСПРАВЛЕНИЕ: Строгая проверка на 6 фото
     if current_photos >= 6:
         send_telegram_message(
-            chat_id, 'Достигнут лимит в 6 фотографий. Нажмите "✅ Завершить"'
+            chat_id,
+            "❌ *Достигнут максимум!*\n\n"
+            "Можно загрузить максимум 6 фотографий.\n"
+            "У вас уже загружено 6 фото.\n\n"
+            "Нажмите «✅ Завершить» для сохранения."
         )
         return True
 
-    # Обрабатываем фотографии
+    # Проверяем, что не пытаются загрузить больше одной фотографии за раз
     if update.message and update.message.photo:
         photos = update.message.photo
+
+        # Если пытаются загрузить несколько фото сразу (медиа-группа)
+        # Telegram отправляет их по одной, но мы проверяем на всякий случай
+        if len(photos) > 1 and (current_photos + 1) > 6:
+            send_telegram_message(
+                chat_id,
+                f"⚠️ *Внимание!*\n\n"
+                f"Вы можете загрузить еще {6 - current_photos} фото.\n"
+                f"Отправляйте фотографии по одной."
+            )
+            return True
+
         created = 0
         bot = context.bot
 
         try:
-            best_photo = max(photos, key=lambda p: getattr(p, "file_size", 0) or 0)
+            best_photo = max(photos, key=lambda p: getattr(p, 'file_size', 0) or 0)
 
             # Проверяем размер файла
-            if (
-                hasattr(best_photo, "file_size")
-                and best_photo.file_size > 5 * 1024 * 1024
-            ):
+            if hasattr(best_photo, 'file_size') and best_photo.file_size > 5 * 1024 * 1024:
                 send_telegram_message(
-                    chat_id, "❌ Фото слишком большое! Максимальный размер 5 МБ."
+                    chat_id,
+                    "❌ *Фото слишком большое!*\n\n"
+                    "Максимальный размер файла: 5 МБ.\n"
+                    "Попробуйте уменьшить размер фото."
                 )
                 return True
 
+            # Сохраняем фото
             file = bot.get_file(best_photo.file_id)
 
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+            import tempfile
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
             file.download(custom_path=tmp.name)
 
-            with open(tmp.name, "rb") as f:
-                django_file = File(
-                    f, name=f"property_{prop_id}_{best_photo.file_id}.jpg"
-                )
+            with open(tmp.name, 'rb') as f:
+                from django.core.files import File
+                django_file = File(f, name=f"property_{prop_id}_{best_photo.file_id}.jpg")
                 PropertyPhoto.objects.create(property_id=prop_id, image=django_file)
 
             import os
-
             os.unlink(tmp.name)
             created = 1
 
@@ -602,20 +649,29 @@ def handle_photo_upload(chat_id, update, context):
 
         if created > 0:
             total_photos = PropertyPhoto.objects.filter(property_id=prop_id).count()
+
+            # Проверяем достижение лимита после сохранения
             if total_photos >= 6:
                 send_telegram_message(
                     chat_id,
-                    f"✅ Добавлено максимум фото (6)!\n" 'Нажмите "✅ Завершить"',
+                    f"✅ *Максимум фотографий загружен!*\n\n"
+                    f"Загружено: 6/6 фотографий\n"
+                    f"Нажмите «✅ Завершить» для сохранения квартиры."
                 )
             else:
+                remaining = 6 - total_photos
                 send_telegram_message(
                     chat_id,
-                    f"✅ Фотография добавлена! Всего: {total_photos}/6\n"
-                    'Можете отправить еще или нажать "✅ Завершить"',
+                    f"✅ *Фотография добавлена!*\n\n"
+                    f"Загружено: {total_photos}/6\n"
+                    f"Можно добавить еще: {remaining}\n\n"
+                    f"Отправьте следующее фото или нажмите «✅ Завершить»"
                 )
         else:
             send_telegram_message(
-                chat_id, "❌ Не удалось сохранить фотографию. Попробуйте еще раз."
+                chat_id,
+                "❌ Не удалось сохранить фотографию.\n"
+                "Попробуйте еще раз."
             )
 
         return True
@@ -731,19 +787,18 @@ def show_admin_properties(chat_id):
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
     )
 
-
 @log_handler
 def show_property_calendar(chat_id, property_id, year=None, month=None):
-    """Показать календарь занятости квартиры"""
+    """Показать улучшенный календарь занятости квартиры"""
     profile = _get_profile(chat_id)
 
-    if profile.role not in ("admin", "super_admin"):
+    if profile.role not in ('admin', 'super_admin'):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
 
     try:
         # Проверяем доступ к квартире
-        if profile.role == "admin":
+        if profile.role == 'admin':
             prop = Property.objects.get(id=property_id, owner=profile.user)
         else:
             prop = Property.objects.get(id=property_id)
@@ -761,22 +816,31 @@ def show_property_calendar(chat_id, property_id, year=None, month=None):
         # Получаем матрицу календаря
         calendar_matrix = PropertyCalendarManager.get_calendar_view(prop, year, month)
 
-        # Формируем текст календаря
-        month_name = calendar.month_name[month]
+        # Формируем текст календаря с улучшенным форматированием
+        month_names = {
+            1: 'Январь', 2: 'Февраль', 3: 'Март', 4: 'Апрель',
+            5: 'Май', 6: 'Июнь', 7: 'Июль', 8: 'Август',
+            9: 'Сентябрь', 10: 'Октябрь', 11: 'Ноябрь', 12: 'Декабрь'
+        }
+
+        month_name = month_names.get(month, calendar.month_name[month])
+
         text = f"📅 *Календарь занятости*\n"
         text += f"🏠 {prop.name}\n"
-        text += f"📆 {month_name} {year}\n\n"
+        text += f"📆 *{month_name} {year}*\n"
+        text += "━━━━━━━━━━━━━━━━━━━━━\n"
 
         # Заголовки дней недели
-        text += "Пн  Вт  Ср  Чт  Пт  Сб  Вс\n"
+        text += "ПН  ВТ  СР  ЧТ  ПТ  СБ  ВС\n"
+        text += "━━━━━━━━━━━━━━━━━━━━━\n"
 
-        # Легенда статусов
+        # Улучшенные эмодзи для статусов
         status_emoji = {
-            "free": "⬜",  # Свободно
-            "booked": "🟨",  # Забронировано
-            "occupied": "🟥",  # Занято
-            "blocked": "⬛",  # Заблокировано
-            "cleaning": "🟦",  # Уборка
+            'free': '✅',  # Свободно - зеленая галочка
+            'booked': '🔴',  # Забронировано - красный круг
+            'occupied': '🏠',  # Занято - домик
+            'blocked': '🚫',  # Заблокировано - запрет
+            'cleaning': '🧹',  # Уборка - метла
         }
 
         # Формируем календарь
@@ -786,66 +850,87 @@ def show_property_calendar(chat_id, property_id, year=None, month=None):
                 if day_info is None:
                     week_text += "    "  # Пустое место
                 else:
-                    emoji = status_emoji.get(day_info["status"], "⬜")
-                    if day_info["is_today"]:
+                    emoji = status_emoji.get(day_info['status'], '✅')
+                    day_num = f"{day_info['day']:2}"
+
+                    if day_info['is_today']:
                         # Выделяем сегодняшний день
-                        week_text += f"[{day_info['day']:2}]"
+                        week_text += f"[{day_num}]"
                     else:
-                        week_text += f"{emoji}{day_info['day']:2}"
+                        week_text += f"{emoji}{day_num}"
                     week_text += " "
             text += week_text.rstrip() + "\n"
 
-        # Легенда
-        text += "\n*Легенда:*\n"
-        text += "⬜ Свободно  🟨 Забронировано\n"
-        text += "🟥 Занято    ⬛ Заблокировано\n"
-        text += "🟦 Уборка    [...] Сегодня\n"
+        text += "━━━━━━━━━━━━━━━━━━━━━\n"
+
+        # Улучшенная легенда
+        text += "*Обозначения:*\n"
+        text += "✅ Свободно     🔴 Забронировано\n"
+        text += "🏠 Занято       🚫 Заблокировано\n"
+        text += "🧹 Уборка       [...] Сегодня\n"
+        text += "━━━━━━━━━━━━━━━━━━━━━\n"
 
         # Статистика за месяц
         occupancy_rate = PropertyCalendarManager.get_occupancy_rate(
             prop,
             date(year, month, 1),
-            date(year, month + 1, 1) if month < 12 else date(year + 1, 1, 1),
+            date(year, month + 1, 1) if month < 12 else date(year + 1, 1, 1)
         )
-        text += f"\n📊 Загрузка: {occupancy_rate:.1f}%"
+
+        # Подсчет бронирований
+        from booking_bot.bookings.models import Booking
+        month_bookings = Booking.objects.filter(
+            property=prop,
+            start_date__year=year,
+            start_date__month=month,
+            status__in=['confirmed', 'completed']
+        ).count()
+
+        text += f"\n📊 *Статистика месяца:*\n"
+        text += f"• Загрузка: {occupancy_rate:.1f}%\n"
+        text += f"• Бронирований: {month_bookings}\n"
 
         # Кнопки навигации
         keyboard = []
-        nav_row = []
 
+        # Навигация по месяцам в одной строке
+        nav_row = []
         # Предыдущий месяц
         if month == 1:
             prev_month, prev_year = 12, year - 1
         else:
             prev_month, prev_year = month - 1, year
-        nav_row.append(KeyboardButton(f"◀️ {prev_month}/{prev_year}"))
+        nav_row.append(KeyboardButton(f"◀️ {prev_month:02d}/{prev_year}"))
+
+        # Текущий месяц
+        today = date.today()
+        nav_row.append(KeyboardButton(f"📅 {today.month:02d}/{today.year}"))
 
         # Следующий месяц
         if month == 12:
             next_month, next_year = 1, year + 1
         else:
             next_month, next_year = month + 1, year
-        nav_row.append(KeyboardButton(f"▶️ {next_month}/{next_year}"))
+        nav_row.append(KeyboardButton(f"▶️ {next_month:02d}/{next_year}"))
 
         keyboard.append(nav_row)
         keyboard.append([KeyboardButton("📊 Детали броней")])
-        keyboard.append([KeyboardButton("🚫 Заблокировать даты")])
         keyboard.append([KeyboardButton("🏠 Мои квартиры")])
         keyboard.append([KeyboardButton("🧭 Главное меню")])
 
         # Сохраняем состояние для навигации
         profile.telegram_state = {
-            "state": "viewing_calendar",
-            "calendar_property_id": property_id,
-            "calendar_year": year,
-            "calendar_month": month,
+            'state': 'viewing_calendar',
+            'calendar_property_id': property_id,
+            'calendar_year': year,
+            'calendar_month': month
         }
         profile.save()
 
         send_telegram_message(
             chat_id,
             text,
-            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
         )
 
     except Property.DoesNotExist:

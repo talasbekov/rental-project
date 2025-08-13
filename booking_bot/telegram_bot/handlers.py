@@ -239,9 +239,21 @@ def message_handler(chat_id, text, update=None, context=None):
             elif text == "📥 Скачать CSV":
                 export_statistics_csv(chat_id, context, period="month")
                 return
+            elif text == "✅ Модерация отзывов":
+                from .admin_handlers import show_pending_reviews
+                show_pending_reviews(chat_id)
+                return
+            elif text.startswith("/moderate_"):
+                review_id = int(text.replace("/moderate_", ""))
+                from .admin_handlers import handle_moderate_review_start
+                handle_moderate_review_start(chat_id, review_id)
+                return
+            elif state == 'moderate_review_action':
+                from .admin_handlers import handle_moderate_review_action
+                handle_moderate_review_action(chat_id, text)
+                return
             elif text == "📝 Отзывы о гостях":
                 from .admin_handlers import show_pending_guest_reviews
-
                 show_pending_guest_reviews(chat_id)
                 return
             elif text.startswith("/review_guest_"):
@@ -253,6 +265,27 @@ def message_handler(chat_id, text, update=None, context=None):
             elif text.startswith("📅 Календарь #"):
                 prop_id = int(text.split("#")[1])
                 show_property_calendar(chat_id, prop_id)
+                return
+            elif text.startswith("✏️ Изменить #"):
+                prop_id = int(text.split("#")[1])
+                from .admin_handlers import handle_edit_property_start
+                handle_edit_property_start(chat_id, prop_id)
+                return
+            elif state == 'edit_property_menu':
+                from .admin_handlers import handle_edit_property_menu
+                handle_edit_property_menu(chat_id, text)
+                return
+            elif state == 'edit_property_price':
+                from .admin_handlers import handle_edit_property_price
+                handle_edit_property_price(chat_id, text)
+                return
+            elif state == 'edit_property_desc':
+                from .admin_handlers import handle_edit_property_desc
+                handle_edit_property_desc(chat_id, text)
+                return
+            elif state == 'edit_property_status':
+                from .admin_handlers import handle_edit_property_status
+                handle_edit_property_status(chat_id, text)
                 return
             elif state == "viewing_calendar":
                 sd = profile.telegram_state or {}
@@ -273,9 +306,10 @@ def message_handler(chat_id, text, update=None, context=None):
                     show_calendar_booking_details(chat_id, prop_id, year, month)
                 elif text == "📅 Назад к календарю":
                     show_property_calendar(chat_id, prop_id, year, month)
-                elif text == "🚫 Заблокировать даты":
-                    start_block_dates(chat_id, prop_id)
+                # elif text == "🚫 Заблокировать даты":
+                #     start_block_dates(chat_id, prop_id)
                 return
+
 
             # Переключение периодов в статистике
             if text in ["Неделя", "Месяц", "Квартал", "Год"]:
@@ -374,9 +408,6 @@ def message_handler(chat_id, text, update=None, context=None):
                     return
                 elif text == "🎯 План-факт":
                     show_plan_fact(chat_id)
-                    return
-                elif text == "🎯 Установить цели":
-                    set_property_targets(chat_id)
                     return
 
     # City selection
@@ -1417,12 +1448,22 @@ def handle_payment_confirmation(chat_id):
                     if settings.DEBUG:
                         # Эмулируем задержку обработки платежа
                         import time
-
                         time.sleep(2)
 
                         # Автоматически подтверждаем бронирование
-                        booking.status = "confirmed"
+                        booking.status = 'confirmed'
                         booking.save()
+
+                        # Блокируем даты в календаре
+                        from booking_bot.listings.models import PropertyCalendarManager
+                        PropertyCalendarManager.block_dates(
+                            prop,
+                            check_in,
+                            check_out,
+                            booking=booking,
+                            status='booked'
+                        )
+                        logger.info(f"Dates blocked for booking {booking.id}")
 
                         # Отправляем информацию о бронировании
                         send_booking_confirmation(chat_id, booking)

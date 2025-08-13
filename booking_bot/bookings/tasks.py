@@ -15,34 +15,39 @@ logger = logging.getLogger(__name__)
 def cancel_expired_booking(booking_id):
     """Автоматическая отмена неоплаченного бронирования"""
     from booking_bot.bookings.models import Booking
+    from booking_bot.listings.models import PropertyCalendarManager
 
     try:
         booking = Booking.objects.get(id=booking_id)
 
         # Проверяем, что бронирование все еще в статусе ожидания оплаты
-        if booking.status == "pending_payment":
+        if booking.status == 'pending_payment':
             if booking.expires_at and datetime.now() >= booking.expires_at:
-                booking.cancel(
-                    user=None,  # Системная отмена
-                    reason="payment_issues",
-                    reason_text="Истекло время оплаты",
+                # Освобождаем временно заблокированные даты
+                PropertyCalendarManager.release_dates(
+                    booking.property,
+                    booking.start_date,
+                    booking.end_date
                 )
 
-                logger.info(
-                    f"Booking {booking_id} auto-cancelled due to payment timeout"
+                booking.cancel(
+                    user=None,  # Системная отмена
+                    reason='payment_issues',
+                    reason_text='Истекло время оплаты'
                 )
+
+                logger.info(f"Booking {booking_id} auto-cancelled due to payment timeout")
 
                 # Отправляем уведомление пользователю
                 from booking_bot.notifications.service import NotificationService
-
                 NotificationService.schedule(
-                    event="booking_cancelled",
+                    event='booking_cancelled',
                     user=booking.user,
                     context={
-                        "booking": booking,
-                        "property": booking.property,
-                        "reason": "Истекло время оплаты",
-                    },
+                        'booking': booking,
+                        'property': booking.property,
+                        'reason': 'Истекло время оплаты'
+                    }
                 )
 
     except Booking.DoesNotExist:
@@ -80,12 +85,21 @@ def update_booking_statuses():
     completed_bookings = Booking.objects.filter(status="confirmed", end_date__lt=today)
 
     for booking in completed_bookings:
-        booking.status = "completed"
+        # Освобождаем даты в календаре перед завершением
+        PropertyCalendarManager.release_dates(
+            booking.property,
+            booking.start_date,
+            booking.end_date
+        )
+
+        booking.status = 'completed'
         booking.save()
 
         # Добавляем время на уборку
         PropertyCalendarManager.add_cleaning_buffer(
-            booking.property, booking.end_date, hours=4
+            booking.property,
+            booking.end_date,
+            hours=4
         )
 
         # Запланируем запрос отзыва на завтра

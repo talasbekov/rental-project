@@ -1,9 +1,10 @@
+import logging
 from datetime import datetime, timedelta
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.contrib.auth.models import User
 from booking_bot.listings.models import Property
-
+logger = logging.getLogger(__name__)
 
 class Booking(models.Model):
     """Модель бронирования квартиры"""
@@ -154,7 +155,7 @@ class Booking(models.Model):
 
     def cancel(self, user, reason, reason_text=None):
         """Метод для отмены бронирования"""
-        self.status = "cancelled"
+        self.status = 'cancelled'
         self.cancelled_at = datetime.now()
         self.cancelled_by = user
         self.cancel_reason = reason
@@ -164,22 +165,32 @@ class Booking(models.Model):
 
         # Освобождаем даты в календаре
         from booking_bot.listings.models import PropertyCalendarManager
-
         PropertyCalendarManager.release_dates(
-            self.property, self.start_date, self.end_date
+            self.property,
+            self.start_date,
+            self.end_date
         )
+
+        # Возврат платежа через Kaspi если была оплата
+        if self.kaspi_payment_id:
+            try:
+                from booking_bot.payments import refund_payment
+                refund_result = refund_payment(self.kaspi_payment_id)
+                if refund_result:
+                    logger.info(f"Refund initiated for booking {self.id}, payment {self.kaspi_payment_id}")
+            except Exception as e:
+                logger.error(f"Failed to refund payment for booking {self.id}: {e}")
 
         # Отправляем уведомления
         from booking_bot.notifications.service import NotificationService
-
         NotificationService.schedule(
-            event="booking_cancelled",
+            event='booking_cancelled',
             user=self.user,
             context={
-                "booking": self,
-                "property": self.property,
-                "reason": self.get_cancel_reason_display(),
-            },
+                'booking': self,
+                'property': self.property,
+                'reason': self.get_cancel_reason_display()
+            }
         )
 
         return True

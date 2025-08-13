@@ -1775,7 +1775,6 @@ def show_plan_fact(chat_id):
 
     keyboard = [
         [KeyboardButton("🎯 Установить цели")],
-        [KeyboardButton("📈 Прогноз на месяц")],
         [KeyboardButton("🧭 Главное меню")],
     ]
 
@@ -2137,3 +2136,434 @@ def show_ko_factor_report(chat_id):
         text,
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
     )
+
+
+# Добавить в файл booking_bot/telegram_bot/admin_handlers.py
+
+# Новые состояния для редактирования
+STATE_EDIT_PROPERTY_MENU = 'edit_property_menu'
+STATE_EDIT_PROPERTY_PRICE = 'edit_property_price'
+STATE_EDIT_PROPERTY_DESC = 'edit_property_desc'
+STATE_EDIT_PROPERTY_STATUS = 'edit_property_status'
+
+
+@log_handler
+def handle_edit_property_start(chat_id, property_id):
+    """Начать процесс редактирования квартиры"""
+    profile = _get_profile(chat_id)
+
+    try:
+        # Проверяем доступ к квартире
+        if profile.role == 'admin':
+            prop = Property.objects.get(id=property_id, owner=profile.user)
+        else:  # super_admin
+            prop = Property.objects.get(id=property_id)
+
+        # Сохраняем в состояние
+        profile.telegram_state = {
+            'state': STATE_EDIT_PROPERTY_MENU,
+            'editing_property_id': property_id
+        }
+        profile.save()
+
+        # Показываем текущую информацию и меню редактирования
+        text = (
+            f"✏️ *Редактирование квартиры*\n\n"
+            f"🏠 {prop.name}\n"
+            f"📝 {prop.description[:100]}...\n"
+            f"💰 Текущая цена: {prop.price_per_day} ₸/сутки\n"
+            f"📊 Статус: {prop.status}\n\n"
+            "Что хотите изменить?"
+        )
+
+        keyboard = [
+            [KeyboardButton("💰 Изменить цену")],
+            [KeyboardButton("📝 Изменить описание")],
+            [KeyboardButton("📊 Изменить статус")],
+            [KeyboardButton("📷 Управление фото")],
+            [KeyboardButton("❌ Отмена")]
+        ]
+
+        send_telegram_message(
+            chat_id,
+            text,
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        )
+
+    except Property.DoesNotExist:
+        send_telegram_message(chat_id, "Квартира не найдена или у вас нет доступа.")
+
+
+@log_handler
+def handle_edit_property_menu(chat_id, text):
+    """Обработка выбора в меню редактирования"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+    property_id = state_data.get('editing_property_id')
+
+    if not property_id:
+        send_telegram_message(chat_id, "Ошибка: квартира не найдена.")
+        return
+
+    if text == "❌ Отмена":
+        profile.telegram_state = {}
+        profile.save()
+        show_admin_properties(chat_id)
+        return
+
+    elif text == "💰 Изменить цену":
+        state_data['state'] = STATE_EDIT_PROPERTY_PRICE
+        profile.telegram_state = state_data
+        profile.save()
+
+        keyboard = [[KeyboardButton("❌ Отмена")]]
+        send_telegram_message(
+            chat_id,
+            "Введите новую цену за сутки (в тенге):",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard,
+                resize_keyboard=True,
+                input_field_placeholder="Например: 15000"
+            ).to_dict()
+        )
+
+    elif text == "📝 Изменить описание":
+        state_data['state'] = STATE_EDIT_PROPERTY_DESC
+        profile.telegram_state = state_data
+        profile.save()
+
+        keyboard = [[KeyboardButton("❌ Отмена")]]
+        send_telegram_message(
+            chat_id,
+            "Введите новое описание квартиры:",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard,
+                resize_keyboard=True,
+                input_field_placeholder="Новое описание..."
+            ).to_dict()
+        )
+
+    elif text == "📊 Изменить статус":
+        state_data['state'] = STATE_EDIT_PROPERTY_STATUS
+        profile.telegram_state = state_data
+        profile.save()
+
+        keyboard = [
+            [KeyboardButton("Свободна")],
+            [KeyboardButton("На обслуживании")],
+            [KeyboardButton("❌ Отмена")]
+        ]
+        send_telegram_message(
+            chat_id,
+            "Выберите новый статус:",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        )
+
+    elif text == "📷 Управление фото":
+        send_telegram_message(
+            chat_id,
+            "Управление фотографиями пока в разработке.\n"
+            "Используйте веб-панель для изменения фотографий."
+        )
+
+
+@log_handler
+def handle_edit_property_price(chat_id, text):
+    """Обработка изменения цены"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+    property_id = state_data.get('editing_property_id')
+
+    if text == "❌ Отмена":
+        handle_edit_property_start(chat_id, property_id)
+        return
+
+    try:
+        new_price = float(text.replace(',', '.'))
+        if new_price <= 0:
+            raise ValueError("Цена должна быть положительной")
+
+        # Обновляем цену
+        prop = Property.objects.get(id=property_id)
+        old_price = prop.price_per_day
+        prop.price_per_day = new_price
+        prop.save()
+
+        send_telegram_message(
+            chat_id,
+            f"✅ Цена успешно изменена!\n"
+            f"Было: {old_price} ₸\n"
+            f"Стало: {new_price} ₸"
+        )
+
+        # Возвращаемся в меню редактирования
+        handle_edit_property_start(chat_id, property_id)
+
+    except ValueError:
+        send_telegram_message(chat_id, "Неверный формат цены. Введите число.")
+    except Property.DoesNotExist:
+        send_telegram_message(chat_id, "Квартира не найдена.")
+
+
+@log_handler
+def handle_edit_property_desc(chat_id, text):
+    """Обработка изменения описания"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+    property_id = state_data.get('editing_property_id')
+
+    if text == "❌ Отмена":
+        handle_edit_property_start(chat_id, property_id)
+        return
+
+    try:
+        # Обновляем описание
+        prop = Property.objects.get(id=property_id)
+        prop.description = text.strip()
+        prop.save()
+
+        send_telegram_message(
+            chat_id,
+            "✅ Описание успешно обновлено!"
+        )
+
+        # Возвращаемся в меню редактирования
+        handle_edit_property_start(chat_id, property_id)
+
+    except Property.DoesNotExist:
+        send_telegram_message(chat_id, "Квартира не найдена.")
+
+
+@log_handler
+def handle_edit_property_status(chat_id, text):
+    """Обработка изменения статуса"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+    property_id = state_data.get('editing_property_id')
+
+    if text == "❌ Отмена":
+        handle_edit_property_start(chat_id, property_id)
+        return
+
+    if text not in ["Свободна", "На обслуживании"]:
+        send_telegram_message(chat_id, "Выберите статус из предложенных вариантов.")
+        return
+
+    try:
+        # Обновляем статус
+        prop = Property.objects.get(id=property_id)
+        old_status = prop.status
+        prop.status = text
+        prop.save()
+
+        send_telegram_message(
+            chat_id,
+            f"✅ Статус успешно изменен!\n"
+            f"Было: {old_status}\n"
+            f"Стало: {text}"
+        )
+
+        # Возвращаемся в меню редактирования
+        handle_edit_property_start(chat_id, property_id)
+
+    except Property.DoesNotExist:
+        send_telegram_message(chat_id, "Квартира не найдена.")
+
+
+# Добавить в файл booking_bot/telegram_bot/admin_handlers.py
+
+# Состояния для модерации отзывов
+STATE_MODERATE_REVIEWS = 'moderate_reviews'
+STATE_MODERATE_REVIEW_ACTION = 'moderate_review_action'
+
+
+@log_handler
+def show_pending_reviews(chat_id):
+    """Показать список неодобренных отзывов для модерации"""
+    profile = _get_profile(chat_id)
+    if profile.role not in ('admin', 'super_admin'):
+        send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
+        return
+
+    from booking_bot.listings.models import Review
+
+    # Получаем неодобренные отзывы
+    if profile.role == 'admin':
+        # Админ видит только отзывы о своих квартирах
+        pending_reviews = Review.objects.filter(
+            property__owner=profile.user,
+            is_approved=False
+        ).select_related('property', 'user').order_by('-created_at')[:10]
+    else:
+        # Супер-админ видит все
+        pending_reviews = Review.objects.filter(
+            is_approved=False
+        ).select_related('property', 'user').order_by('-created_at')[:10]
+
+    if not pending_reviews:
+        text = "📝 Нет отзывов, ожидающих модерации."
+        kb = [[KeyboardButton("🛠 Панель администратора")]]
+    else:
+        text = "📝 *Отзывы на модерации:*\n\n"
+        kb = []
+
+        for review in pending_reviews:
+            guest_name = review.user.get_full_name() or review.user.username
+            text += (
+                f"• ID: {review.id}\n"
+                f"  Гость: {guest_name}\n"
+                f"  Квартира: {review.property.name}\n"
+                f"  Оценка: {'⭐' * review.rating}\n"
+                f"  Текст: {review.text[:100]}...\n"
+                f"  /moderate_{review.id}\n\n"
+            )
+
+        kb.append([KeyboardButton("🛠 Панель администратора")])
+
+    send_telegram_message(
+        chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
+    )
+
+
+@log_handler
+def handle_moderate_review_start(chat_id, review_id):
+    """Начать модерацию конкретного отзыва"""
+    profile = _get_profile(chat_id)
+
+    try:
+        from booking_bot.listings.models import Review
+
+        if profile.role == 'admin':
+            review = Review.objects.get(
+                id=review_id,
+                property__owner=profile.user,
+                is_approved=False
+            )
+        else:
+            review = Review.objects.get(
+                id=review_id,
+                is_approved=False
+            )
+
+        # Сохраняем в состояние
+        profile.telegram_state = {
+            'state': STATE_MODERATE_REVIEW_ACTION,
+            'moderating_review_id': review_id
+        }
+        profile.save()
+
+        guest_name = review.user.get_full_name() or review.user.username
+        text = (
+            f"📝 *Модерация отзыва #{review_id}*\n\n"
+            f"Гость: {guest_name}\n"
+            f"Квартира: {review.property.name}\n"
+            f"Оценка: {'⭐' * review.rating}\n"
+            f"Дата: {review.created_at.strftime('%d.%m.%Y')}\n\n"
+            f"*Текст отзыва:*\n{review.text}\n\n"
+            "Что сделать с отзывом?"
+        )
+
+        kb = [
+            [KeyboardButton("✅ Одобрить")],
+            [KeyboardButton("❌ Отклонить")],
+            [KeyboardButton("🔙 Назад к списку")]
+        ]
+
+        send_telegram_message(
+            chat_id,
+            text,
+            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict()
+        )
+
+    except Review.DoesNotExist:
+        send_telegram_message(chat_id, "Отзыв не найден или уже обработан.")
+
+
+@log_handler
+def handle_moderate_review_action(chat_id, text):
+    """Обработка действия модерации"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+    review_id = state_data.get('moderating_review_id')
+
+    if not review_id:
+        send_telegram_message(chat_id, "Ошибка: отзыв не найден.")
+        return
+
+    from booking_bot.listings.models import Review
+
+    try:
+        review = Review.objects.get(id=review_id)
+
+        if text == "✅ Одобрить":
+            review.is_approved = True
+            review.save()
+
+            send_telegram_message(
+                chat_id,
+                f"✅ Отзыв #{review_id} одобрен и теперь виден пользователям."
+            )
+
+            # Уведомляем автора отзыва
+            if hasattr(review.user, 'profile') and review.user.profile.telegram_chat_id:
+                send_telegram_message(
+                    review.user.profile.telegram_chat_id,
+                    f"✅ Ваш отзыв о квартире {review.property.name} был одобрен!"
+                )
+
+        elif text == "❌ Отклонить":
+            # Удаляем отклоненный отзыв
+            review.delete()
+
+            send_telegram_message(
+                chat_id,
+                f"❌ Отзыв #{review_id} отклонен и удален."
+            )
+
+        elif text == "🔙 Назад к списку":
+            show_pending_reviews(chat_id)
+            return
+        else:
+            send_telegram_message(chat_id, "Выберите действие из предложенных.")
+            return
+
+        # Очищаем состояние и возвращаемся к списку
+        profile.telegram_state = {}
+        profile.save()
+        show_pending_reviews(chat_id)
+
+    except Review.DoesNotExist:
+        send_telegram_message(chat_id, "Отзыв не найден.")
+        profile.telegram_state = {}
+        profile.save()
+
+
+# Добавить в show_admin_panel функцию кнопку модерации
+@log_handler
+def show_admin_panel_with_moderation(chat_id):
+    """Отобразить меню администратора с модерацией отзывов."""
+    profile = _get_profile(chat_id)
+    if profile.role not in ('admin', 'super_admin'):
+        send_telegram_message(chat_id, "У вас нет доступа к админ‑панели.")
+        return
+
+    text = "🛠 *Панель администратора*.\nВыберите действие:"
+    buttons = [
+        [KeyboardButton("➕ Добавить квартиру"), KeyboardButton("🏠 Мои квартиры")],
+        [KeyboardButton("📊 Статистика"), KeyboardButton("📈 Расширенная статистика")],
+        [KeyboardButton("📝 Отзывы о гостях"), KeyboardButton("✅ Модерация отзывов")],  # Добавлена кнопка
+        [KeyboardButton("📥 Скачать CSV")],
+        [KeyboardButton("🧭 Главное меню")]
+    ]
+    send_telegram_message(
+        chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(
+            buttons, resize_keyboard=True,
+            input_field_placeholder="Выберите действие"
+        ).to_dict()
+    )
+
+

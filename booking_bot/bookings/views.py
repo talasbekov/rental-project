@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 # TODO: Add custom permission to ensure only booking owner or admin can cancel/modify
 from rest_framework import generics  # Added for ListAPIView
 
+from ..listings.models import Property
 from ..users.models import UserProfile
 
 User = get_user_model()

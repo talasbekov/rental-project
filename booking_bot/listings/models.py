@@ -411,6 +411,7 @@ class Review(models.Model):
     text = models.TextField(
         blank=True
     )  # Review text can be optional if only rating is given
+    is_approved = models.BooleanField(default=True, verbose_name="Одобрен администратором")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

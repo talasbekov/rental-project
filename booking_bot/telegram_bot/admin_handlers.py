@@ -342,7 +342,7 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
         ).to_dict()
         send_telegram_message(
             chat_id,
-            "Шаг 13/15: Введите *телефон владельца/риелтора* или нажмите 'Пропустить':",
+            "Шаг 12/15: Введите *код сейфа с ключами или код от двери* или нажмите 'Пропустить':",
             reply_markup=rm,
         )
         return True
@@ -732,7 +732,7 @@ def show_admin_panel(chat_id):
 
 @log_handler
 def show_admin_properties(chat_id):
-    """Показать список квартир админа с возможностью просмотра календаря"""
+    """Показать список квартир админа с возможностью просмотра доступности"""
     profile = _get_profile(chat_id)
     if profile.role not in ("admin", "super_admin"):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
@@ -768,13 +768,11 @@ def show_admin_properties(chat_id):
             f"   💰 {prop.price_per_day} ₸/сутки\n"
             f"   Статус: {prop.status}\n"
         )
-        # Кнопки для каждой квартиры
-        keyboard.append(
-            [
-                KeyboardButton(f"📅 Календарь #{prop.id}"),
-                KeyboardButton(f"✏️ Изменить #{prop.id}"),
-            ]
-        )
+        # ИЗМЕНЕНИЕ: Заменяем календарь на доступность
+        keyboard.append([
+            KeyboardButton(f"📊 Доступность #{prop.id} {prop.adress}"),
+            KeyboardButton(f"✏️ #{prop.id}"),
+        ])
 
     text = "\n".join(lines)
 
@@ -789,8 +787,8 @@ def show_admin_properties(chat_id):
 
 
 @log_handler
-def show_property_calendar(chat_id, property_id, year=None, month=None):
-    """Показать улучшенный календарь занятости квартиры с inline календарем"""
+def show_property_availability(chat_id, property_id):
+    """Показать информацию о доступности квартиры (замена календаря)"""
     profile = _get_profile(chat_id)
 
     if profile.role not in ('admin', 'super_admin'):
@@ -804,137 +802,68 @@ def show_property_calendar(chat_id, property_id, year=None, month=None):
         else:
             prop = Property.objects.get(id=property_id)
 
-        from datetime import date
-        import calendar
+        from datetime import date, timedelta
+        from django.db.models import Q
 
-        # Используем текущий месяц если не указан
-        if not year or not month:
-            today = date.today()
-            year = today.year
-            month = today.month
+        today = date.today()
+        next_30_days = today + timedelta(days=30)
 
-        # Получаем данные о бронированиях
-        start_date = date(year, month, 1)
-        if month == 12:
-            end_date = date(year + 1, 1, 1)
-        else:
-            end_date = date(year, month + 1, 1)
-
+        # Получаем бронирования на ближайшие 30 дней
         bookings = Booking.objects.filter(
             property=prop,
             status__in=['confirmed', 'completed'],
-            start_date__lt=end_date,
-            end_date__gte=start_date
+            start_date__lt=next_30_days,
+            end_date__gt=today
+        ).order_by('start_date')
+
+        text = (
+            f"📊 *Информация о доступности*\n\n"
+            f"🏠 {prop.name}\n"
+            f"📅 Период: {today.strftime('%d.%m.%Y')} - {next_30_days.strftime('%d.%m.%Y')}\n"
+            f"💰 Цена: {prop.price_per_day} ₸/сутки\n"
+            f"📊 Статус: {prop.status}\n\n"
         )
 
-        # Создаем set занятых дат
-        booked_dates = set()
-        for booking in bookings:
-            current = max(booking.start_date, start_date)
-            while current < min(booking.end_date, end_date):
-                if current.month == month:
-                    booked_dates.add(current.day)
-                current += timedelta(days=1)
-
-        # Формируем календарь
-        month_names = {
-            1: 'Январь', 2: 'Февраль', 3: 'Март', 4: 'Апрель',
-            5: 'Май', 6: 'Июнь', 7: 'Июль', 8: 'Август',
-            9: 'Сентябрь', 10: 'Октябрь', 11: 'Ноябрь', 12: 'Декабрь'
-        }
-
-        text = f"📅 *Календарь занятости*\n"
-        text += f"🏠 {prop.name}\n"
-        text += f"📆 *{month_names[month]} {year}*\n"
-        text += "━━━━━━━━━━━━━━━━━━━━━\n\n"
-
-        # Заголовки дней недели
-        text += "```\n"
-        text += "ПН ВТ СР ЧТ ПТ СБ ВС\n"
-        text += "─────────────────────\n"
-
-        # Получаем календарную матрицу
-        cal = calendar.monthcalendar(year, month)
-        today = date.today()
-
-        for week in cal:
-            week_text = ""
-            for day in week:
-                if day == 0:
-                    week_text += "   "  # Пустой день
-                else:
-                    # Определяем статус дня
-                    if day in booked_dates:
-                        # Занято - используем []
-                        week_text += f"[{day:2}]"
-                    elif date(year, month, day) == today:
-                        # Сегодня - используем ()
-                        week_text += f"({day:2})"
-                    elif date(year, month, day) < today:
-                        # Прошедшая дата - используем --
-                        week_text += f" {day:2} "
-                    else:
-                        # Свободно
-                        week_text += f" {day:2} "
-                    week_text += " "
-            text += week_text.rstrip() + "\n"
-
-        text += "```\n"
-        text += "━━━━━━━━━━━━━━━━━━━━━\n"
-        text += "*Обозначения:*\n"
-        text += "`[XX]` - Занято\n"
-        text += "`(XX)` - Сегодня\n"
-        text += "` XX ` - Свободно\n"
-
-        # Статистика
-        total_days = calendar.monthrange(year, month)[1]
-        booked_days = len(booked_dates)
-        occupancy_rate = (booked_days / total_days) * 100 if total_days > 0 else 0
-
-        text += f"\n📊 *Статистика:*\n"
-        text += f"Занято: {booked_days}/{total_days} дней\n"
-        text += f"Загрузка: {occupancy_rate:.0f}%\n"
-        text += f"Бронирований: {bookings.count()}\n"
-
-        # Кнопки навигации
-        keyboard = []
-
-        # Навигация по месяцам
-        nav_row = []
-
-        # Предыдущий месяц
-        if month == 1:
-            prev_month, prev_year = 12, year - 1
+        if not bookings.exists():
+            text += "✅ *Квартира полностью свободна на ближайшие 30 дней*\n\n"
+            text += f"💰 Потенциальный доход: {30 * prop.price_per_day:,.0f} ₸"
         else:
-            prev_month, prev_year = month - 1, year
-        nav_row.append(KeyboardButton(f"◀️ {prev_month:02d}/{prev_year}"))
+            text += "📋 *Занятые периоды:*\n"
+            total_booked_days = 0
+            total_revenue = 0
 
-        # Текущий месяц
-        today = date.today()
-        nav_row.append(KeyboardButton(f"📅 {today.month:02d}/{today.year}"))
+            for booking in bookings:
+                guest_name = booking.user.get_full_name() or booking.user.username
+                days = (min(booking.end_date, next_30_days) - max(booking.start_date, today)).days
+                total_booked_days += days
+                total_revenue += booking.total_price
 
-        # Следующий месяц
-        if month == 12:
-            next_month, next_year = 1, year + 1
-        else:
-            next_month, next_year = month + 1, year
-        nav_row.append(KeyboardButton(f"▶️ {next_month:02d}/{next_year}"))
+                text += (
+                    f"• {booking.start_date.strftime('%d.%m')} - "
+                    f"{booking.end_date.strftime('%d.%m')} "
+                    f"({days} дн.)\n"
+                    f"  👤 {guest_name}\n"
+                    f"  💰 {booking.total_price:,.0f} ₸\n\n"
+                )
 
-        keyboard.append(nav_row)
+            # Статистика
+            free_days = 30 - total_booked_days
+            occupancy_rate = (total_booked_days / 30) * 100
+            potential_revenue = 30 * prop.price_per_day
 
-        # Дополнительные действия
-        keyboard.append([KeyboardButton("📊 Детали броней")])
-        keyboard.append([KeyboardButton("🏠 Мои квартиры")])
-        keyboard.append([KeyboardButton("🧭 Главное меню")])
+            text += f"📊 *Статистика на 30 дней:*\n"
+            text += f"✅ Свободно: {free_days} дней\n"
+            text += f"🏠 Занято: {total_booked_days} дней\n"
+            text += f"📈 Загрузка: {occupancy_rate:.1f}%\n"
+            text += f"💰 Доход: {total_revenue:,.0f} ₸\n"
+            text += f"📊 Потенциал: {potential_revenue:,.0f} ₸\n"
+            text += f"💸 Упущено: {potential_revenue - total_revenue:,.0f} ₸"
 
-        # Сохраняем состояние
-        profile.telegram_state = {
-            'state': 'viewing_calendar',
-            'calendar_property_id': property_id,
-            'calendar_year': year,
-            'calendar_month': month
-        }
-        profile.save()
+        # Кнопки
+        keyboard = [
+            [KeyboardButton("🏠 Мои квартиры")],
+            [KeyboardButton("🧭 Главное меню")]
+        ]
 
         send_telegram_message(
             chat_id,
@@ -944,9 +873,6 @@ def show_property_calendar(chat_id, property_id, year=None, month=None):
 
     except Property.DoesNotExist:
         send_telegram_message(chat_id, "Квартира не найдена.")
-    except Exception as e:
-        logger.error(f"Error showing calendar: {e}")
-        send_telegram_message(chat_id, "Ошибка при отображении календаря.")
 
 
 @log_handler

@@ -4,7 +4,7 @@ from datetime import datetime, date, timedelta
 from django.db import transaction
 from django.db.models import Count, Avg
 from telegram import ReplyKeyboardMarkup, KeyboardButton
-
+from collections import defaultdict
 from .constants import (
     STATE_MAIN_MENU,
     STATE_AWAITING_CHECK_IN,
@@ -67,16 +67,44 @@ from .admin_handlers import (
     show_plan_fact,
     set_property_targets,
     show_ko_factor_report,
-    show_property_calendar,
     show_calendar_booking_details, handle_guest_review_text,
 )
 from ..core.models import AuditLog
 
+
 logger = logging.getLogger(__name__)
+# Глобальный словарь для отслеживания последних действий пользователей
+user_last_actions = defaultdict(list)
 
 
+def check_rate_limit(chat_id, max_actions=3, time_window=5):
+    """
+    Проверяет, не превышает ли пользователь лимит действий.
+    max_actions: максимум действий за time_window секунд
+    """
+    now = datetime.now()
+    user_actions = user_last_actions[chat_id]
+
+    # Удаляем старые записи
+    cutoff_time = now - timedelta(seconds=time_window)
+    user_actions[:] = [action_time for action_time in user_actions if action_time > cutoff_time]
+
+    # Проверяем лимит
+    if len(user_actions) >= max_actions:
+        return False
+
+    # Добавляем текущее действие
+    user_actions.append(now)
+    return True
+
+
+# Изменить основную функцию message_handler:
 @log_handler
 def message_handler(chat_id, text, update=None, context=None):
+    # НОВОЕ: Проверка антиспама
+    if not check_rate_limit(chat_id, max_actions=3, time_window=5):
+        logger.warning(f"Rate limit exceeded for chat_id {chat_id}")
+        return  # Молча игнорируем слишком частые запросы
     profile = _get_or_create_local_profile(chat_id)
     state_data = profile.telegram_state or {}
     state = state_data.get("state", STATE_MAIN_MENU)
@@ -128,7 +156,7 @@ def message_handler(chat_id, text, update=None, context=None):
         return
 
     # Ловим варианты «Отмена», «Отменить» и «Главное меню»
-    if text in ("❌ Отмена", "❌ Отменить", "🧭 Главное меню", "🔄 Новый поиск"):
+    if text in ("❌ Отмена", "❌ Отменить", "🧭 Главное меню"):
         start_command_handler(chat_id)
         return
 
@@ -178,7 +206,7 @@ def message_handler(chat_id, text, update=None, context=None):
 
     if state == STATE_MAIN_MENU:
         # — Общие для всех —
-        if text == "🔍 Поиск квартир":
+        if text in ["🔍 Поиск квартир", "🔄 Новый поиск"]:
             prompt_city(chat_id, profile)
             return
         elif text == "📊 Статус текущей брони":
@@ -242,8 +270,13 @@ def message_handler(chat_id, text, update=None, context=None):
             return
 
         if profile.role in ("admin", "super_admin"):
+            if text.startswith("📊 Доступность #"):
+                prop_id = int(text.split("#")[1])
+                from .admin_handlers import show_property_availability
+                show_property_availability(chat_id, prop_id)
+                return
             # Обработка переключения периодов в обычной статистике
-            if state == 'detailed_stats' and text in ["Неделя", "Месяц", "Квартал", "Год"]:
+            if state_data.get('state') == 'detailed_stats' and text in ["Неделя", "Месяц", "Квартал", "Год"]:
                 period_map = {
                     "Неделя": "week",
                     "Месяц": "month",
@@ -251,17 +284,6 @@ def message_handler(chat_id, text, update=None, context=None):
                     "Год": "year"
                 }
                 show_detailed_statistics(chat_id, period=period_map[text])
-                return
-
-            # Переключение периодов в расширенной статистике (убрать дублирование)
-            if state == 'extended_stats' and text in ["Неделя", "Месяц", "Квартал", "Год"]:
-                period_map = {
-                    "Неделя": "week",
-                    "Месяц": "month",
-                    "Квартал": "quarter",
-                    "Год": "year"
-                }
-                show_extended_statistics(chat_id, period=period_map[text])
                 return
 
             # Обработка кнопки "📥 Скачать CSV" в разных состояниях
@@ -276,55 +298,7 @@ def message_handler(chat_id, text, update=None, context=None):
                     export_statistics_csv(chat_id, context, period='month')
                 return
 
-            if state == 'viewing_calendar':
-                sd = profile.telegram_state or {}
-                prop_id = sd.get('calendar_property_id')
-                year = sd.get('calendar_year')
-                month = sd.get('calendar_month')
-
-                # Обработка навигации по месяцам
-                if text.startswith("◀️"):  # Предыдущий месяц
-                    import re
-                    match = re.search(r'(\d+)/(\d+)', text)
-                    if match:
-                        new_month = int(match.group(1))
-                        new_year = int(match.group(2))
-                        show_property_calendar(chat_id, prop_id, new_year, new_month)
-                        return
-
-                elif text.startswith("▶️"):  # Следующий месяц
-                    import re
-                    match = re.search(r'(\d+)/(\d+)', text)
-                    if match:
-                        new_month = int(match.group(1))
-                        new_year = int(match.group(2))
-                        show_property_calendar(chat_id, prop_id, new_year, new_month)
-                        return
-
-                elif text.startswith("📅") and "/" in text:  # Текущий месяц
-                    import re
-                    match = re.search(r'(\d+)/(\d+)', text)
-                    if match:
-                        new_month = int(match.group(1))
-                        new_year = int(match.group(2))
-                        show_property_calendar(chat_id, prop_id, new_year, new_month)
-                        return
-
-                elif text == "📊 Детали броней":
-                    show_calendar_booking_details(chat_id, prop_id, year, month)
-                    return
-
-                elif text == "📅 Назад к календарю":
-                    show_property_calendar(chat_id, prop_id, year, month)
-                    return
-
-                elif text == "🏠 Мои квартиры":
-                    profile.telegram_state = {}
-                    profile.save()
-                    show_admin_properties(chat_id)
-                    return
-
-            if state == 'guest_review_rating':
+            if state_data.get('state') == 'guest_review_rating':
                 # Обработка выбора рейтинга - исправленная версия
                 rating_map = {
                     "⭐": 1,
@@ -360,10 +334,12 @@ def message_handler(chat_id, text, update=None, context=None):
                     show_admin_panel(chat_id)
                     return
 
-            if state == 'guest_review_text':
+            if state_data.get('state') == 'guest_review_text':
                 # Обработка текста отзыва о госте
                 handle_guest_review_text(chat_id, text)
                 return
+
+            # Основные команды
             if text == "➕ Добавить квартиру":
                 handle_add_property_start(chat_id, text)
                 return
@@ -371,12 +347,7 @@ def message_handler(chat_id, text, update=None, context=None):
                 show_admin_properties(chat_id)
                 return
             elif text == "📊 Статистика":
-                show_detailed_statistics(
-                    chat_id, period="month"
-                )  # или предлагайте выбрать период
-                return
-            elif text == "📈 Расширенная статистика":
-                show_extended_statistics(chat_id, period="month")
+                show_detailed_statistics(chat_id, period="month")
                 return
             elif text == "📥 Скачать CSV":
                 export_statistics_csv(chat_id, context, period="month")
@@ -390,7 +361,7 @@ def message_handler(chat_id, text, update=None, context=None):
                 from .admin_handlers import handle_moderate_review_start
                 handle_moderate_review_start(chat_id, review_id)
                 return
-            elif state == 'moderate_review_action':
+            elif state_data.get('state') == 'moderate_review_action':
                 from .admin_handlers import handle_moderate_review_action
                 handle_moderate_review_action(chat_id, text)
                 return
@@ -401,86 +372,30 @@ def message_handler(chat_id, text, update=None, context=None):
             elif text.startswith("/review_guest_"):
                 booking_id = int(text.replace("/review_guest_", ""))
                 from .admin_handlers import handle_guest_review_start
-
                 handle_guest_review_start(chat_id, booking_id)
                 return
-            elif text.startswith("📅 Календарь #"):
-                prop_id = int(text.split("#")[1])
-                show_property_calendar(chat_id, prop_id)
-                return
-            elif text.startswith("✏️ Изменить #"):
+            elif text.startswith("✏️ #"):
                 prop_id = int(text.split("#")[1])
                 from .admin_handlers import handle_edit_property_start
                 handle_edit_property_start(chat_id, prop_id)
                 return
 
             # Обработка редактирования квартир
-            elif state == 'edit_property_menu':
+            elif state_data.get('state') == 'edit_property_menu':
                 from .admin_handlers import handle_edit_property_menu
                 handle_edit_property_menu(chat_id, text)
                 return
-            elif state == 'edit_property_price':
+            elif state_data.get('state') == 'edit_property_price':
                 from .admin_handlers import handle_edit_property_price
                 handle_edit_property_price(chat_id, text)
                 return
-            elif state == 'edit_property_desc':
+            elif state_data.get('state') == 'edit_property_desc':
                 from .admin_handlers import handle_edit_property_desc
                 handle_edit_property_desc(chat_id, text)
                 return
-            elif state == 'edit_property_status':
+            elif state_data.get('state') == 'edit_property_status':
                 from .admin_handlers import handle_edit_property_status
                 handle_edit_property_status(chat_id, text)
-                return
-
-            elif state == "viewing_calendar":
-                sd = profile.telegram_state or {}
-                prop_id = sd.get("calendar_property_id")
-                year = sd.get("calendar_year")
-                month = sd.get("calendar_month")
-
-                if "◀️" in text or "▶️" in text:
-                    # Навигация по месяцам
-                    import re
-
-                    match = re.search(r"(\d+)/(\d+)", text)
-                    if match:
-                        new_month = int(match.group(1))
-                        new_year = int(match.group(2))
-                        show_property_calendar(chat_id, prop_id, new_year, new_month)
-                elif text == "📊 Детали броней":
-                    show_calendar_booking_details(chat_id, prop_id, year, month)
-                elif text == "📅 Назад к календарю":
-                    show_property_calendar(chat_id, prop_id, year, month)
-                # elif text == "🚫 Заблокировать даты":
-                #     start_block_dates(chat_id, prop_id)
-                return
-
-
-            # Переключение периодов в статистике
-            if text in ["Неделя", "Месяц", "Квартал", "Год"]:
-                period_map = {
-                    "Неделя": "week",
-                    "Месяц": "month",
-                    "Квартал": "quarter",
-                    "Год": "year",
-                }
-                show_detailed_statistics(chat_id, period=period_map[text])
-                return
-
-            # Переключение периодов в расширенной статистике
-            if state == "extended_stats" and text in [
-                "Неделя",
-                "Месяц",
-                "Квартал",
-                "Год",
-            ]:
-                period_map = {
-                    "Неделя": "week",
-                    "Месяц": "month",
-                    "Квартал": "quarter",
-                    "Год": "year",
-                }
-                show_extended_statistics(chat_id, period=period_map[text])
                 return
 
             # Статистика по городам с префиксом
@@ -497,7 +412,7 @@ def message_handler(chat_id, text, update=None, context=None):
                     return
 
             # Управление администраторами
-            if state == "add_admin_username":
+            if state_data.get('state') == "add_admin_username":
                 if text != "❌ Отмена":
                     process_add_admin(chat_id, text)
                 profile.telegram_state = {}
@@ -505,7 +420,7 @@ def message_handler(chat_id, text, update=None, context=None):
                 show_super_admin_menu(chat_id)
                 return
 
-            if state == "remove_admin":
+            if state_data.get('state') == "remove_admin":
                 if text != "❌ Отмена":
                     process_remove_admin(chat_id, text)
                 profile.telegram_state = {}
@@ -514,21 +429,12 @@ def message_handler(chat_id, text, update=None, context=None):
                 return
 
             # План-факт
-            if state == "select_property_for_target":
+            if state_data.get('state') == "select_property_for_target":
                 handle_target_property_selection(chat_id, text)
                 return
 
-            if state == "set_target_revenue":
+            if state_data.get('state') == "set_target_revenue":
                 save_property_target(chat_id, text)
-                return
-
-            # Отзыв о госте
-            if state == "admin_guest_review":
-                handle_guest_review_rating(chat_id, text)
-                return
-
-            if state == "admin_guest_review_text":
-                save_guest_review(chat_id, text)
                 return
 
             # Обработка команд супер-админа в главном меню
@@ -1198,33 +1104,76 @@ def show_favorite_property_detail(chat_id, property_id):
         # Показываем фото
         photos = PropertyPhoto.objects.filter(property=prop)[:6]
         if photos:
-            photo_urls = [
-                p.image_url or p.image.url for p in photos if p.image_url or p.image
-            ]
+            photo_urls = []
+            for p in photos:
+                if p.image_url:
+                    photo_urls.append(p.image_url)
+                elif p.image:
+                    try:
+                        url = p.image.url
+                        if not url.startswith('http'):
+                            from django.conf import settings
+                            site_url = getattr(settings, 'SITE_URL', '')
+                            domain = getattr(settings, 'DOMAIN', 'http://localhost:8000')
+                            base_url = site_url or domain
+                            url = f"{base_url.rstrip('/')}{url}"
+                        photo_urls.append(url)
+                    except:
+                        pass
+
             if photo_urls:
                 send_photo_group(chat_id, photo_urls)
 
-        # Формируем описание
-        stats = Review.objects.filter(property=prop).aggregate(
-            avg=Avg("rating"), cnt=Count("id")
-        )
+        # Формируем подробное описание
+        from django.db.models import Avg, Count
+
+        # ИСПРАВЛЕНИЕ: Правильный запрос отзывов с проверкой поля is_approved
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='listings_review' AND column_name='is_approved'")
+            has_is_approved = cursor.fetchone() is not None
+
+        if has_is_approved:
+            stats = Review.objects.filter(property=prop, is_approved=True).aggregate(
+                avg=Avg('rating'), cnt=Count('id')
+            )
+        else:
+            stats = Review.objects.filter(property=prop).aggregate(
+                avg=Avg('rating'), cnt=Count('id')
+            )
+
         text = (
             f"⭐ *Из избранного*\n\n"
             f"*{prop.name}*\n"
             f"📍 {prop.district.city.name}, {prop.district.name}\n"
             f"🏠 Класс: {prop.get_property_class_display()}\n"
             f"🛏 Комнат: {prop.number_of_rooms}\n"
+            f"📏 Площадь: {prop.area} м²\n"
             f"💰 Цена: *{prop.price_per_day} ₸/сутки*\n"
         )
-        if stats["avg"]:
-            text += f"⭐ Рейтинг: {stats['avg']:.1f}/5 ({stats['cnt']} отзывов)\n"
+
+        if prop.description:
+            text += f"\n📝 {prop.description}\n"
+
+        if stats['avg']:
+            text += f"\n⭐ Рейтинг: {stats['avg']:.1f}/5 ({stats['cnt']} отзывов)\n"
 
         # Кнопки действий
         keyboard = []
+
+        # Кнопка бронирования только если свободна
         if prop.status == "Свободна":
             keyboard.append([KeyboardButton(f"📅 Забронировать {prop.id}")])
+        else:
+            text += f"\n🚫 Статус: {prop.status}"
+
+        # Кнопка отзывов если есть
+        if stats['cnt'] > 0:
+            keyboard.append([KeyboardButton(f"💬 Отзывы {prop.id}")])
+
         keyboard.append([KeyboardButton(f"❌ Удалить из избранного {prop.id}")])
-        keyboard.append([KeyboardButton("⭐ Все избранное")])
+        keyboard.append([KeyboardButton("⭐ Избранное")])
         keyboard.append([KeyboardButton("🧭 Главное меню")])
 
         send_telegram_message(
@@ -1235,6 +1184,7 @@ def show_favorite_property_detail(chat_id, property_id):
 
     except Property.DoesNotExist:
         send_telegram_message(chat_id, "Квартира не найдена")
+        show_favorites_list(chat_id)
 
 
 @log_handler
@@ -1838,23 +1788,30 @@ def show_property_reviews(chat_id, property_id, offset=0):
         send_telegram_message(chat_id, "Квартира не найдена.")
 
 
-
 @log_handler
 def help_command_handler(chat_id):
     profile = _get_or_create_local_profile(chat_id)
     text = (
         "🤖 *Помощь по боту ЖильеGO*\n\n"
-        "/start — главное меню\n"
-        "/help — это сообщение\n\n"
-        "Используйте кнопки для навигации."
+        "🔍 *Поиск квартир* — найти жилье по параметрам\n"
+        "📋 *Мои бронирования* — история бронирований\n"
+        "📊 *Статус текущей брони* — активные бронирования\n"
+        "⭐ *Избранное* — сохраненные квартиры\n"
+        "❓ *Помощь* — это сообщение\n\n"
+        "Используйте кнопки для навигации или введите /start для главного меню."
     )
+
+    # ИСПРАВЛЕНИЕ: Правильная клавиатура с кнопкой Избранное
     kb = [
         [KeyboardButton("🔍 Поиск квартир"), KeyboardButton("📋 Мои бронирования")],
-        [KeyboardButton("📊 Статус текущей брони"), KeyboardButton("❓ Помощь")],
+        [KeyboardButton("📊 Статус текущей брони"), KeyboardButton("⭐ Избранное")],
+        [KeyboardButton("❓ Помощь")]
     ]
+
     # Если роль админ — добавляем кнопку панели
     if profile.role in ("admin", "super_admin"):
         kb.append([KeyboardButton("🛠 Панель администратора")])
+
     send_telegram_message(
         chat_id,
         text,

@@ -1,5 +1,8 @@
 import logging
+from urllib.parse import urljoin
+
 import requests
+from django.db import transaction
 from django.contrib.auth import get_user_model
 from telegram import KeyboardButton, ReplyKeyboardMarkup
 
@@ -59,6 +62,7 @@ User = get_user_model()
 
 @log_handler
 def _get_or_create_local_profile(chat_id: int):
+    """Создать или получить локальный профиль пользователя с обязательными полями"""
     # 1) Сначала убедимся, что есть User
     username = f"telegram_{chat_id}"
     user, user_created = User.objects.get_or_create(
@@ -73,14 +77,85 @@ def _get_or_create_local_profile(chat_id: int):
         user.save()
 
     # 2) Потом уже профиль, привязанный к этому user
+    # ВАЖНО: добавляем значение по умолчанию для requires_prepayment
     profile, profile_created = UserProfile.objects.get_or_create(
         user=user,
         defaults={
             "telegram_chat_id": str(chat_id),
             "role": "user",
-            # сюда можно добавить phone_number или другие поля по необходимости
+            "requires_prepayment": False,  # ДОБАВЛЕНО: значение по умолчанию
+            "ko_factor": 0.0,
+            "telegram_state": {},
+            "whatsapp_state": {},
         },
     )
+
+    # Если профиль уже существует, но telegram_chat_id пустой - заполняем
+    if not profile.telegram_chat_id:
+        profile.telegram_chat_id = str(chat_id)
+        profile.save()
+
+    return profile
+
+
+@log_handler
+def _get_profile(chat_id, first_name=None, last_name=None, force_remote=False):
+    """Получить профиль пользователя с обработкой обязательных полей"""
+    # если не надо обращаться к удалённому API — просто вернём локальный профиль
+    if not force_remote:
+        profile, created = UserProfile.objects.get_or_create(
+            telegram_chat_id=str(chat_id),
+            defaults={
+                "role": "user",
+                "requires_prepayment": False,  # ДОБАВЛЕНО: значение по умолчанию
+                "ko_factor": 0.0,
+                "telegram_state": {},
+                "whatsapp_state": {},
+            }
+        )
+        return profile
+
+    payload = {"telegram_chat_id": str(chat_id)}
+    if first_name:
+        payload["first_name"] = first_name
+    if last_name:
+        payload["last_name"] = last_name
+    try:
+        api_url = f"{settings.API_BASE}/telegram_auth/register_or_login/"
+        logger.info(f"Attempting to register/login user via API: {api_url}")
+        response = requests.post(api_url, json=payload, timeout=10)
+        if response.status_code in (200, 201):
+            data = response.json()
+            access_token = data.get("access")
+            profile = UserProfile.objects.get(telegram_chat_id=str(chat_id))
+            if profile.telegram_state is None:
+                profile.telegram_state = {}
+            if access_token:
+                profile.telegram_state["jwt_access_token"] = access_token
+                profile.save()
+                logger.info(f"Stored JWT token for chat {chat_id}")
+        else:
+            profile, _ = UserProfile.objects.get_or_create(
+                telegram_chat_id=str(chat_id),
+                defaults={
+                    "role": "user",
+                    "requires_prepayment": False,  # ДОБАВЛЕНО
+                    "ko_factor": 0.0,
+                    "telegram_state": {},
+                    "whatsapp_state": {},
+                }
+            )
+    except Exception:
+        profile, _ = UserProfile.objects.get_or_create(
+            telegram_chat_id=str(chat_id),
+            defaults={
+                "role": "user",
+                "requires_prepayment": False,  # ДОБАВЛЕНО
+                "ko_factor": 0.0,
+                "telegram_state": {},
+                "whatsapp_state": {},
+            }
+        )
     return profile
 
 
@@ -120,77 +195,89 @@ def _get_profile(chat_id, first_name=None, last_name=None, force_remote=False):
 
 
 @log_handler
+@transaction.atomic
 def start_command_handler(chat_id, first_name=None, last_name=None):
-    """Handle /start: локально ищем профиль, если нет — регистрируемся через API."""
-    # 1) Попробовать получить локальный профиль
-    try:
-        profile = UserProfile.objects.get(telegram_chat_id=str(chat_id))
-        created = False
-    except UserProfile.DoesNotExist:
-        profile = UserProfile(telegram_chat_id=str(chat_id))
-        created = True
+    """Handle /start: профиль әрқашан user-ге байланған, атомарлы түрде."""
+    chat_id_str = str(chat_id)
 
-    # 2) Если профиль новый, дергаем API и сохраняем токен
-    if created:
-        payload = {"telegram_chat_id": str(chat_id)}
+    # 0) Әрдайым алдымен User
+    user, _ = User.objects.get_or_create(
+        username=f"telegram_{chat_id}",
+        defaults={
+            "first_name": first_name or "",
+            "last_name":  last_name  or "",
+        },
+    )
+
+    # 1) Профильді құлыптап-алып/жасау (гонканы болдырмау)
+    profile, created = (
+        UserProfile.objects
+        .select_for_update()
+        .get_or_create(
+            telegram_chat_id=chat_id_str,
+            defaults=dict(
+                user=user,
+                role="user",
+                requires_prepayment=False,
+                ko_factor=0.0,
+                telegram_state={},
+                whatsapp_state={},
+            ),
+        )
+    )
+
+    # Егер бұрынғы жазбада user жоқ болса — емдейміз
+    if profile.user_id is None:
+        profile.user = user
+
+    # 2) Сыртқы API-мен тіркеу/логин (құласа да профиль сақталады, бірақ токенсіз)
+    access_token = None
+    try:
+        base = settings.API_BASE.rstrip("/") + "/"
+        api_url = urljoin(base, "telegram_auth/register_or_login/")
+        payload = {"telegram_chat_id": chat_id_str}
         if first_name:
             payload["first_name"] = first_name
         if last_name:
             payload["last_name"] = last_name
-        try:
-            api_url = f"{settings.API_BASE}/telegram_auth/register_or_login/"
-            response = requests.post(api_url, json=payload, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            access_token = data.get("access")
-            profile.telegram_state = {}
-            if access_token:
-                profile.telegram_state["jwt_access_token"] = access_token
-        except Exception as e:
-            logger.error(f"Error registering user via API: {e}")
-        finally:
-            profile.save()
 
-    # 3) Сбросим состояние бота (кроме токена) и сохраним
-    jwt_token = (profile.telegram_state or {}).get("jwt_access_token")
-    profile.telegram_state = {"state": STATE_MAIN_MENU}
-    if jwt_token:
-        profile.telegram_state["jwt_access_token"] = jwt_token
+        resp = requests.post(api_url, json=payload, timeout=10)
+        resp.raise_for_status()
+        if resp.headers.get("content-type", "").startswith("application/json"):
+            data = resp.json()
+            access_token = data.get("access") or data.get("access_token")
+    except Exception as e:
+        logger.error("Error registering user via API: %s", e)
+
+    # 3) Күйді біріктіру (барын жоғалтпаймыз)
+    state = dict(profile.telegram_state or {})
+    state["state"] = STATE_MAIN_MENU
+    if access_token:
+        state["jwt_access_token"] = access_token
+    profile.telegram_state = state
+
+    # 4) Бір рет сақтаймыз
     profile.save()
 
-    # 4) Отправляем главное меню
+    # 5) Меню
     text = (
-        "👋 Приветствуем в *ЖильеGO* — вашем надёжном помощнике в поиске идеального жилья для отдыха, командировок и не только!\n\n"
+        "👋 Приветствуем в *ЖильеGO* — вашем надёжном помощнике...\n\n"
         "🏡 У нас вы можете:\n"
-        "• Найти квартиру по нужным датам в любом городе Казахстана\n"
-        "• Выбрать район и класс жилья — от эконома до премиум\n"
-        "• Смотреть реальные фото, читать описания и бронировать без лишних звонков\n"
-        "• Оплачивать безопасно через *Kaspi* или банковскую карту\n"
-        "• Хранить все брони в своём профиле и управлять ими в один клик\n\n"
-        "✨ Всё просто: выбирайте, сравнивайте и бронируйте — прямо здесь, в чате!\n\n"
-        "Готовы начать? Нажмите «🔍 *Поиск квартир*» и найдите лучший вариант уже сейчас!"
+        "• Найти квартиру...\n"
+        "• ...\n\n"
+        "Готовы начать? Нажмите «🔍 *Поиск квартир*»!"
     )
 
     keyboard = [
         [KeyboardButton("🔍 Поиск квартир"), KeyboardButton("📋 Мои бронирования")],
-        [
-            KeyboardButton("📊 Статус текущей брони"),
-            KeyboardButton("⭐️ Избранное"),
-        ],  # Добавлено Избранное
+        [KeyboardButton("📊 Статус текущей брони"), KeyboardButton("⭐️ Избранное")],
         [KeyboardButton("❓ Помощь")],
     ]
-
-    # Если пользователь админ или супер‑админ — одна кнопка в основном меню
     if profile.role in ("admin", "super_admin"):
         keyboard.append([KeyboardButton("🛠 Панель администратора")])
 
-    # Если хотите, чтобы админ всё равно видел свою кнопку "Мои квартиры" в главном меню,
-    # можно добавить ещё одну строку:
-    #     keyboard.append([KeyboardButton("🏠 Мои квартиры")])
-
     reply_markup = ReplyKeyboardMarkup(
-        keyboard=keyboard,
-        resize_keyboard=True,
+        keyboard=keyboard, resize_keyboard=True,
         input_field_placeholder="Что Вас интересует?",
     ).to_dict()
 

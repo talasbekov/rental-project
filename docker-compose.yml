@@ -7,10 +7,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER} -d ${POSTGRES_DB} || exit 1" ]
       interval: 5s
       timeout: 3s
       retries: 20
+      start_period: 20s   # опционально: даём Postgres время на старт/инициализацию
     volumes:
       - pgdata:/var/lib/postgresql/data
 

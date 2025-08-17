@@ -290,7 +290,7 @@ def analyze_guest_ko_factor():
             profile, _ = UserProfile.objects.get_or_create(user=user)
             profile.telegram_state = profile.telegram_state or {}
             profile.telegram_state["ko_factor"] = ko_factor
-            profile.telegram_state["requires_prepayment"] = ko_factor > 50
+            # profile.telegram_state["requires_prepayment"] = ko_factor > 50
             profile.save()
 
             # Уведомляем пользователя о требовании предоплаты

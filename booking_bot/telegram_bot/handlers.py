@@ -218,6 +218,10 @@ def message_handler(chat_id, text, update=None, context=None):
             except:
                 pass
             return
+        elif text.startswith("📅 Забронировать") and text.split()[-1].isdigit():
+            prop_id = int(text.split()[-1])
+            handle_booking_start(chat_id, prop_id)
+            return
         elif text.startswith("❌ Удалить из избранного"):
             prop_id = int(text.split()[-1])
             toggle_favorite(chat_id, prop_id)
@@ -272,15 +276,14 @@ def message_handler(chat_id, text, update=None, context=None):
                     export_statistics_csv(chat_id, context, period='month')
                 return
 
-            # === ИСПРАВЛЕНИЯ ДЛЯ КАЛЕНДАРЯ ===
             if state == 'viewing_calendar':
                 sd = profile.telegram_state or {}
                 prop_id = sd.get('calendar_property_id')
                 year = sd.get('calendar_year')
                 month = sd.get('calendar_month')
 
-                # Навигация по месяцам - улучшенная обработка
-                if "◀️" in text:  # Предыдущий месяц
+                # Обработка навигации по месяцам
+                if text.startswith("◀️"):  # Предыдущий месяц
                     import re
                     match = re.search(r'(\d+)/(\d+)', text)
                     if match:
@@ -289,7 +292,7 @@ def message_handler(chat_id, text, update=None, context=None):
                         show_property_calendar(chat_id, prop_id, new_year, new_month)
                         return
 
-                elif "▶️" in text:  # Следующий месяц
+                elif text.startswith("▶️"):  # Следующий месяц
                     import re
                     match = re.search(r'(\d+)/(\d+)', text)
                     if match:
@@ -298,11 +301,14 @@ def message_handler(chat_id, text, update=None, context=None):
                         show_property_calendar(chat_id, prop_id, new_year, new_month)
                         return
 
-                elif "📅" in text:  # Текущий месяц
-                    from datetime import date
-                    today = date.today()
-                    show_property_calendar(chat_id, prop_id, today.year, today.month)
-                    return
+                elif text.startswith("📅") and "/" in text:  # Текущий месяц
+                    import re
+                    match = re.search(r'(\d+)/(\d+)', text)
+                    if match:
+                        new_month = int(match.group(1))
+                        new_year = int(match.group(2))
+                        show_property_calendar(chat_id, prop_id, new_year, new_month)
+                        return
 
                 elif text == "📊 Детали броней":
                     show_calendar_booking_details(chat_id, prop_id, year, month)
@@ -318,11 +324,35 @@ def message_handler(chat_id, text, update=None, context=None):
                     show_admin_properties(chat_id)
                     return
 
-            # === ИСПРАВЛЕНИЯ ДЛЯ ОТЗЫВОВ О ГОСТЯХ ===
             if state == 'guest_review_rating':
-                # Обработка выбора рейтинга
-                if "⭐" in text:
-                    handle_guest_review_rating(chat_id, text)
+                # Обработка выбора рейтинга - исправленная версия
+                rating_map = {
+                    "⭐": 1,
+                    "⭐⭐": 2,
+                    "⭐⭐⭐": 3,
+                    "⭐⭐⭐⭐": 4,
+                    "⭐⭐⭐⭐⭐": 5
+                }
+
+                if text in rating_map:
+                    # Сохраняем рейтинг
+                    sd = profile.telegram_state
+                    sd["guest_review_rating"] = rating_map[text]
+                    sd["state"] = "guest_review_text"
+                    profile.telegram_state = sd
+                    profile.save()
+
+                    # Запрашиваем текст
+                    keyboard = [
+                        [KeyboardButton("Пропустить")],
+                        [KeyboardButton("❌ Отмена")]
+                    ]
+
+                    send_telegram_message(
+                        chat_id,
+                        f"Оценка: {text}\n\nНапишите комментарий о госте:",
+                        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+                    )
                     return
                 elif text == "❌ Отмена":
                     profile.telegram_state = {}
@@ -383,6 +413,8 @@ def message_handler(chat_id, text, update=None, context=None):
                 from .admin_handlers import handle_edit_property_start
                 handle_edit_property_start(chat_id, prop_id)
                 return
+
+            # Обработка редактирования квартир
             elif state == 'edit_property_menu':
                 from .admin_handlers import handle_edit_property_menu
                 handle_edit_property_menu(chat_id, text)
@@ -399,6 +431,7 @@ def message_handler(chat_id, text, update=None, context=None):
                 from .admin_handlers import handle_edit_property_status
                 handle_edit_property_status(chat_id, text)
                 return
+
             elif state == "viewing_calendar":
                 sd = profile.telegram_state or {}
                 prop_id = sd.get("calendar_property_id")
@@ -662,7 +695,7 @@ def select_rooms(chat_id, profile, text):
 
 @log_handler
 def show_search_results(chat_id, profile, offset=0):
-    """Show search results with photos fix"""
+    """Show search results with fixed photo handling"""
     sd = profile.telegram_state or {}
 
     query = Property.objects.filter(
@@ -683,7 +716,7 @@ def show_search_results(chat_id, profile, offset=0):
         )
         return
 
-    # сохраняем offset
+    # Сохраняем offset
     sd['search_offset'] = offset
     sd['total_results'] = total
     profile.telegram_state = sd
@@ -691,7 +724,7 @@ def show_search_results(chat_id, profile, offset=0):
 
     prop = query[offset]
 
-    # ИСПРАВЛЕННЫЙ КОД ДЛЯ ФОТОГРАФИЙ
+    # ИСПРАВЛЕННАЯ ОБРАБОТКА ФОТОГРАФИЙ
     from booking_bot.listings.models import PropertyPhoto
     photos = PropertyPhoto.objects.filter(property=prop)[:6]
     photo_urls = []
@@ -699,66 +732,61 @@ def show_search_results(chat_id, profile, offset=0):
     for photo in photos:
         url = None
 
-        # Приоритет: сначала проверяем image_url, потом image
+        # Приоритет: сначала image_url, потом image
         if photo.image_url:
             url = photo.image_url
-            logger.info(f"Using image_url: {url}")
         elif photo.image:
             try:
-                # Для загруженных файлов используем правильный URL
+                # Для загруженных файлов формируем полный URL
                 if hasattr(photo.image, 'url'):
                     url = photo.image.url
                     # Если URL относительный, добавляем домен
                     if url and not url.startswith('http'):
                         from django.conf import settings
+                        # Используем SITE_URL или DOMAIN из настроек
+                        site_url = getattr(settings, 'SITE_URL', '')
                         domain = getattr(settings, 'DOMAIN', 'http://localhost:8000')
-                        url = f"{domain.rstrip('/')}{url}"
-                    logger.info(f"Using uploaded image: {url}")
+                        base_url = site_url or domain
+                        url = f"{base_url.rstrip('/')}{url}"
             except Exception as e:
                 logger.error(f"Error getting image URL: {e}")
 
-        # Добавляем только валидные URL
         if url:
-            # Проверка что URL действительно содержит путь к изображению
-            if any(ext in url.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', 'image']):
-                photo_urls.append(url)
-                logger.info(f"Added photo URL to list: {url}")
-            else:
-                logger.warning(f"URL doesn't look like an image: {url}")
+            photo_urls.append(url)
 
-    # Отправляем фото только если есть валидные URL
+    # Отправляем фото если есть
     if photo_urls:
-        logger.info(f"Sending {len(photo_urls)} photos for property {prop.id}")
         try:
-            # Пробуем отправить группу фото
-            result = send_photo_group(chat_id, photo_urls)
-            if not result:
-                logger.warning("Failed to send photo group, trying individual photos")
-                # Если группа не отправилась, пробуем по одной
-                for i, url in enumerate(photo_urls[:3]):  # Максимум 3 фото по одной
-                    try:
-                        send_photo(chat_id, url)
-                    except Exception as e:
-                        logger.error(f"Failed to send individual photo: {e}")
+            send_photo_group(chat_id, photo_urls)
         except Exception as e:
             logger.error(f"Error sending photos: {e}")
-    else:
-        logger.info(f"No valid photos found for property {prop.id}")
-        # Отправляем текстовое сообщение о том, что фото нет
-        send_telegram_message(chat_id, "📷 _Фотографии временно недоступны_")
+            # Если не удалось отправить группу, пробуем по одной
+            for url in photo_urls[:3]:
+                try:
+                    send_photo(chat_id, url)
+                except:
+                    pass
 
-    # собираем текст карточки
+    # Формируем текст карточки
     from booking_bot.listings.models import Review
-    stats = Review.objects.filter(property=prop, is_approved=True).aggregate(avg=Avg('rating'), cnt=Count('id'))
+    stats = Review.objects.filter(property=prop, is_approved=True).aggregate(
+        avg=Avg('rating'), cnt=Count('id')
+    )
+
     text = (
         f"*{prop.name}*\n"
         f"📍 {prop.district.city.name}, {prop.district.name}\n"
         f"🏠 Класс: {prop.get_property_class_display()}\n"
         f"🛏 Комнат: {prop.number_of_rooms}\n"
+        f"📏 Площадь: {prop.area} м²\n"
         f"💰 Цена: *{prop.price_per_day} ₸/сутки*\n"
     )
+
+    if prop.description:
+        text += f"\n📝 {prop.description[:150]}...\n"
+
     if stats['avg']:
-        text += f"⭐ Рейтинг: {stats['avg']:.1f}/5 ({stats['cnt']} отзывов)\n"
+        text += f"\n⭐ Рейтинг: {stats['avg']:.1f}/5 ({stats['cnt']} отзывов)"
 
     # Формируем клавиатуру
     keyboard = []
@@ -783,6 +811,7 @@ def show_search_results(chat_id, profile, offset=0):
     nav = []
     if offset > 0:
         nav.append(KeyboardButton("⬅️ Предыдущая"))
+    nav.append(KeyboardButton(f"📄 {offset + 1}/{total}"))
     if offset < total - 1:
         nav.append(KeyboardButton("➡️ Следующая"))
     if nav:

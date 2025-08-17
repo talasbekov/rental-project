@@ -1,4 +1,4 @@
-# Добавьте или исправьте в файле booking_bot/users/models.py
+# booking_bot/users/models.py
 
 from django.db import models
 from django.contrib.auth.models import User
@@ -13,10 +13,13 @@ class UserProfile(models.Model):
         ('super_admin', 'Super Admin'),
     ]
 
+    # ИСПРАВЛЕНИЕ: делаем user необязательным при создании, но добавляем проверки
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
-        related_name='profile'
+        related_name='profile',
+        null=True,  # Временно разрешаем NULL
+        blank=True
     )
 
     role = models.CharField(
@@ -60,9 +63,8 @@ class UserProfile(models.Model):
         help_text="Коэффициент отмен пользователя (0-1)"
     )
 
-    # ВАЖНО: Поле должно иметь default=False
     requires_prepayment = models.BooleanField(
-        default=False,  # Значение по умолчанию
+        default=False,
         help_text="Требуется ли предоплата от этого пользователя"
     )
 
@@ -73,9 +75,17 @@ class UserProfile(models.Model):
         db_table = 'users_userprofile'
         verbose_name = 'User Profile'
         verbose_name_plural = 'User Profiles'
+        # Добавляем индекс для быстрого поиска
+        indexes = [
+            models.Index(fields=['telegram_chat_id']),
+            models.Index(fields=['user']),
+        ]
 
     def __str__(self):
-        return f"{self.user.username} - {self.role}"
+        if self.user:
+            return f"{self.user.username} - {self.role}"
+        else:
+            return f"Profile {self.id} - {self.role} (no user)"
 
     def save(self, *args, **kwargs):
         # Убедимся, что обязательные поля заполнены
@@ -89,3 +99,26 @@ class UserProfile(models.Model):
             self.whatsapp_state = {}
 
         super().save(*args, **kwargs)
+
+    def ensure_user_exists(self):
+        """Убедиться, что у профиля есть связанный пользователь"""
+        if not self.user and self.telegram_chat_id:
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+
+            username = f"telegram_{self.telegram_chat_id}"
+            user, created = User.objects.get_or_create(
+                username=username,
+                defaults={
+                    "first_name": "",
+                    "last_name": "",
+                }
+            )
+            if created:
+                user.set_unusable_password()
+                user.save()
+
+            self.user = user
+            self.save()
+
+        return self.user

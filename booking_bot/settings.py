@@ -25,8 +25,23 @@ def get_env(var_name: str, default=None, required: bool = False):
 # SECURITY
 SECRET_KEY = get_env("DJANGO_SECRET_KEY", required=True)
 DEBUG = get_env("DJANGO_DEBUG", "False").lower() == "true"
-ALLOWED_HOSTS = get_env("DJANGO_ALLOWED_HOSTS", "").split(",")
+
+# ИСПРАВЛЕНИЕ: Более безопасная настройка ALLOWED_HOSTS
+allowed_hosts_env = get_env("DJANGO_ALLOWED_HOSTS", "")
+if allowed_hosts_env:
+    ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_env.split(",") if host.strip()]
+else:
+    # По умолчанию для разработки
+    if DEBUG:
+        ALLOWED_HOSTS = ['*']  # В DEBUG режиме разрешаем все хосты
+    else:
+        ALLOWED_HOSTS = ['jgo.kz', 'www.jgo.kz']  # В продакшене только ваши домены
+
 APPEND_SLASH = True
+
+# Добавляем настройку для фильтрации подозрительных запросов
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
 
 
 # Application definition
@@ -53,6 +68,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "booking_bot.middleware.FilterHostMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "booking_bot.middleware.CSRFExemptMiddleware",
@@ -313,7 +329,7 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-# Logging configuration
+# Логирование подозрительных запросов
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -327,11 +343,21 @@ LOGGING = {
             "formatter": "simple",
             "level": "INFO",
         },
+        "security": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+            "level": "WARNING",
+        },
     },
     "root": {"handlers": ["console"], "level": "WARNING"},
     "loggers": {
         "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "booking_bot": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "django.security.DisallowedHost": {
+            "handlers": ["security"],
+            "level": "WARNING",
+            "propagate": False,
+        },
     },
 }
 

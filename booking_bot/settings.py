@@ -24,7 +24,7 @@ def get_env(var_name: str, default=None, required: bool = False):
 
 # SECURITY
 SECRET_KEY = get_env("DJANGO_SECRET_KEY", required=True)
-DEBUG = get_env("DJANGO_DEBUG", "False").lower() == "true"
+DEBUG = get_env("DJANGO_DEBUG", "False").lower() == "False"
 
 # ИСПРАВЛЕНИЕ: Более безопасная настройка ALLOWED_HOSTS
 allowed_hosts_env = get_env("DJANGO_ALLOWED_HOSTS", "")
@@ -222,33 +222,32 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_RESULT_SERIALIZER = "json"
 
 
-# S3/MinIO
+# S3/MinIO настройки
 S3_ENABLED = get_env("S3_ENABLED", "true").lower() == "true"
 
-# Базовый эндпоинт API MinIO/S3 (в Docker — имя сервиса, не localhost)
-S3_ENDPOINT_URL = get_env("S3_ENDPOINT_URL", "http://minio:9000")
+# ИСПРАВЛЕНИЕ: Используем правильные адреса для разных окружений
+if DEBUG:
+    # В режиме разработки
+    S3_ENDPOINT_URL = get_env("S3_ENDPOINT_URL", "http://minio:9000")  # Внутренний адрес для Docker
+    S3_PUBLIC_BASE = get_env("S3_PUBLIC_BASE", "http://localhost:9000/jgo-photos")  # Внешний адрес для Telegram
+else:
+    # В продакшене
+    S3_ENDPOINT_URL = get_env("S3_ENDPOINT_URL", "http://minio:9000")
+    S3_PUBLIC_BASE = get_env("S3_PUBLIC_BASE", "https://cdn.jgo.kz")  # Ваш CDN
 
-# Креды (можно переиспользовать AWS_* если уже заданы)
-S3_ACCESS_KEY = get_env("S3_ACCESS_KEY", get_env("AWS_ACCESS_KEY_ID", ""))
-S3_SECRET_KEY = get_env("S3_SECRET_KEY", get_env("AWS_SECRET_ACCESS_KEY", ""))
-S3_BUCKET_NAME = get_env("S3_BUCKET_NAME", get_env("AWS_STORAGE_BUCKET_NAME", "zhiliego-photos"))
+S3_ACCESS_KEY = get_env("S3_ACCESS_KEY", get_env("AWS_ACCESS_KEY_ID", "minio_access_key"))
+S3_SECRET_KEY = get_env("S3_SECRET_KEY", get_env("AWS_SECRET_ACCESS_KEY", "minio_secret_key"))
+S3_BUCKET_NAME = get_env("S3_BUCKET_NAME", get_env("AWS_STORAGE_BUCKET_NAME", "jgo-photos"))
 S3_REGION = get_env("S3_REGION", get_env("AWS_S3_REGION_NAME", "us-east-1"))
-S3_ADDRESSING_STYLE = get_env("S3_ADDRESSING_STYLE", "path")  # 'path' или 'virtual'
+S3_ADDRESSING_STYLE = get_env("S3_ADDRESSING_STYLE", "path")
 S3_USE_SSL = get_env("S3_USE_SSL", "false").lower() == "true"
 
-# Публичная база для линков (в DEV: localhost:9000, чтобы Telegram мог скачать)
-S3_PUBLIC_BASE = get_env("S3_PUBLIC_BASE", f"http://localhost:9000/{S3_BUCKET_NAME}")
-
-# CloudFront (опционально)
+# CloudFront CDN (опционально)
 AWS_CLOUDFRONT_DOMAIN = get_env("AWS_CLOUDFRONT_DOMAIN", None)
 
 # Включаем наш кастомный сторедж по умолчанию (если используете его глобально)
 if S3_ENABLED and S3_ENDPOINT_URL:
-    DEFAULT_FILE_STORAGE = "booking_bot.core.storage.S3Storage"
-
-
-# CloudFront CDN (опционально)
-AWS_CLOUDFRONT_DOMAIN = os.environ.get("AWS_CLOUDFRONT_DOMAIN", None)
+    DEFAULT_FILE_STORAGE = "booking_bot.core.storage.S3PhotoStorage"
 
 # Настройки оптимизации фотографий
 PHOTO_MAX_SIZE = 5 * 1024 * 1024  # 5 МБ

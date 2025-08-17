@@ -693,9 +693,12 @@ def select_rooms(chat_id, profile, text):
     show_search_results(chat_id, profile, offset=0)
 
 
+# booking_bot/telegram_bot/handlers.py
+# Исправляем функцию show_search_results
+
 @log_handler
 def show_search_results(chat_id, profile, offset=0):
-    """Show search results with fixed photo handling"""
+    """Show search results with fixed photo handling and review queries"""
     sd = profile.telegram_state or {}
 
     query = Property.objects.filter(
@@ -724,7 +727,7 @@ def show_search_results(chat_id, profile, offset=0):
 
     prop = query[offset]
 
-    # ИСПРАВЛЕННАЯ ОБРАБОТКА ФОТОГРАФИЙ
+    # Обработка фотографий
     from booking_bot.listings.models import PropertyPhoto
     photos = PropertyPhoto.objects.filter(property=prop)[:6]
     photo_urls = []
@@ -737,13 +740,11 @@ def show_search_results(chat_id, profile, offset=0):
             url = photo.image_url
         elif photo.image:
             try:
-                # Для загруженных файлов формируем полный URL
                 if hasattr(photo.image, 'url'):
                     url = photo.image.url
                     # Если URL относительный, добавляем домен
                     if url and not url.startswith('http'):
                         from django.conf import settings
-                        # Используем SITE_URL или DOMAIN из настроек
                         site_url = getattr(settings, 'SITE_URL', '')
                         domain = getattr(settings, 'DOMAIN', 'http://localhost:8000')
                         base_url = site_url or domain
@@ -760,18 +761,27 @@ def show_search_results(chat_id, profile, offset=0):
             send_photo_group(chat_id, photo_urls)
         except Exception as e:
             logger.error(f"Error sending photos: {e}")
-            # Если не удалось отправить группу, пробуем по одной
-            for url in photo_urls[:3]:
-                try:
-                    send_photo(chat_id, url)
-                except:
-                    pass
 
-    # Формируем текст карточки
+    # ИСПРАВЛЕНИЕ: Запрос отзывов с проверкой существования поля is_approved
     from booking_bot.listings.models import Review
-    stats = Review.objects.filter(property=prop, is_approved=True).aggregate(
-        avg=Avg('rating'), cnt=Count('id')
-    )
+    from django.db import connection
+
+    # Проверяем, существует ли поле is_approved
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name='listings_review' AND column_name='is_approved'")
+        has_is_approved = cursor.fetchone() is not None
+
+    if has_is_approved:
+        # Если поле есть, используем его
+        stats = Review.objects.filter(property=prop, is_approved=True).aggregate(
+            avg=Avg('rating'), cnt=Count('id')
+        )
+    else:
+        # Если поля нет, запрашиваем все отзывы
+        stats = Review.objects.filter(property=prop).aggregate(
+            avg=Avg('rating'), cnt=Count('id')
+        )
 
     text = (
         f"*{prop.name}*\n"
@@ -1786,13 +1796,25 @@ def show_user_bookings(chat_id, booking_type="active"):
 def show_property_reviews(chat_id, property_id, offset=0):
     try:
         prop = Property.objects.get(id=property_id)
-        reviews = Review.objects.filter(property=prop).order_by("-created_at")
-        if not reviews[offset:offset+5]:
+
+        # ИСПРАВЛЕНИЕ: Проверяем существование поля is_approved
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='listings_review' AND column_name='is_approved'")
+            has_is_approved = cursor.fetchone() is not None
+
+        if has_is_approved:
+            reviews = Review.objects.filter(property=prop, is_approved=True).order_by("-created_at")
+        else:
+            reviews = Review.objects.filter(property=prop).order_by("-created_at")
+
+        if not reviews[offset:offset + 5]:
             send_telegram_message(chat_id, "Отзывов пока нет.")
             return
 
         text = f"<b>Отзывы о {html.escape(prop.name)}</b>\n\n"
-        for r in reviews[offset:offset+5]:
+        for r in reviews[offset:offset + 5]:
             stars = "⭐" * r.rating
             author = r.user.first_name or r.user.username or "Гость"
             text += (

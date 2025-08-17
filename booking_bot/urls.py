@@ -9,7 +9,7 @@ from drf_spectacular.views import (
 )
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    path("embankment/", admin.site.urls),
     # API v1 paths
     path("api/v1/", include("booking_bot.users.urls")),
     path("api/v1/", include("booking_bot.listings.urls")),

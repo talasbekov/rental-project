@@ -78,8 +78,11 @@ def send_photo(chat_id, photo_url, caption=None, reply_markup=None):
         return None
 
 
+# booking_bot/telegram_bot/utils.py
+# Исправляем функцию send_photo_group
+
 def send_photo_group(chat_id, photo_urls, caption=None):
-    """Send multiple photos as a media group with validation"""
+    """Send multiple photos as a media group with improved URL handling"""
     if not photo_urls:
         return None
 
@@ -87,64 +90,61 @@ def send_photo_group(chat_id, photo_urls, caption=None):
     valid_urls = []
     for url in photo_urls[:10]:  # Telegram limit is 10 photos
         if url and isinstance(url, str):
-            # Проверяем, что URL начинается с http/https или является относительным путем
+            # ИСПРАВЛЕНИЕ: Не проверяем доступность URL, если это внутренние ссылки
             if url.startswith(("http://", "https://")):
-                # Это полный URL - проверяем доступность
-                try:
-                    import requests
+                # Если это localhost или внутренний адрес - добавляем без проверки
+                if any(host in url for host in ['localhost', '127.0.0.1', 'minio:', 'web:']):
+                    # Для внутренних адресов заменяем на внешние если есть настройка
+                    from django.conf import settings
 
-                    response = requests.head(url, timeout=3)
-                    if response.status_code == 200:
-                        valid_urls.append(url)
-                        logger.info(f"Valid photo URL: {url}")
-                    else:
-                        logger.warning(
-                            f"Photo URL not accessible: {url} (status: {response.status_code})"
-                        )
-                except Exception as e:
-                    logger.warning(f"Failed to validate photo URL {url}: {e}")
+                    # Заменяем внутренние адреса на внешние для Telegram
+                    if 'localhost:9000' in url and hasattr(settings, 'S3_PUBLIC_BASE'):
+                        # Заменяем localhost:9000 на внешний адрес
+                        public_base = getattr(settings, 'S3_PUBLIC_BASE', '')
+                        if public_base and not public_base.startswith('http://localhost'):
+                            url = url.replace('http://localhost:9000', public_base)
+
+                    valid_urls.append(url)
+                    logger.info(f"Added internal URL: {url}")
+                else:
+                    # Для внешних URL проверяем доступность
+                    try:
+                        import requests
+                        response = requests.head(url, timeout=3)
+                        if response.status_code == 200:
+                            valid_urls.append(url)
+                            logger.info(f"Valid external photo URL: {url}")
+                        else:
+                            logger.warning(f"External photo URL not accessible: {url} (status: {response.status_code})")
+                    except Exception as e:
+                        logger.warning(f"Failed to validate external photo URL {url}: {e}")
 
             elif url.startswith("/media/"):
-                # Это относительный путь к файлу - формируем полный URL
+                # Для относительных путей формируем полный URL
                 from django.conf import settings
-
                 try:
-                    # Получаем домен из настроек
-                    domain = getattr(settings, "DOMAIN", None)
-                    site_url = getattr(settings, "SITE_URL", None)
+                    site_url = getattr(settings, 'SITE_URL', None)
+                    domain = getattr(settings, 'DOMAIN', None)
 
                     if site_url:
                         full_url = f"{site_url.rstrip('/')}{url}"
                     elif domain:
                         full_url = f"{domain.rstrip('/')}{url}"
                     else:
-                        # Fallback - пропускаем это фото
-                        logger.warning(
-                            f"No DOMAIN or SITE_URL configured for relative path: {url}"
-                        )
+                        logger.warning(f"No DOMAIN or SITE_URL configured for relative path: {url}")
                         continue
 
-                    # Проверяем доступность полного URL
-                    import requests
-
-                    response = requests.head(full_url, timeout=3)
-                    if response.status_code == 200:
-                        valid_urls.append(full_url)
-                        logger.info(f"Valid photo URL from relative path: {full_url}")
-                    else:
-                        logger.warning(
-                            f"Photo file not accessible: {full_url} (status: {response.status_code})"
-                        )
+                    valid_urls.append(full_url)
+                    logger.info(f"Added relative path URL: {full_url}")
 
                 except Exception as e:
                     logger.warning(f"Failed to process relative path {url}: {e}")
-
             else:
                 logger.warning(f"Invalid photo URL format: {url}")
 
     if not valid_urls:
         logger.warning("No valid photo URLs found")
-        # Пробуем отправить хотя бы текстовое сообщение о том, что фото недоступны
+        # Отправляем текст о недоступности фото
         send_telegram_message(chat_id, "📷 _Фотографии временно недоступны_")
         return None
 

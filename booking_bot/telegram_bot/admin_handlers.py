@@ -488,6 +488,11 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
             show_admin_menu(chat_id)
             return True
 
+        if text.startswith("➡️ Далее") or text.startswith("⬅️ Назад"):
+            m = NAV_PAGE_RE.search(text)
+            next_page = int(m.group(1)) if m else 1
+            return show_admin_properties(chat_id, page=next_page)
+
         # Режим URL: обрабатываем текст со ссылками
         if photo_mode == 'url' and text and text not in ["✅ Завершить", "❌ Отмена"]:
             # Проверяем текущее количество фото перед добавлением
@@ -714,12 +719,11 @@ def show_admin_panel(chat_id):
     text = "🛠 *Панель администратора*.\nВыберите действие:"
     buttons = [
         [KeyboardButton("➕ Добавить квартиру"), KeyboardButton("🏠 Мои квартиры")],
-        [KeyboardButton("📊 Статистика"), KeyboardButton("📈 Расширенная статистика")],
+        [KeyboardButton("📊 Статистика"), KeyboardButton("📝 Отзывы о гостях")],
         [
-            KeyboardButton("📝 Отзывы о гостях"),
             KeyboardButton("📥 Скачать CSV"),
-        ],  # Новая кнопка
-        [KeyboardButton("🧭 Главное меню")],
+            KeyboardButton("🧭 Главное меню"),
+        ]
     ]
     send_telegram_message(
         chat_id,
@@ -730,21 +734,25 @@ def show_admin_panel(chat_id):
     )
 
 
+PAGE_SIZE = 3
+NAV_PAGE_RE = re.compile(r"\(стр\.?\s*(\d+)\)")
+
 @log_handler
-def show_admin_properties(chat_id):
-    """Показать список квартир админа с возможностью просмотра доступности"""
+def show_admin_properties(chat_id, page: int = 1):
+    """Показать список квартир админа с возможностью просмотра доступности (Reply + пагинация по 3)"""
     profile = _get_profile(chat_id)
     if profile.role not in ("admin", "super_admin"):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
 
-    props = (
+    qs = (
         Property.objects.filter(owner=profile.user)
         if profile.role == "admin"
         else Property.objects.all()
-    )
+    ).order_by("id")  # фиксируем порядок, чтобы страницы были стабильны
 
-    if not props.exists():
+    total = qs.count()
+    if total == 0:
         send_telegram_message(
             chat_id,
             "У вас пока нет квартир.",
@@ -758,32 +766,61 @@ def show_admin_properties(chat_id):
         )
         return
 
-    lines = ["🏠 *Ваши квартиры:*\n"]
+    total_pages = max(1, ceil(total / PAGE_SIZE))
+    page = max(1, min(page, total_pages))  # защита от выхода за границы
+
+    start = (page - 1) * PAGE_SIZE
+    page_props = qs[start : start + PAGE_SIZE]
+
+    lines = [
+        "🏠 *Ваши квартиры:*\n",
+        f"Страница {page}/{total_pages} • всего: {total}\n",
+    ]
     keyboard = []
 
-    for i, prop in enumerate(props[:10], 1):
+    for idx, prop in enumerate(page_props, start=start + 1):
         lines.append(
-            f"{i}. {prop.name}\n"
+            f"{idx}. {prop.name}\n"
             f"   📍 {prop.district.city.name}, {prop.district.name}\n"
             f"   💰 {prop.price_per_day} ₸/сутки\n"
             f"   Статус: {prop.status}\n"
         )
-        # ИЗМЕНЕНИЕ: Заменяем календарь на доступность
+        # остаёмся на Reply — две кнопки в строке
         keyboard.append([
-            KeyboardButton(f"📊 Доступность #{prop.id} {prop.adress}"),
-            KeyboardButton(f"✏️ #{prop.id}"),
+            KeyboardButton(f"📊 Доступность #{prop.id}"),
+            KeyboardButton(f"✏️ #{prop.id} {prop.name}"),
         ])
 
-    text = "\n".join(lines)
+    # Навигация (Reply-текст с номером целевой страницы)
+    if total_pages > 1:
+        nav_row = []
+        if page > 1:
+            nav_row.append(KeyboardButton(f"⬅️ Назад (стр. {page-1})"))
+        nav_row.append(KeyboardButton(f"📄 {page}/{total_pages}"))
+        if page < total_pages:
+            nav_row.append(KeyboardButton(f"➡️ Далее (стр. {page+1})"))
+        keyboard.append(nav_row)
 
     keyboard.append([KeyboardButton("🛠 Панель администратора")])
     keyboard.append([KeyboardButton("🧭 Главное меню")])
 
+    text = "\n".join(lines)
     send_telegram_message(
         chat_id,
         text,
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
     )
+
+
+# Обработчик текста с Reply-кнопок
+@log_handler
+def handle_admin_properties_input(chat_id, text: str):
+    # Пагинация
+    if text.startswith("➡️ Далее") or text.startswith("⬅️ Назад"):
+        m = NAV_PAGE_RE.search(text)
+        next_page = int(m.group(1)) if m else 1
+        return show_admin_properties(chat_id, page=next_page)
+    return None
 
 
 @log_handler
@@ -2575,9 +2612,8 @@ def show_admin_panel_with_moderation(chat_id):
     text = "🛠 *Панель администратора*.\nВыберите действие:"
     buttons = [
         [KeyboardButton("➕ Добавить квартиру"), KeyboardButton("🏠 Мои квартиры")],
-        [KeyboardButton("📊 Статистика"), KeyboardButton("📈 Расширенная статистика")],
-        [KeyboardButton("📝 Отзывы о гостях"), KeyboardButton("✅ Модерация отзывов")],  # Добавлена кнопка
-        [KeyboardButton("📥 Скачать CSV")],
+        [KeyboardButton("📊 Статистика"), KeyboardButton("📥 Скачать CSV")],
+        [KeyboardButton("📝 Отзывы о гостях"), KeyboardButton("✅ Модерация отзывов")],
         [KeyboardButton("🧭 Главное меню")]
     ]
     send_telegram_message(

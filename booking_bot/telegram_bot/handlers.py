@@ -42,7 +42,7 @@ from booking_bot.payments import (
     initiate_payment as kaspi_initiate_payment,
     KaspiPaymentError,
 )
-from .utils import send_telegram_message, send_photo_group, escape_markdown, send_photo
+from .utils import send_telegram_message, send_photo_group
 
 # Admin handlers import
 from .admin_handlers import (
@@ -51,12 +51,9 @@ from .admin_handlers import (
     handle_add_property_start,
     handle_photo_upload,
     show_detailed_statistics,
-    show_extended_statistics,
     export_statistics_csv,
     show_admin_properties,
     show_city_statistics,
-    handle_guest_review_rating,
-    save_guest_review,
     process_add_admin,
     process_remove_admin,
     handle_target_property_selection,
@@ -65,9 +62,8 @@ from .admin_handlers import (
     show_admins_list,
     handle_remove_admin,
     show_plan_fact,
-    set_property_targets,
     show_ko_factor_report,
-    show_calendar_booking_details, handle_guest_review_text,
+    handle_guest_review_text,
 )
 from ..core.models import AuditLog
 
@@ -206,7 +202,7 @@ def message_handler(chat_id, text, update=None, context=None):
 
     if state == STATE_MAIN_MENU:
         # — Общие для всех —
-        if text in ["🔍 Поиск квартир", "🔄 Новый поиск"]:
+        if text == "🔍 Поиск квартир":
             prompt_city(chat_id, profile)
             return
         elif text == "📊 Статус текущей брони":
@@ -617,7 +613,7 @@ def show_search_results(chat_id, profile, offset=0):
 
     total = query.count()
     if total == 0:
-        kb = [[KeyboardButton("🔄 Новый поиск")], [KeyboardButton("🧭 Главное меню")]]
+        kb = [[KeyboardButton("🔍 Поиск квартир")], [KeyboardButton("🧭 Главное меню")]]
         send_telegram_message(
             chat_id,
             "По заданным параметрам ничего не нашлось.",
@@ -734,7 +730,7 @@ def show_search_results(chat_id, profile, offset=0):
         keyboard.append(nav)
 
     # Новый поиск / главное меню
-    keyboard.append([KeyboardButton("🔄 Новый поиск"), KeyboardButton("🧭 Главное меню")])
+    keyboard.append([KeyboardButton("🔍 Поиск квартир"), KeyboardButton("🧭 Главное меню")])
 
     send_telegram_message(
         chat_id,

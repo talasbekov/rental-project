@@ -79,6 +79,7 @@ from ..core.models import AuditLog
 
 
 logger = logging.getLogger(__name__)
+
 # Глобальный словарь для отслеживания последних действий пользователей
 user_last_actions = defaultdict(list)
 
@@ -114,6 +115,21 @@ def message_handler(chat_id, text, update=None, context=None):
     profile = _get_or_create_local_profile(chat_id)
     state_data = profile.telegram_state or {}
     state = state_data.get("state", STATE_MAIN_MENU)
+    
+    logger.info(f"Photo management state: '{state}', text: '{text}'")
+
+    photo_states = [
+        STATE_PHOTO_MANAGEMENT,
+        STATE_PHOTO_ADD_URL,
+        STATE_PHOTO_DELETE,
+        'photo_waiting_url',
+        'photo_waiting_upload'
+    ]
+
+    if state in photo_states:
+        from .edit_handlers import handle_photo_management_states
+        if handle_photo_management_states(chat_id, text, update, context):
+            return
 
     if state == STATE_EDIT_PROPERTY_MENU:
         handle_edit_property_choice(chat_id, text)
@@ -184,6 +200,7 @@ def message_handler(chat_id, text, update=None, context=None):
                         send_telegram_message(chat_id, "Неверный ID объекта")
                 else:
                     send_telegram_message(chat_id, "Использование: /debug_photos <ID>")
+
 
     if handle_add_property_start(chat_id, text):
         return
@@ -514,6 +531,38 @@ def message_handler(chat_id, text, update=None, context=None):
                             send_telegram_message(chat_id, "Неверный ID объекта")
                     else:
                         send_telegram_message(chat_id, "Использование: /debug_photos <ID>")
+                return
+            elif text.startswith("/test_photos"):
+                if profile.role in ("admin", "super_admin"):
+                    parts = text.split()
+                    if len(parts) > 1:
+                        try:
+                            prop_id = int(parts[1])
+                            from .edit_handlers import debug_photo_management
+                            debug_photo_management(chat_id, prop_id)
+                        except ValueError:
+                            send_telegram_message(chat_id, "Неверный ID объекта")
+                    else:
+                        send_telegram_message(chat_id, "Использование: /test_photos <ID>")
+                return
+            elif text.startswith("/debug_state"):
+                if profile.role in ("admin", "super_admin"):
+                    state_info = (
+                        f"*Отладка состояния пользователя*\n\n"
+                        f"Chat ID: {chat_id}\n"
+                        f"User ID: {profile.user.id}\n"
+                        f"Role: {profile.role}\n"
+                        f"Current state: {state}\n"
+                        f"State data: {state_data}\n"
+                    )
+                    send_telegram_message(chat_id, state_info)
+                return
+            elif text.startswith("/reset_state"):
+                if profile.role in ("admin", "super_admin"):
+                    profile.telegram_state = {}
+                    profile.save()
+                    send_telegram_message(chat_id, "✅ Состояние сброшено")
+                    start_command_handler(chat_id)
                 return
 
             # Обработка команд супер-админа в главном меню

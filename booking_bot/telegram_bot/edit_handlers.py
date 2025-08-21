@@ -115,26 +115,38 @@ def save_new_status(chat_id, text):
         profile.save()
 
 
+@log_handler
 def save_new_photo(chat_id, text):
     """Полноценное управление фотографиями квартиры"""
     profile = _get_profile(chat_id)
     state_data = profile.telegram_state or {}
     property_id = state_data.get("editing_property_id")
 
+    logger.info(f"save_new_photo called with text: '{text}', property_id: {property_id}")
+
     if not property_id:
         send_telegram_message(chat_id, "❌ Ошибка: квартира не найдена.")
+        # Возвращаемся в список квартир
+        from .admin_handlers import show_admin_properties
+        profile.telegram_state = {}
+        profile.save()
+        show_admin_properties(chat_id)
         return
-    from .admin_handlers import handle_edit_property_start
+
     try:
         prop = Property.objects.get(id=property_id)
         photos = PropertyPhoto.objects.filter(property=prop)
 
         if text == "❌ Отмена":
+            # Возвращаемся в меню редактирования квартиры
+            from .admin_handlers import handle_edit_property_start
             handle_edit_property_start(chat_id, property_id)
             return
 
         elif text == "📷 Просмотреть фото":
-            show_property_photos(chat_id, prop, photos)
+            show_property_photos_enhanced(chat_id, prop, photos)
+            # Остаемся в том же меню - показываем его заново
+            handle_manage_photos_start(chat_id)
             return
 
         elif text == "➕ Добавить фото":
@@ -146,16 +158,25 @@ def save_new_photo(chat_id, text):
             return
 
         elif text == "🔙 Назад к редактированию":
+            from .admin_handlers import handle_edit_property_start
             handle_edit_property_start(chat_id, property_id)
             return
 
         else:
-            send_telegram_message(chat_id, "❌ Выберите действие из меню")
+            send_telegram_message(
+                chat_id,
+                f"❌ Неизвестная команда: '{text}'\n\nВыберите действие из меню:"
+            )
+            # Показываем меню заново
+            handle_manage_photos_start(chat_id)
 
     except Property.DoesNotExist:
         send_telegram_message(chat_id, "❌ Квартира не найдена")
         profile.telegram_state = {}
         profile.save()
+        from .admin_handlers import show_admin_properties
+        show_admin_properties(chat_id)
+
 
 @log_handler
 def handle_manage_photos_start(chat_id):
@@ -207,17 +228,24 @@ def handle_manage_photos_start(chat_id):
         send_telegram_message(chat_id, "❌ Квартира не найдена")
 
 
-def show_property_photos(chat_id, prop, photos):
-    """Показать текущие фотографии квартиры"""
+def show_property_photos_enhanced(chat_id, prop, photos):
+    """Улучшенный показ фотографий с дополнительной информацией"""
     if not photos.exists():
         send_telegram_message(
             chat_id,
-            f"📷 У квартиры *{prop.name}* пока нет фотографий"
+            f"📷 *У квартиры «{prop.name}» пока нет фотографий*\n\n"
+            f"Вы можете добавить до 6 фотографий через меню управления."
         )
         return
 
+    # Подсчитываем статистику фото
+    url_photos = photos.filter(image_url__isnull=False).count()
+    file_photos = photos.filter(image__isnull=False).count()
+
     # Отправляем фотографии
     photo_urls = []
+    failed_count = 0
+
     for photo in photos:
         url = None
         if photo.image_url:
@@ -234,28 +262,46 @@ def show_property_photos(chat_id, prop, photos):
                         url = f"{base_url.rstrip('/')}{url}"
             except Exception as e:
                 logger.error(f"Error getting image URL: {e}")
+                failed_count += 1
 
         if url:
             photo_urls.append(url)
+        else:
+            failed_count += 1
 
     if photo_urls:
         try:
             send_photo_group(chat_id, photo_urls)
-            send_telegram_message(
-                chat_id,
-                f"📷 *Фотографии квартиры {prop.name}*\n\n"
-                f"Показано {len(photo_urls)} из {photos.count()} фото"
+
+            stats_text = (
+                f"📷 *Фотографии квартиры «{prop.name}»*\n\n"
+                f"📊 *Статистика:*\n"
+                f"• Показано: {len(photo_urls)} фото\n"
+                f"• Всего в базе: {photos.count()}\n"
+                f"• По URL: {url_photos}\n"
+                f"• Загружено файлов: {file_photos}"
             )
+
+            if failed_count > 0:
+                stats_text += f"\n• ❌ Ошибок загрузки: {failed_count}"
+
+            send_telegram_message(chat_id, stats_text)
+
         except Exception as e:
             logger.error(f"Error sending photos: {e}")
             send_telegram_message(
                 chat_id,
-                f"❌ Ошибка при отправке фотографий: {str(e)}"
+                f"❌ *Ошибка при отправке фотографий*\n\n"
+                f"Не удалось отправить {len(photo_urls)} фото.\n"
+                f"Причина: {str(e)}\n\n"
+                f"Попробуйте просмотреть фотографии позже."
             )
     else:
         send_telegram_message(
             chat_id,
-            "❌ Не удалось загрузить фотографии"
+            f"❌ *Не удалось загрузить фотографии*\n\n"
+            f"В базе есть {photos.count()} записей о фото, но ни одну не удалось отобразить.\n"
+            f"Возможно, файлы повреждены или URL недоступны."
         )
 
 
@@ -515,11 +561,15 @@ def edit_handle_photo_upload(chat_id, update, context):
     return False
 
 
+@log_handler
 def handle_photo_management_states(chat_id, text, update, context):
     """Полная обработка всех состояний управления фотографиями"""
     profile = _get_profile(chat_id)
     state_data = profile.telegram_state or {}
     state = state_data.get('state')
+
+    # Логируем для отладки
+    logger.info(f"Photo management state: '{state}', text: '{text}'")
 
     # Основное меню управления фото
     if state == STATE_PHOTO_MANAGEMENT:
@@ -540,12 +590,13 @@ def handle_photo_management_states(chat_id, text, update, context):
     elif state == 'photo_waiting_upload':
         if text == "✅ Завершить":
             property_id = state_data.get("editing_property_id")
-            total_photos = PropertyPhoto.objects.filter(property_id=property_id).count()
-            send_telegram_message(
-                chat_id,
-                f"✅ *Загрузка завершена!*\n\n"
-                f"📸 Всего фото: {total_photos}/6"
-            )
+            if property_id:
+                total_photos = PropertyPhoto.objects.filter(property_id=property_id).count()
+                send_telegram_message(
+                    chat_id,
+                    f"✅ *Загрузка завершена!*\n\n"
+                    f"📸 Всего фото: {total_photos}/6"
+                )
             handle_manage_photos_start(chat_id)
         elif text == "❌ Отмена":
             handle_manage_photos_start(chat_id)
@@ -596,7 +647,7 @@ def start_delete_photo(chat_id, prop, photos):
     )
 
     # Показываем фотографии для наглядности
-    show_property_photos(chat_id, prop, photos)
+    show_property_photos_enhanced(chat_id, prop, photos)
 
 
 def handle_photo_delete(chat_id, text):
@@ -650,3 +701,37 @@ def handle_photo_delete(chat_id, text):
         send_telegram_message(chat_id, "❌ Квартира не найдена")
         profile.telegram_state = {}
         profile.save()
+
+
+@log_handler
+def debug_photo_management(chat_id, property_id):
+    """Отладочная функция для прямого доступа к управлению фото"""
+    profile = _get_profile(chat_id)
+
+    try:
+        # Проверяем доступ к квартире
+        if profile.role == 'admin':
+            prop = Property.objects.get(id=property_id, owner=profile.user)
+        else:  # super_admin
+            prop = Property.objects.get(id=property_id)
+
+        # Устанавливаем состояние
+        profile.telegram_state = {
+            'state': STATE_PHOTO_MANAGEMENT,
+            'editing_property_id': property_id
+        }
+        profile.save()
+
+        send_telegram_message(
+            chat_id,
+            f"🔧 *Отладка: прямой доступ к управлению фото*\n\n"
+            f"🏠 {prop.name}\n"
+            f"ID: {property_id}\n\n"
+            f"Состояние установлено."
+        )
+
+        # Сразу запускаем управление фотографиями
+        handle_manage_photos_start(chat_id)
+
+    except Property.DoesNotExist:
+        send_telegram_message(chat_id, "❌ Квартира не найдена или у вас нет доступа.")

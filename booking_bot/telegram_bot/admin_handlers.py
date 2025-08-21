@@ -25,7 +25,7 @@ from .constants import (
     STATE_EDIT_PROPERTY_MENU,
     STATE_WAITING_NEW_PRICE,
     STATE_WAITING_NEW_DESCRIPTION,
-    STATE_WAITING_NEW_STATUS, PAGE_SIZE,
+    STATE_WAITING_NEW_STATUS, PAGE_SIZE, STATE_PHOTO_MANAGEMENT,
 )
 
 from .utils import send_telegram_message, send_document
@@ -960,12 +960,15 @@ def show_property_availability(chat_id, property_id):
     except Property.DoesNotExist:
         send_telegram_message(chat_id, "Квартира не найдена.")
 
+
 @log_handler
 def handle_edit_property_choice(chat_id, text):
     """Обработка выбора в меню редактирования"""
     profile = _get_profile(chat_id)
     state_data = profile.telegram_state or {}
     property_id = state_data.get('editing_property_id')
+
+    logger.info(f"handle_edit_property_choice: text='{text}', property_id={property_id}")
 
     if not property_id:
         send_telegram_message(chat_id, "Ошибка: квартира не найдена.")
@@ -1029,12 +1032,22 @@ def handle_edit_property_choice(chat_id, text):
         )
 
     elif text == "📷 Управление фото":
-        # НОВОЕ: Используем полноценное управление фото
+        # ГЛАВНОЕ ИСПРАВЛЕНИЕ: правильный переход к управлению фото
+        logger.info(f"Starting photo management for property {property_id}")
+
+        # Обновляем состояние для управления фото
+        state_data['state'] = STATE_PHOTO_MANAGEMENT
+        profile.telegram_state = state_data
+        profile.save()
+
+        # Запускаем управление фотографиями
         from .edit_handlers import handle_manage_photos_start
         handle_manage_photos_start(chat_id)
 
     else:
         send_telegram_message(chat_id, "⚠️ Выберите действие из меню")
+        # Показываем меню заново
+        handle_edit_property_start(chat_id, property_id)
 
 
 @log_handler

@@ -1,4 +1,4 @@
-from booking_bot.listings.models import Property, City, District
+from django.utils import timezone
 import logging
 from .constants import log_handler
 
@@ -859,6 +859,7 @@ def handle_payment_confirmation(phone_number):
                 end_date=check_out,
                 total_price=total_price,
                 status="pending_payment",
+                created_at=timezone.now(),
             )
 
             send_whatsapp_message(
@@ -1064,7 +1065,7 @@ def help_command_handler(phone_number):
 
 
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from django.db import transaction
 from django.db.models import Count, Avg
 

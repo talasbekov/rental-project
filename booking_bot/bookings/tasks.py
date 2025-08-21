@@ -1,8 +1,8 @@
 # booking_bot/bookings/tasks.py - расширенная версия с новыми задачами
 
 from celery import shared_task
-from datetime import datetime, date, timedelta
-from django.db.models import Count, Q, Avg
+from datetime import date, timedelta
+from django.utils import timezone
 import logging
 
 from booking_bot.listings.models import District, PropertyCalendarManager
@@ -22,7 +22,7 @@ def cancel_expired_booking(booking_id):
 
         # Проверяем, что бронирование все еще в статусе ожидания оплаты
         if booking.status == 'pending_payment':
-            if booking.expires_at and datetime.now() >= booking.expires_at:
+            if booking.expires_at and timezone.now() >= booking.expires_at:
                 # Освобождаем временно заблокированные даты
                 PropertyCalendarManager.release_dates(
                     booking.property,
@@ -62,7 +62,7 @@ def check_all_expired_bookings():
     from booking_bot.bookings.models import Booking
 
     expired_bookings = Booking.objects.filter(
-        status="pending_payment", expires_at__lt=datetime.now()
+        status="pending_payment", expires_at__lt=timezone.now()
     )
 
     for booking in expired_bookings:
@@ -104,7 +104,7 @@ def update_booking_statuses():
 
         # Запланируем запрос отзыва на завтра
         send_review_request.apply_async(
-            args=[booking.id], eta=datetime.now() + timedelta(days=1)
+            args=[booking.id], eta=timezone.now() + timedelta(days=1)
         )
 
         logger.info(f"Booking {booking.id} marked as completed")

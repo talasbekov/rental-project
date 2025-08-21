@@ -1,7 +1,7 @@
 # booking_bot/whatsapp_bot/tasks.py
 
 from celery import shared_task
-from django.conf import settings
+from django.utils import timezone
 from datetime import datetime, timedelta
 import logging
 
@@ -23,7 +23,7 @@ def send_booking_reminder(booking_id):
             logger.warning(f"No WhatsApp phone for booking {booking_id}")
             return
 
-        days_until = (booking.start_date - datetime.now().date()).days
+        days_until = (booking.start_date - timezone.now().date()).days
 
         text = (
             f"🔔 *Напоминание о бронировании*\n\n"
@@ -63,7 +63,7 @@ def send_review_request(booking_id):
             return
 
         # Проверяем, что выезд был вчера
-        if booking.end_date != datetime.now().date() - timedelta(days=1):
+        if booking.end_date != timezone.now().date() - timedelta(days=1):
             return
 
         text = (
@@ -137,7 +137,7 @@ def send_payment_confirmation(booking_id):
 @shared_task
 def check_expired_bookings():
     """Проверить и отменить неоплаченные бронирования"""
-    expired_time = datetime.now() - timedelta(minutes=15)
+    expired_time = timezone.now() - timedelta(minutes=15)
 
     expired_bookings = Booking.objects.filter(
         status="pending_payment", created_at__lt=expired_time

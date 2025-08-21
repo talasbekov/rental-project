@@ -1,5 +1,6 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
+from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.contrib.auth.models import User
@@ -140,7 +141,7 @@ class Booking(models.Model):
 
         # Устанавливаем время истечения для новых бронирований
         if not self.pk and self.status == "pending_payment" and not self.expires_at:
-            self.expires_at = datetime.now() + timedelta(minutes=15)
+            self.expires_at = timezone.now() + timedelta(minutes=15)
 
         if not self.pk and self.status == "pending_payment":
             from booking_bot.notifications.service import NotificationService
@@ -156,7 +157,7 @@ class Booking(models.Model):
     def cancel(self, user, reason, reason_text=None):
         """Метод для отмены бронирования"""
         self.status = 'cancelled'
-        self.cancelled_at = datetime.now()
+        self.cancelled_at = timezone.now()
         self.cancelled_by = user
         self.cancel_reason = reason
         if reason_text:

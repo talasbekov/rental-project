@@ -3,7 +3,7 @@
 from celery import shared_task
 from datetime import date, timedelta
 import logging
-
+from django.utils import timezone
 from django.core.files.base import ContentFile
 
 from booking_bot.listings.models import PropertyCalendarManager
@@ -114,7 +114,7 @@ def cleanup_orphaned_photos():
 
     # Находим фотографии без связанных объектов недвижимости
     orphaned = PropertyPhoto.objects.filter(
-        property__isnull=True, created_at__lt=datetime.now() - timedelta(days=1)
+        property__isnull=True, created_at__lt=timezone.now() - timedelta(days=1)
     )
 
     for photo in orphaned:

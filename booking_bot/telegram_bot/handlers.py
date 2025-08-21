@@ -1,6 +1,7 @@
 import html
 import logging
 from datetime import datetime, date, timedelta
+from django.utils import timezone
 from django.db import transaction
 from django.db.models import Count, Avg
 from telegram import ReplyKeyboardMarkup, KeyboardButton
@@ -78,7 +79,7 @@ def check_rate_limit(chat_id, max_actions=3, time_window=5):
     Проверяет, не превышает ли пользователь лимит действий.
     max_actions: максимум действий за time_window секунд
     """
-    now = datetime.now()
+    now = timezone.now()
     user_actions = user_last_actions[chat_id]
 
     # Удаляем старые записи
@@ -371,10 +372,21 @@ def message_handler(chat_id, text, update=None, context=None):
                 handle_guest_review_start(chat_id, booking_id)
                 return
             elif text.startswith("✏️ #"):
-                prop_id = int(text.split("#")[1])
-                from .admin_handlers import handle_edit_property_start
-                handle_edit_property_start(chat_id, prop_id)
+                try:
+                    # Берём часть после # и очищаем пробелы
+                    prop_id_str = text.split("#", 1)[1].strip()
+                    # Оставляем только цифры
+                    digits = ''.join(filter(str.isdigit, prop_id_str))
+                    if not digits:
+                        raise ValueError("no digits in input")
+                    prop_id = int(digits)
+
+                    from .admin_handlers import handle_edit_property_start
+                    handle_edit_property_start(chat_id, prop_id)
+                except (IndexError, ValueError):
+                    send_telegram_message(chat_id, "❌ Неверный формат. Используйте, например: ✏️ #1")
                 return
+
 
             # Обработка редактирования квартир
             elif state_data.get('state') == 'edit_property_menu':
@@ -1525,6 +1537,7 @@ def handle_payment_confirmation(chat_id):
                 check_out_time=sd.get("check_out_time", "12:00"),  # Добавить
                 total_price=total_price,
                 status="pending_payment",
+                created_at=timezone.now(),
             )
 
             logger.info(

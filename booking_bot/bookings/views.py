@@ -15,9 +15,8 @@ from ..users.models import UserProfile
 User = get_user_model()
 
 # booking_bot/bookings/views.py - исправленная версия с защитой от гонок
-
+from django.utils import timezone
 from django.db import transaction
-from django.db.models import Q
 from rest_framework import viewsets, status, serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -72,7 +71,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             user=self.request.user,
             total_price=total_price,
             status="pending_payment",
-            expires_at=datetime.now() + timedelta(minutes=15),  # 15 минут на оплату
+            expires_at=timezone.now() + timedelta(minutes=15),  # 15 минут на оплату
         )
 
         logger.info(f"Booking created: {booking.id}, expires at {booking.expires_at}")
@@ -125,7 +124,7 @@ class BookingViewSet(viewsets.ModelViewSet):
         cancel_reason = request.data.get("reason", "Отменено пользователем")
 
         locked_booking.status = "cancelled"
-        locked_booking.cancelled_at = datetime.now()
+        locked_booking.cancelled_at = timezone.now()
         locked_booking.cancel_reason = cancel_reason
         locked_booking.save()
 

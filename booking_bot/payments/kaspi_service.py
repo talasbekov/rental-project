@@ -10,6 +10,7 @@ import uuid
 import hashlib
 import json
 from datetime import datetime
+from django.utils import timezone
 from django.conf import settings
 from django.urls import reverse
 
@@ -80,8 +81,8 @@ def initiate_payment(
             "status": "pending",
             "amount": amount,
             "currency": currency,
-            "created_at": datetime.now().isoformat(),
-            "expires_at": datetime.now().isoformat(),
+            "created_at": timezone.now().isoformat(),
+            "expires_at": timezone.now().isoformat(),
             "callback_url": callback_url,
             "description": description or f"Оплата бронирования #{booking_id}",
             "merchant_id": KASPI_MERCHANT_ID or "TEST_MERCHANT",
@@ -184,7 +185,7 @@ def check_payment_status(kaspi_payment_id: str) -> dict:
             "amount": 10000.00,  # Примерная сумма
             "currency": "KZT",
             "paid_at": (
-                datetime.now().isoformat() if chosen_status == "SUCCESS" else None
+                timezone.now().isoformat() if chosen_status == "SUCCESS" else None
             ),
             "error_code": None if chosen_status != "FAILED" else "INSUFFICIENT_FUNDS",
             "error_message": (

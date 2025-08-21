@@ -1,5 +1,6 @@
 from django.test import TestCase, Client
 from django.urls import reverse
+from django.utils import timezone
 from django.contrib.auth.models import User
 from booking_bot.users.models import UserProfile
 from booking_bot.listings.models import Property
@@ -46,7 +47,8 @@ class PaymentsWebhookTest(TestCase):
             start_date=date.today(),
             end_date=date.today() + timedelta(days=1),
             total_price=100,
-            kaspi_payment_id="kaspi_test_123",  # Pre-assign for lookup by webhook
+            kaspi_payment_id="kaspi_test_123",
+            created_at=timezone.now(),  # Pre-assign for lookup by webhook
         )
 
         # Ensure the URL name matches what's in your payments/urls.py

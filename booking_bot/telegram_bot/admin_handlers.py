@@ -568,6 +568,32 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
 
 
 @log_handler
+def quick_photo_management(chat_id, property_id):
+    """Быстрый доступ к управлению фотографиями из списка квартир"""
+    profile = _get_profile(chat_id)
+
+    try:
+        # Проверяем доступ к квартире
+        if profile.role == 'admin':
+            prop = Property.objects.get(id=property_id, owner=profile.user)
+        else:  # super_admin
+            prop = Property.objects.get(id=property_id)
+
+        # Устанавливаем состояние редактирования
+        profile.telegram_state = {
+            'state': STATE_EDIT_PROPERTY_MENU,
+            'editing_property_id': property_id
+        }
+        profile.save()
+
+        # Запускаем управление фотографиями
+        from .edit_handlers import handle_manage_photos_start
+        handle_manage_photos_start(chat_id)
+
+    except Property.DoesNotExist:
+        send_telegram_message(chat_id, "❌ Квартира не найдена или у вас нет доступа.")
+
+@log_handler
 def handle_photo_upload(chat_id, update, context):
     """Обработка загружаемых фотографий с проверкой лимита в 6 штук."""
     profile = _get_profile(chat_id)
@@ -943,7 +969,6 @@ def handle_edit_property_choice(chat_id, text):
 
     if not property_id:
         send_telegram_message(chat_id, "Ошибка: квартира не найдена.")
-        # Сбрасываем состояние
         profile.telegram_state = {}
         profile.save()
         show_admin_properties(chat_id)
@@ -1004,13 +1029,9 @@ def handle_edit_property_choice(chat_id, text):
         )
 
     elif text == "📷 Управление фото":
-        send_telegram_message(
-            chat_id,
-            "Управление фотографиями пока в разработке.\n"
-            "Используйте веб-панель для изменения фотографий."
-        )
-        # Возвращаемся в меню редактирования
-        handle_edit_property_start(chat_id, property_id)
+        # НОВОЕ: Используем полноценное управление фото
+        from .edit_handlers import handle_manage_photos_start
+        handle_manage_photos_start(chat_id)
 
     else:
         send_telegram_message(chat_id, "⚠️ Выберите действие из меню")

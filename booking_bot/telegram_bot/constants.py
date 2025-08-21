@@ -54,6 +54,11 @@ STATE_CANCEL_REASON_TEXT = "cancel_reason_text"
 STATE_AWAITING_CHECK_IN_TIME = "awaiting_check_in_time"
 STATE_AWAITING_CHECK_OUT_TIME = "awaiting_check_out_time"
 
+# Новые состояния для управления фото
+STATE_PHOTO_ADD_URL = "photo_add_url"
+STATE_PHOTO_ADD_UPLOAD = "photo_add_upload"
+STATE_PHOTO_DELETE = "photo_delete"
+
 
 def log_handler(func):
     def wrapper(*args, **kwargs):

@@ -31,9 +31,11 @@ from .constants import (
     STATE_WAITING_NEW_PRICE,
     STATE_WAITING_NEW_DESCRIPTION,
     STATE_WAITING_NEW_STATUS,
-    STATE_PHOTO_MANAGEMENT,
+    STATE_PHOTO_MANAGEMENT, STATE_PHOTO_ADD_URL, STATE_PHOTO_DELETE,
 )
-from .edit_handlers import save_new_price, save_new_description, save_new_status, save_new_photo
+from .edit_handlers import save_new_price, save_new_description, save_new_status, save_new_photo, \
+    handle_photo_add_choice, handle_photo_url_input, handle_manage_photos_start, handle_photo_delete, \
+    edit_handle_photo_upload
 
 from .. import settings
 from booking_bot.listings.models import (
@@ -71,7 +73,7 @@ from .admin_handlers import (
     handle_remove_admin,
     show_plan_fact,
     show_ko_factor_report,
-    handle_guest_review_text, handle_edit_property_choice,
+    handle_guest_review_text, handle_edit_property_choice, quick_photo_management,
 )
 from ..core.models import AuditLog
 
@@ -128,6 +130,18 @@ def message_handler(chat_id, text, update=None, context=None):
     elif state == STATE_PHOTO_MANAGEMENT:
         save_new_photo(chat_id, text)
         return
+
+    # ===== ОБРАБОТКА ФОТОГРАФИЙ =====
+    if update and update.message and update.message.photo:
+        # Сначала проверяем, это фото для редактирования квартиры
+        if edit_handle_photo_upload(chat_id, update, context):
+            return
+        # Потом проверяем, это фото для добавления новой квартиры
+        elif handle_photo_upload(chat_id, update, context):
+            return
+        # Потом проверяем, это фото для отзыва
+        elif handle_review_photo_upload(chat_id, update, context):
+            return
 
         # ===== ОБРАБОТКА ОТЗЫВОВ =====
     if state == STATE_AWAITING_REVIEW_TEXT:
@@ -447,23 +461,32 @@ def message_handler(chat_id, text, update=None, context=None):
                     logger.error(f"Error parsing property edit command: {e}")
                     send_telegram_message(chat_id, "❌ Ошибка обработки команды")
                     return
-
-            # Обработка редактирования квартир
-            elif state_data.get('state') == 'edit_property_menu':
-                from .admin_handlers import handle_edit_property_menu
-                handle_edit_property_menu(chat_id, text)
-                return
-            elif state_data.get('state') == 'edit_property_price':
-                from .admin_handlers import handle_edit_property_price
-                handle_edit_property_price(chat_id, text)
-                return
-            elif state_data.get('state') == 'edit_property_desc':
-                from .admin_handlers import handle_edit_property_desc
-                handle_edit_property_desc(chat_id, text)
-                return
-            elif state_data.get('state') == 'edit_property_status':
-                from .admin_handlers import handle_edit_property_status
-                handle_edit_property_status(chat_id, text)
+            elif text.startswith("📷 #"):
+                try:
+                    prop_id = int(text.split("#")[1])
+                    quick_photo_management(chat_id, prop_id)
+                    return
+                except (ValueError, IndexError):
+                    send_telegram_message(chat_id, "❌ Неверный формат команды")
+                    return
+            elif text == "/help_photos":
+                help_text = (
+                    "📷 *Справка по управлению фотографиями*\n\n"
+                    "*Способы доступа:*\n"
+                    "• Из списка квартир: кнопка 📷 #ID\n"
+                    "• Из меню редактирования: 📷 Управление фото\n"
+                    "• Команда: /test_photos ID\n\n"
+                    "*Возможности:*\n"
+                    "• 📷 Просмотр текущих фото\n"
+                    "• ➕ Добавление по URL или загрузка\n"
+                    "• 🗑 Удаление отдельных фото или всех\n"
+                    "• 🔍 Отладка: /debug_photos ID\n\n"
+                    "*Ограничения:*\n"
+                    "• Максимум 6 фотографий на квартиру\n"
+                    "• Размер файла до 5 МБ\n"
+                    "• Форматы: JPG, PNG, WebP, GIF"
+                )
+                send_telegram_message(chat_id, help_text)
                 return
 
             # Статистика по городам с префиксом
@@ -478,31 +501,19 @@ def message_handler(chat_id, text, update=None, context=None):
                     }
                     show_city_statistics(chat_id, period=period_map[period_text])
                     return
-
-            # Управление администраторами
-            if state_data.get('state') == "add_admin_username":
-                if text != "❌ Отмена":
-                    process_add_admin(chat_id, text)
-                profile.telegram_state = {}
-                profile.save()
-                show_super_admin_menu(chat_id)
-                return
-
-            if state_data.get('state') == "remove_admin":
-                if text != "❌ Отмена":
-                    process_remove_admin(chat_id, text)
-                profile.telegram_state = {}
-                profile.save()
-                show_super_admin_menu(chat_id)
-                return
-
-            # План-факт
-            if state_data.get('state') == "select_property_for_target":
-                handle_target_property_selection(chat_id, text)
-                return
-
-            if state_data.get('state') == "set_target_revenue":
-                save_property_target(chat_id, text)
+            elif text.startswith("/debug_photos"):
+                if profile.role not in ("admin", "super_admin"):
+                    send_telegram_message(chat_id, "Команда недоступна.")
+                else:
+                    parts = text.split()
+                    if len(parts) > 1:
+                        try:
+                            prop_id = int(parts[1])
+                            debug_property_photos(chat_id, prop_id)
+                        except ValueError:
+                            send_telegram_message(chat_id, "Неверный ID объекта")
+                    else:
+                        send_telegram_message(chat_id, "Использование: /debug_photos <ID>")
                 return
 
             # Обработка команд супер-админа в главном меню
@@ -527,6 +538,32 @@ def message_handler(chat_id, text, update=None, context=None):
                     return
                 elif text == "🎯 План-факт":
                     show_plan_fact(chat_id)
+                    return
+
+                # Управление администраторами
+                if state_data.get('state') == "add_admin_username":
+                    if text != "❌ Отмена":
+                        process_add_admin(chat_id, text)
+                    profile.telegram_state = {}
+                    profile.save()
+                    show_super_admin_menu(chat_id)
+                    return
+
+                if state_data.get('state') == "remove_admin":
+                    if text != "❌ Отмена":
+                        process_remove_admin(chat_id, text)
+                    profile.telegram_state = {}
+                    profile.save()
+                    show_super_admin_menu(chat_id)
+                    return
+
+                # План-факт
+                if state_data.get('state') == "select_property_for_target":
+                    handle_target_property_selection(chat_id, text)
+                    return
+
+                if state_data.get('state') == "set_target_revenue":
+                    save_property_target(chat_id, text)
                     return
 
     # City selection
@@ -830,6 +867,39 @@ def show_search_results(chat_id, profile, offset=0):
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
     )
 
+@log_handler
+def handle_photo_management_states(chat_id, text, update, context):
+    """Обработка состояний управления фотографиями"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+    state = state_data.get('state')
+
+    if state == STATE_PHOTO_MANAGEMENT:
+        save_new_photo(chat_id, text)
+        return True
+
+    elif state == STATE_PHOTO_ADD_URL:
+        handle_photo_add_choice(chat_id, text)
+        return True
+
+    elif state == 'photo_waiting_url':
+        handle_photo_url_input(chat_id, text)
+        return True
+
+    elif state == 'photo_waiting_upload':
+        if text == "✅ Завершить":
+            send_telegram_message(chat_id, "✅ Загрузка фотографий завершена!")
+            handle_manage_photos_start(chat_id)
+        elif text == "❌ Отмена":
+            handle_manage_photos_start(chat_id)
+        # Фотографии обрабатываются в handle_photo_upload
+        return True
+
+    elif state == STATE_PHOTO_DELETE:
+        handle_photo_delete(chat_id, text)
+        return True
+
+    return False
 
 @log_handler
 def prompt_review(chat_id, booking):
@@ -1116,7 +1186,6 @@ def debug_property_photos(chat_id, property_id):
                 # Проверяем доступность URL
                 try:
                     import requests
-
                     response = requests.head(photo.image_url, timeout=3)
                     debug_text += f"- Статус URL: {response.status_code}\n"
                 except Exception as e:
@@ -1138,6 +1207,297 @@ def debug_property_photos(chat_id, property_id):
     except Exception as e:
         logger.error(f"Debug error: {e}")
         send_telegram_message(chat_id, f"Ошибка отладки: {str(e)}")
+
+
+# 1. Функция валидации URL изображений
+def validate_image_url(url):
+    """Проверка корректности URL изображения"""
+    try:
+        import requests
+        from urllib.parse import urlparse
+
+        # Проверяем формат URL
+        parsed = urlparse(url)
+        if not parsed.scheme in ['http', 'https']:
+            return False, "URL должен начинаться с http:// или https://"
+
+        # Проверяем расширение файла
+        valid_extensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif']
+        if not any(url.lower().endswith(ext) for ext in valid_extensions):
+            return False, "Поддерживаемые форматы: JPG, PNG, WebP, GIF"
+
+        # Проверяем доступность URL (HEAD запрос)
+        response = requests.head(url, timeout=5, allow_redirects=True)
+        if response.status_code != 200:
+            return False, f"Изображение недоступно (код {response.status_code})"
+
+        # Проверяем Content-Type
+        content_type = response.headers.get('content-type', '').lower()
+        if not content_type.startswith('image/'):
+            return False, "Файл не является изображением"
+
+        # Проверяем размер файла
+        content_length = response.headers.get('content-length')
+        if content_length:
+            size_mb = int(content_length) / (1024 * 1024)
+            if size_mb > 10:  # Максимум 10 МБ
+                return False, f"Изображение слишком большое ({size_mb:.1f} МБ, максимум 10 МБ)"
+
+        return True, "OK"
+
+    except requests.RequestException as e:
+        return False, f"Ошибка загрузки: {str(e)}"
+    except Exception as e:
+        return False, f"Ошибка валидации: {str(e)}"
+
+
+# 2. Улучшенная функция обработки URL
+def handle_photo_url_input_improved(chat_id, text):
+    """Улучшенная обработка ввода URL фотографий с валидацией"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+    property_id = state_data.get("editing_property_id")
+
+    if text == "❌ Отмена":
+        handle_manage_photos_start(chat_id)
+        return
+
+    # Проверяем лимит
+    current_count = PropertyPhoto.objects.filter(property_id=property_id).count()
+    if current_count >= 6:
+        send_telegram_message(
+            chat_id,
+            "❌ Достигнут максимум фотографий (6 штук)"
+        )
+        return
+
+    # Парсим URL'ы
+    urls = [u.strip() for u in text.split() if u.strip().startswith('http')]
+
+    if not urls:
+        send_telegram_message(
+            chat_id,
+            "❌ Не найдено корректных URL.\n\n"
+            "Попробуйте еще раз:"
+        )
+        return
+
+    # Ограничиваем количество
+    available_slots = 6 - current_count
+    if len(urls) > available_slots:
+        send_telegram_message(
+            chat_id,
+            f"⚠️ Можно добавить только {available_slots} фото.\n"
+            f"Будут обработаны первые {available_slots} URL."
+        )
+        urls = urls[:available_slots]
+
+    # Валидируем и сохраняем фото
+    created = 0
+    errors = []
+
+    send_telegram_message(chat_id, "🔄 Проверяем и загружаем фотографии...")
+
+    for i, url in enumerate(urls, 1):
+        try:
+            # Валидируем URL
+            is_valid, message = validate_image_url(url)
+            if not is_valid:
+                errors.append(f"URL {i}: {message}")
+                continue
+
+            # Сохраняем фото
+            PropertyPhoto.objects.create(property_id=property_id, image_url=url)
+            created += 1
+
+        except Exception as e:
+            logger.error(f"Error saving photo URL {url}: {e}")
+            errors.append(f"URL {i}: Ошибка сохранения")
+
+    # Отправляем детальный результат
+    if created > 0:
+        result_text = f"✅ *Успешно добавлено {created} фотографий*"
+    else:
+        result_text = "❌ *Не удалось добавить ни одной фотографии*"
+
+    if errors:
+        result_text += f"\n\n⚠️ *Ошибки ({len(errors)}):*\n"
+        result_text += "\n".join([f"• {error}" for error in errors[:5]])
+        if len(errors) > 5:
+            result_text += f"\n• ...и еще {len(errors) - 5} ошибок"
+
+    total_photos = PropertyPhoto.objects.filter(property_id=property_id).count()
+    result_text += f"\n\n📸 *Всего фото:* {total_photos}/6"
+
+    if total_photos < 6:
+        result_text += f"\nМожно добавить еще: {6 - total_photos}"
+
+    send_telegram_message(chat_id, result_text)
+
+    # Возвращаемся в меню управления фото
+    handle_manage_photos_start(chat_id)
+
+
+# 3. Функция массового удаления с подтверждением
+def handle_photo_delete_with_confirmation(chat_id, text):
+    """Обработка удаления фотографий с подтверждением"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+    property_id = state_data.get("editing_property_id")
+
+    if text == "❌ Отмена":
+        handle_manage_photos_start(chat_id)
+        return
+
+    try:
+        prop = Property.objects.get(id=property_id)
+        photos = PropertyPhoto.objects.filter(property=prop)
+
+        if text == "🗑 Удалить все фото":
+            # Запрашиваем подтверждение
+            if not state_data.get('delete_all_confirmed'):
+                state_data['delete_all_confirmed'] = True
+                profile.telegram_state = state_data
+                profile.save()
+
+                keyboard = [
+                    [KeyboardButton("✅ Да, удалить все")],
+                    [KeyboardButton("❌ Отмена")]
+                ]
+
+                send_telegram_message(
+                    chat_id,
+                    f"⚠️ *Подтверждение удаления*\n\n"
+                    f"Вы действительно хотите удалить ВСЕ {photos.count()} фотографий?\n"
+                    f"Это действие нельзя отменить!",
+                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+                )
+                return
+
+        elif text == "✅ Да, удалить все":
+            if state_data.get('delete_all_confirmed'):
+                count = photos.count()
+                photos.delete()
+                send_telegram_message(
+                    chat_id,
+                    f"✅ *Удалено {count} фотографий*\n\n"
+                    f"Все фотографии квартиры успешно удалены."
+                )
+                # Сбрасываем флаг подтверждения
+                state_data.pop('delete_all_confirmed', None)
+                profile.telegram_state = state_data
+                profile.save()
+
+        elif text.startswith("🗑 Удалить фото #"):
+            # Извлекаем номер фото
+            import re
+            match = re.search(r'#(\d+)', text)
+            if match:
+                photo_num = int(match.group(1))
+                photo_list = list(photos)
+
+                if 1 <= photo_num <= len(photo_list):
+                    photo_to_delete = photo_list[photo_num - 1]
+                    photo_to_delete.delete()
+
+                    remaining = PropertyPhoto.objects.filter(property=prop).count()
+                    send_telegram_message(
+                        chat_id,
+                        f"✅ *Фото #{photo_num} удалено*\n\n"
+                        f"📸 Осталось фото: {remaining}/6"
+                    )
+                else:
+                    send_telegram_message(chat_id, "❌ Неверный номер фото")
+                    return
+            else:
+                send_telegram_message(chat_id, "❌ Не удалось определить номер фото")
+                return
+
+        # Возвращаемся в меню управления фото
+        handle_manage_photos_start(chat_id)
+
+    except Property.DoesNotExist:
+        send_telegram_message(chat_id, "❌ Квартира не найдена")
+        profile.telegram_state = {}
+        profile.save()
+
+
+# 4. Улучшения в показе фотографий
+def show_property_photos_enhanced(chat_id, prop, photos):
+    """Улучшенный показ фотографий с дополнительной информацией"""
+    if not photos.exists():
+        send_telegram_message(
+            chat_id,
+            f"📷 *У квартиры «{prop.name}» пока нет фотографий*\n\n"
+            f"Вы можете добавить до 6 фотографий через меню управления."
+        )
+        return
+
+    # Подсчитываем статистику фото
+    url_photos = photos.filter(image_url__isnull=False).count()
+    file_photos = photos.filter(image__isnull=False).count()
+
+    # Отправляем фотографии
+    photo_urls = []
+    failed_count = 0
+
+    for photo in photos:
+        url = None
+        if photo.image_url:
+            url = photo.image_url
+        elif photo.image:
+            try:
+                if hasattr(photo.image, 'url'):
+                    url = photo.image.url
+                    if url and not url.startswith('http'):
+                        from django.conf import settings
+                        site_url = getattr(settings, 'SITE_URL', '')
+                        domain = getattr(settings, 'DOMAIN', 'http://localhost:8000')
+                        base_url = site_url or domain
+                        url = f"{base_url.rstrip('/')}{url}"
+            except Exception as e:
+                logger.error(f"Error getting image URL: {e}")
+                failed_count += 1
+
+        if url:
+            photo_urls.append(url)
+        else:
+            failed_count += 1
+
+    if photo_urls:
+        try:
+            send_photo_group(chat_id, photo_urls)
+
+            stats_text = (
+                f"📷 *Фотографии квартиры «{prop.name}»*\n\n"
+                f"📊 *Статистика:*\n"
+                f"• Показано: {len(photo_urls)} фото\n"
+                f"• Всего в базе: {photos.count()}\n"
+                f"• По URL: {url_photos}\n"
+                f"• Загружено файлов: {file_photos}"
+            )
+
+            if failed_count > 0:
+                stats_text += f"\n• ❌ Ошибок загрузки: {failed_count}"
+
+            send_telegram_message(chat_id, stats_text)
+
+        except Exception as e:
+            logger.error(f"Error sending photos: {e}")
+            send_telegram_message(
+                chat_id,
+                f"❌ *Ошибка при отправке фотографий*\n\n"
+                f"Не удалось отправить {len(photo_urls)} фото.\n"
+                f"Причина: {str(e)}\n\n"
+                f"Попробуйте просмотреть фотографии позже или обратитесь к администратору."
+            )
+    else:
+        send_telegram_message(
+            chat_id,
+            f"❌ *Не удалось загрузить фотографии*\n\n"
+            f"В базе есть {photos.count()} записей о фото, но ни одну не удалось отобразить.\n"
+            f"Возможно, файлы повреждены или URL недоступны."
+        )
 
 
 @log_handler

@@ -37,6 +37,13 @@ STATE_ADMIN_ADD_AREA = "admin_add_area"
 STATE_ADMIN_ADD_PRICE = "admin_add_price"
 STATE_ADMIN_ADD_PHOTOS = "admin_add_photos"
 
+# --- Редактирование квартиры ---
+STATE_EDIT_PROPERTY_MENU = "edit_property_menu"
+STATE_WAITING_NEW_PRICE = "waiting_new_price"
+STATE_WAITING_NEW_DESCRIPTION = "waiting_new_description"
+STATE_WAITING_NEW_STATUS = "waiting_new_status"
+STATE_PHOTO_MANAGEMENT = "photo_management"
+
 # Новые состояния для отмены
 STATE_CANCEL_BOOKING = "cancel_booking"
 STATE_CANCEL_REASON = "cancel_reason"
@@ -106,40 +113,43 @@ def _get_or_create_local_profile(chat_id: int, first_name=None, last_name=None):
 
 @log_handler
 def _get_profile(chat_id, first_name=None, last_name=None, force_remote=False):
-    """Получить профиль пользователя БЕЗ внешних API вызовов"""
+    """Получить или создать профиль пользователя локально (без внешних API)"""
     chat_id_str = str(chat_id)
 
-    # ИСПРАВЛЕНИЕ: Всегда работаем локально, убираем внешние API вызовы
     try:
-        # Сначала пытаемся найти существующий профиль
-        profile = UserProfile.objects.select_related('user').get(telegram_chat_id=chat_id_str)
-
-        # Если у профиля нет user - создаем
-        if not profile.user:
-            username = f"telegram_{chat_id}"
-            user, _ = User.objects.get_or_create(
-                username=username,
-                defaults={
-                    "first_name": first_name or "",
-                    "last_name": last_name or "",
-                }
-            )
-            profile.user = user
-            profile.save()
-
-        # Обновляем имя/фамилию если переданы
-        if first_name and profile.user.first_name != first_name:
-            profile.user.first_name = first_name
-            profile.user.save()
-        if last_name and profile.user.last_name != last_name:
-            profile.user.last_name = last_name
-            profile.user.save()
-
-        return profile
+        # Сначала ищем существующий профиль
+        profile = UserProfile.objects.select_related("user").get(telegram_chat_id=chat_id_str)
 
     except UserProfile.DoesNotExist:
-        # Создаем новый профиль локально
+        # Если не нашли — создаём новый локальный профиль
         return _get_or_create_local_profile(chat_id, first_name, last_name)
+
+    # --- Если нашли, обновляем данные пользователя ---
+    if not profile.user:
+        # Если по каким-то причинам user не был привязан
+        username = f"telegram_{chat_id}"
+        user, _ = User.objects.get_or_create(
+            username=username,
+            defaults={
+                "first_name": first_name or "",
+                "last_name": last_name or "",
+            },
+        )
+        profile.user = user
+        profile.save()
+
+    # Обновляем имя и фамилию, если пришли новые
+    updated = False
+    if first_name and profile.user.first_name != first_name:
+        profile.user.first_name = first_name
+        updated = True
+    if last_name and profile.user.last_name != last_name:
+        profile.user.last_name = last_name
+        updated = True
+    if updated:
+        profile.user.save()
+
+    return profile
 
 
 @log_handler

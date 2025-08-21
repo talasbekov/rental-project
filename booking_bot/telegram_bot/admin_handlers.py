@@ -30,7 +30,14 @@ from .constants import (
     _get_profile,
     log_handler,
     start_command_handler, User,
+    STATE_EDIT_PROPERTY_MENU,
+    STATE_WAITING_NEW_PRICE,
+    STATE_WAITING_NEW_DESCRIPTION,
+    STATE_WAITING_NEW_STATUS,
+    STATE_PHOTO_MANAGEMENT, STATE_ADMIN_MENU,
 )
+from .edit_handlers import handle_edit_price_start, handle_edit_description_start, handle_edit_status_start, \
+    handle_manage_photos_start
 from .utils import send_telegram_message, send_document
 from ..settings import TELEGRAM_BOT_TOKEN
 
@@ -913,65 +920,31 @@ def show_property_availability(chat_id, property_id):
     except Property.DoesNotExist:
         send_telegram_message(chat_id, "Квартира не найдена.")
 
-
 @log_handler
-def show_calendar_booking_details(chat_id, property_id, year, month):
-    """Показать детали бронирований за месяц"""
-    profile = _get_profile(chat_id)
+def handle_edit_property_choice(chat_id, text):
+    """Обработка выбора в меню редактирования"""
 
-    try:
-        if profile.role == "admin":
-            prop = Property.objects.get(id=property_id, owner=profile.user)
-        else:
-            prop = Property.objects.get(id=property_id)
+    if text == "💰 Изменить цену":
+        handle_edit_price_start(chat_id)
 
-        from datetime import date
+    elif text == "📝 Изменить описание":
+        handle_edit_description_start(chat_id)
 
-        start_date = date(year, month, 1)
-        if month == 12:
-            end_date = date(year + 1, 1, 1)
-        else:
-            end_date = date(year, month + 1, 1)
+    elif text == "📊 Изменить статус":
+        handle_edit_status_start(chat_id)
 
-        bookings = Booking.objects.filter(
-            property=prop,
-            start_date__lt=end_date,
-            end_date__gte=start_date,
-            status__in=["confirmed", "completed"],
-        ).order_by("start_date")
+    elif text == "📷 Управление фото":
+        handle_manage_photos_start(chat_id)
 
-        import calendar
+    elif text == "🔙 Назад":
+        send_telegram_message(chat_id, "↩ Возврат в админ-меню")
 
-        month_name = calendar.month_name[month]
+        profile = _get_profile(chat_id)
+        profile.telegram_state["state"] = STATE_ADMIN_MENU
+        profile.save()
 
-        text = f"📋 *Бронирования - {month_name} {year}*\n"
-        text += f"🏠 {prop.name}\n\n"
-
-        if not bookings:
-            text += "Нет бронирований на этот период."
-        else:
-            for booking in bookings:
-                guest_name = booking.user.get_full_name() or booking.user.username
-                text += (
-                    f"• {booking.start_date.strftime('%d.%m')} - "
-                    f"{booking.end_date.strftime('%d.%m')}\n"
-                    f"  Гость: {guest_name}\n"
-                    f"  Сумма: {booking.total_price:,.0f} ₸\n\n"
-                )
-
-        keyboard = [
-            [KeyboardButton("📅 Назад к календарю")],
-            [KeyboardButton("🏠 Мои квартиры")],
-        ]
-
-        send_telegram_message(
-            chat_id,
-            text,
-            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
-        )
-
-    except Property.DoesNotExist:
-        send_telegram_message(chat_id, "Квартира не найдена.")
+    else:
+        send_telegram_message(chat_id, "⚠ Выберите действие из меню")
 
 
 @log_handler
@@ -2626,5 +2599,6 @@ def show_admin_panel_with_moderation(chat_id):
             input_field_placeholder="Выберите действие"
         ).to_dict()
     )
+
 
 

@@ -25,8 +25,15 @@ from .constants import (
     _get_profile,
     start_command_handler,
     STATE_AWAITING_CHECK_IN_TIME,
-    STATE_AWAITING_CHECK_OUT_TIME,  # ← новый импорт
+    STATE_AWAITING_CHECK_OUT_TIME,
+    STATE_ADMIN_MENU,
+    STATE_EDIT_PROPERTY_MENU,
+    STATE_WAITING_NEW_PRICE,
+    STATE_WAITING_NEW_DESCRIPTION,
+    STATE_WAITING_NEW_STATUS,
+    STATE_PHOTO_MANAGEMENT,
 )
+from .edit_handlers import save_new_price, save_new_description, save_new_status, save_new_photo
 
 from .. import settings
 from booking_bot.listings.models import (
@@ -64,7 +71,7 @@ from .admin_handlers import (
     handle_remove_admin,
     show_plan_fact,
     show_ko_factor_report,
-    handle_guest_review_text,
+    handle_guest_review_text, handle_edit_property_choice,
 )
 from ..core.models import AuditLog
 
@@ -74,7 +81,7 @@ logger = logging.getLogger(__name__)
 user_last_actions = defaultdict(list)
 
 
-def check_rate_limit(chat_id, max_actions=3, time_window=5):
+def check_rate_limit(chat_id, max_actions=5, time_window=3):
     """
     Проверяет, не превышает ли пользователь лимит действий.
     max_actions: максимум действий за time_window секунд
@@ -387,7 +394,6 @@ def message_handler(chat_id, text, update=None, context=None):
                     send_telegram_message(chat_id, "❌ Неверный формат. Используйте, например: ✏️ #1")
                 return
 
-
             # Обработка редактирования квартир
             elif state_data.get('state') == 'edit_property_menu':
                 from .admin_handlers import handle_edit_property_menu
@@ -494,8 +500,29 @@ def message_handler(chat_id, text, update=None, context=None):
         navigate_results(chat_id, profile, text)
         return
 
-    # Fallback
-    send_telegram_message(chat_id, "Используйте кнопки для навигации или /start.")
+    # --- Главное админ-меню редактирования квартиры ---
+    if state == STATE_EDIT_PROPERTY_MENU:
+        return handle_edit_property_choice(chat_id, text)
+
+    # --- Логика после выбора ---
+    elif state == "WAITING_NEW_PRICE":
+        return save_new_price(chat_id, text)
+
+    elif state == "WAITING_NEW_DESCRIPTION":
+        return save_new_description(chat_id, text)
+
+    elif state == "WAITING_NEW_STATUS":
+        return save_new_status(chat_id, text)
+
+    elif state == "PHOTO_MANAGEMENT":
+        return save_new_photo(chat_id, text)
+
+    else:
+        send_telegram_message(chat_id, "Я вас не понял, выберите действие из меню")
+        return STATE_ADMIN_MENU
+
+    # # Fallback
+    # send_telegram_message(chat_id, "Используйте кнопки для навигации или /start.")
 
 
 # Helper flows

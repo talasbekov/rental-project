@@ -289,11 +289,39 @@ def message_handler(chat_id, text, update=None, context=None):
             return
 
         if profile.role in ("admin", "super_admin"):
+            # ДОБАВЛЯЕМ ОБРАБОТКУ НАВИГАЦИИ ПО КВАРТИРАМ
+            if text.startswith("➡️ Далее (стр.") or text.startswith("⬅️ Назад (стр."):
+                import re
+                match = re.search(r'стр\.\s*(\d+)', text)
+                if match:
+                    page = int(match.group(1))
+                    show_admin_properties(chat_id, page=page)
+                    return
+                else:
+                    send_telegram_message(chat_id, "❌ Ошибка навигации")
+                    return
+
+            # ДОБАВЛЯЕМ ОБРАБОТКУ КНОПКИ СТРАНИЦЫ (для информации)
+            if text.startswith("📄"):
+                # Просто показываем текущую страницу заново
+                import re
+                match = re.search(r'(\d+)/\d+', text)
+                if match:
+                    page = int(match.group(1))
+                    show_admin_properties(chat_id, page=page)
+                    return
+
+            # Обработка кнопки доступности
             if text.startswith("📊 Доступность #"):
-                prop_id = int(text.split("#")[1])
-                from .admin_handlers import show_property_availability
-                show_property_availability(chat_id, prop_id)
-                return
+                try:
+                    prop_id = int(text.split("#")[1])
+                    from .admin_handlers import show_property_availability
+                    show_property_availability(chat_id, prop_id)
+                    return
+                except (ValueError, IndexError):
+                    send_telegram_message(chat_id, "❌ Неверный формат команды")
+                    return
+
             # Обработка переключения периодов в обычной статистике
             if state_data.get('state') == 'detailed_stats' and text in ["Неделя", "Месяц", "Квартал", "Год"]:
                 period_map = {
@@ -393,21 +421,32 @@ def message_handler(chat_id, text, update=None, context=None):
                 from .admin_handlers import handle_guest_review_start
                 handle_guest_review_start(chat_id, booking_id)
                 return
-            elif text.startswith("✏️ #"):
+            if text.startswith("✏️ #"):
                 try:
-                    # Берём часть после # и очищаем пробелы
-                    prop_id_str = text.split("#", 1)[1].strip()
-                    # Оставляем только цифры
-                    digits = ''.join(filter(str.isdigit, prop_id_str))
-                    if not digits:
-                        raise ValueError("no digits in input")
-                    prop_id = int(digits)
+                    # Извлекаем ID квартиры из текста
+                    parts = text.split("#", 1)
+                    if len(parts) > 1:
+                        # Берём часть после # и извлекаем первое число
+                        id_part = parts[1].strip()
+                        prop_id = None
 
-                    from .admin_handlers import handle_edit_property_start
-                    handle_edit_property_start(chat_id, prop_id)
-                except (IndexError, ValueError):
-                    send_telegram_message(chat_id, "❌ Неверный формат. Используйте, например: ✏️ #1")
-                return
+                        # Ищем первое число в строке
+                        import re
+                        match = re.search(r'(\d+)', id_part)
+                        if match:
+                            prop_id = int(match.group(1))
+
+                        if prop_id:
+                            from .admin_handlers import handle_edit_property_start
+                            handle_edit_property_start(chat_id, prop_id)
+                            return
+
+                    send_telegram_message(chat_id, "❌ Не удалось определить ID квартиры")
+                    return
+                except Exception as e:
+                    logger.error(f"Error parsing property edit command: {e}")
+                    send_telegram_message(chat_id, "❌ Ошибка обработки команды")
+                    return
 
             # Обработка редактирования квартир
             elif state_data.get('state') == 'edit_property_menu':
@@ -628,8 +667,28 @@ def select_rooms(chat_id, profile, text):
     show_search_results(chat_id, profile, offset=0)
 
 
-# booking_bot/telegram_bot/handlers.py
-# Исправляем функцию show_search_results
+@log_handler
+def handle_admin_properties_navigation(chat_id, text):
+    """Обработка навигации по квартирам админа"""
+    import re
+
+    # Обработка кнопок "Далее" и "Назад"
+    if text.startswith("➡️ Далее (стр.") or text.startswith("⬅️ Назад (стр."):
+        match = re.search(r'стр\.\s*(\d+)', text)
+        if match:
+            page = int(match.group(1))
+            show_admin_properties(chat_id, page=page)
+            return True
+
+    # Обработка кнопки текущей страницы (для информации)
+    if text.startswith("📄"):
+        match = re.search(r'(\d+)/\d+', text)
+        if match:
+            page = int(match.group(1))
+            show_admin_properties(chat_id, page=page)
+            return True
+
+    return False
 
 @log_handler
 def show_search_results(chat_id, profile, offset=0):

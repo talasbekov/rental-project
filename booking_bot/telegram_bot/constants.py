@@ -12,6 +12,8 @@ from booking_bot.users.models import UserProfile
 
 logger = logging.getLogger(__name__)
 
+PAGE_SIZE = 3
+
 STATE_MAIN_MENU = "main_menu"
 STATE_SELECT_CITY = "select_city"
 STATE_SELECT_DISTRICT = "select_district"

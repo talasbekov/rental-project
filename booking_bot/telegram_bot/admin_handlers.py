@@ -1,22 +1,14 @@
-import csv
 import logging
 import re
-import tempfile
 from datetime import date, timedelta
-from io import StringIO, BytesIO
 from math import ceil
 from typing import Optional
-
-from django.db.models import Sum, Count, Q, F, Avg, ExpressionWrapper, DurationField
-from django.core.files import File
-from telegram import KeyboardButton, ReplyKeyboardMarkup, InputFile
-from telegram.ext import CallbackContext
-
+from django.db.models import Sum, F, Avg, ExpressionWrapper, DurationField
+from telegram import KeyboardButton, ReplyKeyboardMarkup
 from booking_bot.users.models import UserProfile
 from booking_bot.listings.models import Property, City, District, PropertyPhoto
 from booking_bot.bookings.models import Booking
 from .constants import (
-    STATE_MAIN_MENU,
     STATE_ADMIN_ADD_PROPERTY,
     STATE_ADMIN_ADD_DESC,
     STATE_ADMIN_ADD_ADDRESS,
@@ -33,8 +25,7 @@ from .constants import (
     STATE_EDIT_PROPERTY_MENU,
     STATE_WAITING_NEW_PRICE,
     STATE_WAITING_NEW_DESCRIPTION,
-    STATE_WAITING_NEW_STATUS,
-    STATE_PHOTO_MANAGEMENT, STATE_ADMIN_MENU,
+    STATE_WAITING_NEW_STATUS, PAGE_SIZE,
 )
 
 from .utils import send_telegram_message, send_document
@@ -741,9 +732,8 @@ def show_admin_panel(chat_id):
         ).to_dict(),
     )
 
-
-PAGE_SIZE = 3
 NAV_PAGE_RE = re.compile(r"\(стр\.?\s*(\d+)\)")
+
 
 @log_handler
 def show_admin_properties(chat_id, page: int = 1):
@@ -778,7 +768,10 @@ def show_admin_properties(chat_id, page: int = 1):
     page = max(1, min(page, total_pages))  # защита от выхода за границы
 
     start = (page - 1) * PAGE_SIZE
-    page_props = qs[start : start + PAGE_SIZE]
+    page_props = qs[start: start + PAGE_SIZE]
+
+    # Логируем для отладки
+    logger.info(f"Admin properties: page={page}, total_pages={total_pages}, total={total}")
 
     lines = [
         "🏠 *Ваши квартиры:*\n",
@@ -796,18 +789,21 @@ def show_admin_properties(chat_id, page: int = 1):
         # остаёмся на Reply — две кнопки в строке
         keyboard.append([
             KeyboardButton(f"📊 Доступность #{prop.id}"),
-            KeyboardButton(f"✏️ #{prop.id} {prop.name}"),
+            KeyboardButton(f"✏️ #{prop.id} {prop.name[:20]}"),  # Ограничиваем длину названия
         ])
 
     # Навигация (Reply-текст с номером целевой страницы)
     if total_pages > 1:
         nav_row = []
         if page > 1:
-            nav_row.append(KeyboardButton(f"⬅️ Назад (стр. {page-1})"))
+            nav_row.append(KeyboardButton(f"⬅️ Назад (стр. {page - 1})"))
         nav_row.append(KeyboardButton(f"📄 {page}/{total_pages}"))
         if page < total_pages:
-            nav_row.append(KeyboardButton(f"➡️ Далее (стр. {page+1})"))
+            nav_row.append(KeyboardButton(f"➡️ Далее (стр. {page + 1})"))
         keyboard.append(nav_row)
+
+        # Логируем кнопки навигации для отладки
+        logger.info(f"Navigation buttons: {nav_row}")
 
     keyboard.append([KeyboardButton("🛠 Панель администратора")])
     keyboard.append([KeyboardButton("🧭 Главное меню")])
@@ -823,12 +819,31 @@ def show_admin_properties(chat_id, page: int = 1):
 # Обработчик текста с Reply-кнопок
 @log_handler
 def handle_admin_properties_input(chat_id, text: str):
+    """Обработчик ввода для страницы квартир админа"""
     # Пагинация
     if text.startswith("➡️ Далее") or text.startswith("⬅️ Назад"):
-        m = NAV_PAGE_RE.search(text)
-        next_page = int(m.group(1)) if m else 1
-        return show_admin_properties(chat_id, page=next_page)
-    return None
+        import re
+        match = re.search(r'стр\.\s*(\d+)', text)
+        if match:
+            next_page = int(match.group(1))
+            logger.info(f"Navigating to page {next_page}")
+            show_admin_properties(chat_id, page=next_page)
+            return True
+        else:
+            logger.error(f"Could not parse page number from: {text}")
+            send_telegram_message(chat_id, "❌ Ошибка навигации")
+            return True
+
+    # Информационная кнопка страницы
+    if text.startswith("📄"):
+        import re
+        match = re.search(r'(\d+)/\d+', text)
+        if match:
+            current_page = int(match.group(1))
+            show_admin_properties(chat_id, page=current_page)
+            return True
+
+    return False
 
 
 @log_handler

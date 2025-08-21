@@ -113,12 +113,27 @@ def message_handler(chat_id, text, update=None, context=None):
     state_data = profile.telegram_state or {}
     state = state_data.get("state", STATE_MAIN_MENU)
 
-    # обработка текста отзыва
-    if (profile.telegram_state or {}).get("state") == STATE_AWAITING_REVIEW_TEXT:
-        handle_review_text(chat_id, text)
+    if state == STATE_EDIT_PROPERTY_MENU:
+        handle_edit_property_choice(chat_id, text)
+        return
+    elif state == STATE_WAITING_NEW_PRICE:
+        save_new_price(chat_id, text)
+        return
+    elif state == STATE_WAITING_NEW_DESCRIPTION:
+        save_new_description(chat_id, text)
+        return
+    elif state == STATE_WAITING_NEW_STATUS:
+        save_new_status(chat_id, text)
+        return
+    elif state == STATE_PHOTO_MANAGEMENT:
+        save_new_photo(chat_id, text)
         return
 
-    if state == "review_rating":
+        # ===== ОБРАБОТКА ОТЗЫВОВ =====
+    if state == STATE_AWAITING_REVIEW_TEXT:
+        handle_review_text(chat_id, text)
+        return
+    elif state == "review_rating":
         handle_review_rating(chat_id, text)
         return
     elif state == "review_text":
@@ -500,29 +515,8 @@ def message_handler(chat_id, text, update=None, context=None):
         navigate_results(chat_id, profile, text)
         return
 
-    # --- Главное админ-меню редактирования квартиры ---
-    if state == STATE_EDIT_PROPERTY_MENU:
-        return handle_edit_property_choice(chat_id, text)
-
-    # --- Логика после выбора ---
-    elif state == "WAITING_NEW_PRICE":
-        return save_new_price(chat_id, text)
-
-    elif state == "WAITING_NEW_DESCRIPTION":
-        return save_new_description(chat_id, text)
-
-    elif state == "WAITING_NEW_STATUS":
-        return save_new_status(chat_id, text)
-
-    elif state == "PHOTO_MANAGEMENT":
-        return save_new_photo(chat_id, text)
-
-    else:
-        send_telegram_message(chat_id, "Я вас не понял, выберите действие из меню")
-        return STATE_ADMIN_MENU
-
-    # # Fallback
-    # send_telegram_message(chat_id, "Используйте кнопки для навигации или /start.")
+    # Fallback
+    send_telegram_message(chat_id, "Используйте кнопки для навигации или /start.")
 
 
 # Helper flows

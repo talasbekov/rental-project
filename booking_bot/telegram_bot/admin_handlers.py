@@ -36,8 +36,7 @@ from .constants import (
     STATE_WAITING_NEW_STATUS,
     STATE_PHOTO_MANAGEMENT, STATE_ADMIN_MENU,
 )
-from .edit_handlers import handle_edit_price_start, handle_edit_description_start, handle_edit_status_start, \
-    handle_manage_photos_start
+
 from .utils import send_telegram_message, send_document
 from ..settings import TELEGRAM_BOT_TOKEN
 
@@ -923,28 +922,83 @@ def show_property_availability(chat_id, property_id):
 @log_handler
 def handle_edit_property_choice(chat_id, text):
     """Обработка выбора в меню редактирования"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+    property_id = state_data.get('editing_property_id')
 
-    if text == "💰 Изменить цену":
-        handle_edit_price_start(chat_id)
+    if not property_id:
+        send_telegram_message(chat_id, "Ошибка: квартира не найдена.")
+        # Сбрасываем состояние
+        profile.telegram_state = {}
+        profile.save()
+        show_admin_properties(chat_id)
+        return
 
-    elif text == "📝 Изменить описание":
-        handle_edit_description_start(chat_id)
+    if text == "❌ Отмена":
+        profile.telegram_state = {}
+        profile.save()
+        show_admin_properties(chat_id)
+        return
 
-    elif text == "📊 Изменить статус":
-        handle_edit_status_start(chat_id)
-
-    elif text == "📷 Управление фото":
-        handle_manage_photos_start(chat_id)
-
-    elif text == "🔙 Назад":
-        send_telegram_message(chat_id, "↩ Возврат в админ-меню")
-
-        profile = _get_profile(chat_id)
-        profile.telegram_state["state"] = STATE_ADMIN_MENU
+    elif text == "💰 Изменить цену":
+        state_data['state'] = STATE_WAITING_NEW_PRICE
+        profile.telegram_state = state_data
         profile.save()
 
+        keyboard = [[KeyboardButton("❌ Отмена")]]
+        send_telegram_message(
+            chat_id,
+            "Введите новую цену за сутки (в тенге):",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard,
+                resize_keyboard=True,
+                input_field_placeholder="Например: 15000"
+            ).to_dict()
+        )
+
+    elif text == "📝 Изменить описание":
+        state_data['state'] = STATE_WAITING_NEW_DESCRIPTION
+        profile.telegram_state = state_data
+        profile.save()
+
+        keyboard = [[KeyboardButton("❌ Отмена")]]
+        send_telegram_message(
+            chat_id,
+            "Введите новое описание квартиры:",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard,
+                resize_keyboard=True,
+                input_field_placeholder="Новое описание..."
+            ).to_dict()
+        )
+
+    elif text == "📊 Изменить статус":
+        state_data['state'] = STATE_WAITING_NEW_STATUS
+        profile.telegram_state = state_data
+        profile.save()
+
+        keyboard = [
+            [KeyboardButton("Свободна")],
+            [KeyboardButton("На обслуживании")],
+            [KeyboardButton("❌ Отмена")]
+        ]
+        send_telegram_message(
+            chat_id,
+            "Выберите новый статус:",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        )
+
+    elif text == "📷 Управление фото":
+        send_telegram_message(
+            chat_id,
+            "Управление фотографиями пока в разработке.\n"
+            "Используйте веб-панель для изменения фотографий."
+        )
+        # Возвращаемся в меню редактирования
+        handle_edit_property_start(chat_id, property_id)
+
     else:
-        send_telegram_message(chat_id, "⚠ Выберите действие из меню")
+        send_telegram_message(chat_id, "⚠️ Выберите действие из меню")
 
 
 @log_handler

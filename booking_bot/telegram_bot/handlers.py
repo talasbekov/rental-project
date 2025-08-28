@@ -2578,10 +2578,9 @@ def notify_owner_about_cancellation(booking, reason_text):
         send_telegram_message(owner.profile.telegram_chat_id, text)
 
 
-# Добавить в show_user_bookings функцию кнопку отмены для активных броней
 @log_handler
 def show_user_bookings_with_cancel(chat_id, booking_type="active"):
-    """Показать бронирования с возможностью отмены"""
+    """Показать бронирования с возможностью отмены и оценки"""
     profile = _get_profile(chat_id)
 
     if booking_type == "active":
@@ -2589,6 +2588,11 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
             user=profile.user, status="confirmed", end_date__gte=date.today()
         ).order_by("start_date")
         title = "📊 *Текущие бронирования*"
+    elif booking_type == "completed":
+        bookings = Booking.objects.filter(
+            user=profile.user, status="completed"
+        ).order_by("-end_date")[:10]
+        title = "📋 *Завершенные бронирования*"
     else:
         bookings = Booking.objects.filter(
             user=profile.user, status__in=["completed", "cancelled"]
@@ -2596,7 +2600,13 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
         title = "📋 *История бронирований*"
 
     if not bookings:
-        text = f"{title}\n\nУ вас пока нет {'активных' if booking_type == 'active' else 'завершенных'} бронирований."
+        status_text = {
+            "active": "активных",
+            "completed": "завершенных",
+            "all": "завершенных"
+        }.get(booking_type, "завершенных")
+
+        text = f"{title}\n\nУ вас пока нет {status_text} бронирований."
         kb = [[KeyboardButton("🧭 Главное меню")]]
         send_telegram_message(
             chat_id,
@@ -2606,7 +2616,6 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
         return
 
     text = title + "\n\n"
-    buttons = []
 
     for b in bookings:
         emoji = {"confirmed": "✅", "completed": "✔️", "cancelled": "❌"}.get(
@@ -2618,19 +2627,50 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
             f"💰 {b.total_price} ₸\n"
         )
 
-        # Добавляем кнопку отмены для активных броней
-        if b.status == "confirmed" and b.is_cancellable():
-            text += f"Для отмены отправьте: /cancel_{b.id}\n"
-        # Добавляем кнопку продления для активных броней
+        # Для активных бронирований
         if b.status == "confirmed" and b.is_cancellable():
             text += f"Для отмены: /cancel_{b.id}\n"
-            # НОВОЕ: кнопка продления
-            if (b.end_date - date.today()).days <= 3:  # За 3 дня до выезда
+            # Кнопка продления за 3 дня до выезда
+            if (b.end_date - date.today()).days <= 3:
                 text += f"Для продления: /extend_{b.id}\n"
+
+        # НОВОЕ: Для завершенных бронирований - возможность оставить отзыв
+        if b.status == "completed":
+            # Проверяем, есть ли уже отзыв от этого пользователя
+            existing_review = Review.objects.filter(
+                property=b.property,
+                user=profile.user,
+                booking_id=b.id  # Связываем отзыв с конкретным бронированием
+            ).first()
+
+            if existing_review:
+                # Показываем существующий отзыв
+                stars = "⭐" * existing_review.rating
+                text += f"Ваша оценка: {stars} ({existing_review.rating}/5)\n"
+                if existing_review.text:
+                    text += f"Отзыв: {existing_review.text[:50]}...\n"
+                text += f"Редактировать: /edit_review_{b.id}\n"
+            else:
+                # Предлагаем оставить отзыв
+                text += f"💬 Оценить квартиру: /review_{b.id}\n"
 
         text += "\n"
 
-    kb = [[KeyboardButton("🧭 Главное меню")]]
+    # Кнопки переключения между типами бронирований
+    kb = []
+
+    if booking_type == "active":
+        kb.append([KeyboardButton("📋 Завершенные бронирования")])
+    elif booking_type == "completed":
+        kb.append([KeyboardButton("📊 Текущие бронирования")])
+    else:
+        kb.append([
+            KeyboardButton("📊 Текущие"),
+            KeyboardButton("📋 Завершенные")
+        ])
+
+    kb.append([KeyboardButton("🧭 Главное меню")])
+
     send_telegram_message(
         chat_id,
         text,

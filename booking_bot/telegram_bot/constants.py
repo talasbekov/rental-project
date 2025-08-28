@@ -59,6 +59,11 @@ STATE_PHOTO_ADD_URL = "photo_add_url"
 STATE_PHOTO_ADD_UPLOAD = "photo_add_upload"
 STATE_PHOTO_DELETE = "photo_delete"
 
+STATE_USER_REVIEW_RATING = "user_review_rating"
+STATE_USER_REVIEW_TEXT = "user_review_text"
+STATE_USER_REVIEW_PHOTOS = "user_review_photos"
+STATE_USER_REVIEW_UPLOADING = "user_review_uploading"
+
 
 def log_handler(func):
     def wrapper(*args, **kwargs):

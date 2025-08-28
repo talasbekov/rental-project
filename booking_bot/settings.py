@@ -261,6 +261,11 @@ AWS_S3_OBJECT_PARAMETERS = {
 
 # Celery beat schedule example tasks. Adjust schedules as needed.
 CELERY_BEAT_SCHEDULE = {
+    "review-request-enqueue-daily": {
+        "task": "booking_bot.bookings.tasks.enqueue_daily_review_requests",
+        "schedule": crontab(hour=12, minute=0),  # күн сайын 12:00
+        "options": {"queue": "default"},
+    },
     # Обработка уведомлений
     "process-notifications": {
         "task": "booking_bot.notifications.tasks.process_notification_queue",

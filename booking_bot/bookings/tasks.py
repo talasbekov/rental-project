@@ -5,11 +5,37 @@ from datetime import date, timedelta
 from django.utils import timezone
 import logging
 
+from booking_bot.bookings.models import Booking
 from booking_bot.listings.models import District, PropertyCalendarManager
 from booking_bot.settings import TELEGRAM_BOT_TOKEN
 
 logger = logging.getLogger(__name__)
 
+@shared_task
+def send_review_request(booking_id: int) -> None:
+    # нақты бір броньға шолу/отзыв сұрау жібереді
+    booking = Booking.objects.get(id=booking_id)
+    # ... мұнда хабарлама/почта/телеграм жіберу логикасы ...
+    booking.review_requested_at = timezone.now()
+    booking.save(update_fields=["review_requested_at"])
+
+@shared_task
+def enqueue_daily_review_requests() -> int:
+    """Күнде 12:00-де шақырылады: біткен, бірақ отзыв жіберілмеген броньдарды кезекке қояды."""
+    now = timezone.now()
+    # Мысал: кеше аяқталғандар
+    start = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    end   = start.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    qs = (Booking.objects
+          .filter(ends_at__range=(start, end),
+                  review_requested_at__isnull=True,
+                  status="completed"))  # өз шарттарыңызды қойыңыз
+
+    for b in qs:
+        send_review_request.delay(b.id)
+
+    return qs.count()
 
 @shared_task
 def cancel_expired_booking(booking_id):

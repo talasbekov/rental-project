@@ -77,6 +77,17 @@ from .admin_handlers import (
 )
 from ..core.models import AuditLog
 
+# В блоке импортов добавьте:
+from .user_review_handlers import (
+    handle_review_booking_command,
+    handle_edit_review_command,
+    handle_user_review_rating,
+    handle_user_review_text,
+    handle_user_review_photos,
+    handle_user_review_uploading,
+    handle_user_review_photo_upload,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +169,8 @@ def message_handler(chat_id, text, update=None, context=None):
         # Потом проверяем, это фото для отзыва
         elif handle_review_photo_upload(chat_id, update, context):
             return
+        elif handle_user_review_photo_upload(chat_id, update, context):
+            return
 
         # ===== ОБРАБОТКА ОТЗЫВОВ =====
     if state == STATE_AWAITING_REVIEW_TEXT:
@@ -201,8 +214,18 @@ def message_handler(chat_id, text, update=None, context=None):
                 else:
                     send_telegram_message(chat_id, "Использование: /debug_photos <ID>")
 
-
-    if handle_add_property_start(chat_id, text):
+    # Обработка состояний отзывов пользователей
+    if state == "user_review_rating":
+        handle_user_review_rating(chat_id, text)
+        return
+    elif state == "user_review_text":
+        handle_user_review_text(chat_id, text)
+        return
+    elif state == "user_review_photos":
+        handle_user_review_photos(chat_id, text)
+        return
+    elif state == "user_review_uploading":
+        handle_user_review_uploading(chat_id, text)
         return
 
     # Ловим варианты «Отмена», «Отменить» и «Главное меню»
@@ -225,6 +248,23 @@ def message_handler(chat_id, text, update=None, context=None):
             handle_extend_booking(chat_id, extend_id)
         except ValueError:
             send_telegram_message(chat_id, "Неверный формат команды продления.")
+        return
+
+    # Обработка команд отзывов
+    if text.startswith("/review_"):
+        try:
+            booking_id = int(text[len("/review_"):])
+            handle_review_booking_command(chat_id, booking_id)
+        except ValueError:
+            send_telegram_message(chat_id, "Неверный формат команды отзыва.")
+        return
+
+    if text.startswith("/edit_review_"):
+        try:
+            booking_id = int(text[len("/edit_review_"):])
+            handle_edit_review_command(chat_id, booking_id)
+        except ValueError:
+            send_telegram_message(chat_id, "Неверный формат команды редактирования отзыва.")
         return
 
     # Booking start handlers
@@ -2580,7 +2620,7 @@ def notify_owner_about_cancellation(booking, reason_text):
 
 @log_handler
 def show_user_bookings_with_cancel(chat_id, booking_type="active"):
-    """Показать бронирования с возможностью отмены и оценки"""
+    """Показать бронирования с возможностью отмены и оценки (улучшенная версия)"""
     profile = _get_profile(chat_id)
 
     if booking_type == "active":
@@ -2591,12 +2631,12 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
     elif booking_type == "completed":
         bookings = Booking.objects.filter(
             user=profile.user, status="completed"
-        ).order_by("-end_date")[:10]
+        ).order_by("-end_date")[:15]  # Увеличили лимит до 15
         title = "📋 *Завершенные бронирования*"
     else:
         bookings = Booking.objects.filter(
             user=profile.user, status__in=["completed", "cancelled"]
-        ).order_by("-created_at")[:10]
+        ).order_by("-created_at")[:15]
         title = "📋 *История бронирований*"
 
     if not bookings:
@@ -2607,7 +2647,13 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
         }.get(booking_type, "завершенных")
 
         text = f"{title}\n\nУ вас пока нет {status_text} бронирований."
-        kb = [[KeyboardButton("🧭 Главное меню")]]
+
+        # Предлагаем поиск квартир, если нет бронирований
+        kb = [
+            [KeyboardButton("🔍 Поиск квартир")],
+            [KeyboardButton("🧭 Главное меню")]
+        ]
+
         send_telegram_message(
             chat_id,
             text,
@@ -2617,58 +2663,115 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
 
     text = title + "\n\n"
 
-    for b in bookings:
+    for i, booking in enumerate(bookings, 1):
         emoji = {"confirmed": "✅", "completed": "✔️", "cancelled": "❌"}.get(
-            b.status, "•"
+            booking.status, "•"
         )
+
+        # Базовая информация о бронировании
         text += (
-            f"{emoji} *#{b.id} - {b.property.name}*\n"
-            f"📅 {b.start_date.strftime('%d.%m')} - {b.end_date.strftime('%d.%m.%Y')}\n"
-            f"💰 {b.total_price} ₸\n"
+            f"{emoji} *{i}. {booking.property.name}*\n"
+            f"   📅 {booking.start_date.strftime('%d.%m')} - {booking.end_date.strftime('%d.%m.%Y')}\n"
+            f"   💰 {booking.total_price:,.0f} ₸\n"
+            f"   🏠 #{booking.id}\n"
         )
 
         # Для активных бронирований
-        if b.status == "confirmed" and b.is_cancellable():
-            text += f"Для отмены: /cancel_{b.id}\n"
-            # Кнопка продления за 3 дня до выезда
-            if (b.end_date - date.today()).days <= 3:
-                text += f"Для продления: /extend_{b.id}\n"
+        if booking.status == "confirmed" and booking.is_cancellable():
+            days_to_checkin = (booking.start_date - date.today()).days
+            if days_to_checkin > 0:
+                text += f"   ⏰ До заезда: {days_to_checkin} дн.\n"
 
-        # НОВОЕ: Для завершенных бронирований - возможность оставить отзыв
-        if b.status == "completed":
+            text += f"   🚫 Отменить: /cancel_{booking.id}\n"
+
+            # Кнопка продления за 3 дня до выезда
+            days_to_checkout = (booking.end_date - date.today()).days
+            if 0 <= days_to_checkout <= 3:
+                text += f"   ➕ Продлить: /extend_{booking.id}\n"
+
+        # Для завершенных бронирований - возможность оставить отзыв
+        elif booking.status == "completed":
             # Проверяем, есть ли уже отзыв от этого пользователя
             existing_review = Review.objects.filter(
-                property=b.property,
+                property=booking.property,
                 user=profile.user,
-                booking_id=b.id  # Связываем отзыв с конкретным бронированием
+                booking_id=booking.id  # Связываем отзыв с конкретным бронированием
             ).first()
 
             if existing_review:
                 # Показываем существующий отзыв
                 stars = "⭐" * existing_review.rating
-                text += f"Ваша оценка: {stars} ({existing_review.rating}/5)\n"
+                text += f"   {stars} Ваша оценка: {existing_review.rating}/5\n"
+
                 if existing_review.text:
-                    text += f"Отзыв: {existing_review.text[:50]}...\n"
-                text += f"Редактировать: /edit_review_{b.id}\n"
+                    preview_text = existing_review.text[:40]
+                    if len(existing_review.text) > 40:
+                        preview_text += "..."
+                    text += f"   💬 «{preview_text}»\n"
+
+                # Проверяем, есть ли фото в отзыве
+                photo_count = ReviewPhoto.objects.filter(review=existing_review).count()
+                if photo_count > 0:
+                    text += f"   📷 Фотографий: {photo_count}\n"
+
+                text += f"   ✏️ Изменить: /edit_review_{booking.id}\n"
             else:
                 # Предлагаем оставить отзыв
-                text += f"💬 Оценить квартиру: /review_{b.id}\n"
+                days_since_checkout = (date.today() - booking.end_date).days
+                if days_since_checkout <= 30:  # Предлагаем оценить в течение 30 дней
+                    text += f"   ⭐ Оценить: /review_{booking.id}\n"
+                else:
+                    text += f"   ⭐ Оценить: /review_{booking.id} (поздний отзыв)\n"
+
+        # Для отмененных бронирований
+        elif booking.status == "cancelled":
+            if hasattr(booking, 'cancellation_reason') and booking.cancellation_reason:
+                text += f"   📝 Причина: {booking.cancellation_reason}\n"
 
         text += "\n"
+
+    # Добавляем счетчик и навигацию
+    total_bookings = Booking.objects.filter(
+        user=profile.user,
+        status="completed" if booking_type == "completed" else ["completed", "cancelled"]
+    ).count()
+
+    if booking_type == "completed" and total_bookings > 15:
+        text += f"📊 Показано последние 15 из {total_bookings} завершенных бронирований\n\n"
 
     # Кнопки переключения между типами бронирований
     kb = []
 
+    # Кнопки переключения
     if booking_type == "active":
         kb.append([KeyboardButton("📋 Завершенные бронирования")])
+
+        # Показываем статистику если есть завершенные
+        completed_count = Booking.objects.filter(user=profile.user, status="completed").count()
+        if completed_count > 0:
+            # Считаем средний рейтинг отзывов пользователя
+            user_reviews = Review.objects.filter(user=profile.user)
+            if user_reviews.exists():
+                avg_rating = user_reviews.aggregate(avg_rating=models.Avg('rating'))['avg_rating']
+                text += f"📈 Ваш средний рейтинг: {avg_rating:.1f}⭐ ({user_reviews.count()} отзывов)\n"
+
     elif booking_type == "completed":
         kb.append([KeyboardButton("📊 Текущие бронирования")])
+
+        # Статистика отзывов
+        user_reviews_count = Review.objects.filter(user=profile.user).count()
+        completed_count = bookings.count()
+        if completed_count > 0:
+            review_percentage = (user_reviews_count / completed_count) * 100
+            text += f"📝 Вы оставили {user_reviews_count} отзывов из {completed_count} поездок ({review_percentage:.0f}%)\n"
     else:
         kb.append([
             KeyboardButton("📊 Текущие"),
             KeyboardButton("📋 Завершенные")
         ])
 
+    # Общие кнопки
+    kb.append([KeyboardButton("🔍 Поиск квартир")])
     kb.append([KeyboardButton("🧭 Главное меню")])
 
     send_telegram_message(
@@ -2878,3 +2981,468 @@ def process_extend_payment(chat_id):
     except Exception as e:
         logger.error(f"Error extending booking: {e}")
         send_telegram_message(chat_id, "❌ Ошибка при продлении")
+
+
+# Добавить в telegram_bot/handlers.py после существующих обработчиков
+
+@log_handler
+def handle_review_booking_command(chat_id, booking_id):
+    """Обработчик команды /review_<booking_id> - создание отзыва"""
+    profile = _get_profile(chat_id)
+
+    try:
+        booking = Booking.objects.get(
+            id=booking_id,
+            user=profile.user,
+            status="completed"
+        )
+
+        # Проверяем, нет ли уже отзыва
+        existing_review = Review.objects.filter(
+            property=booking.property,
+            user=profile.user,
+            booking_id=booking.id
+        ).first()
+
+        if existing_review:
+            send_telegram_message(
+                chat_id,
+                f"У вас уже есть отзыв на эту квартиру.\n"
+                f"Для редактирования используйте: /edit_review_{booking_id}"
+            )
+            return
+
+        # Начинаем процесс создания отзыва
+        start_review_creation(chat_id, booking)
+
+    except Booking.DoesNotExist:
+        send_telegram_message(
+            chat_id,
+            "❌ Бронирование не найдено или еще не завершено"
+        )
+
+
+@log_handler
+def handle_edit_review_command(chat_id, booking_id):
+    """Обработчик команды /edit_review_<booking_id> - редактирование отзыва"""
+    profile = _get_profile(chat_id)
+
+    try:
+        booking = Booking.objects.get(
+            id=booking_id,
+            user=profile.user,
+            status="completed"
+        )
+
+        existing_review = Review.objects.filter(
+            property=booking.property,
+            user=profile.user,
+            booking_id=booking.id
+        ).first()
+
+        if not existing_review:
+            send_telegram_message(
+                chat_id,
+                f"❌ Отзыв не найден.\n"
+                f"Для создания нового отзыва используйте: /review_{booking_id}"
+            )
+            return
+
+        # Начинаем процесс редактирования
+        start_review_editing(chat_id, booking, existing_review)
+
+    except Booking.DoesNotExist:
+        send_telegram_message(
+            chat_id,
+            "❌ Бронирование не найдено"
+        )
+
+
+@log_handler
+def start_review_creation(chat_id, booking):
+    """Начать создание нового отзыва"""
+    profile = _get_profile(chat_id)
+
+    # Сохраняем состояние
+    profile.telegram_state = {
+        "state": "user_review_rating",
+        "review_booking_id": booking.id,
+        "review_property_id": booking.property.id,
+        "review_mode": "create"
+    }
+    profile.save()
+
+    text = (
+        f"⭐ *Оцените квартиру*\n\n"
+        f"🏠 {booking.property.name}\n"
+        f"📅 Ваше пребывание: {booking.start_date.strftime('%d.%m.%Y')} - "
+        f"{booking.end_date.strftime('%d.%m.%Y')}\n\n"
+        "Поставьте оценку от 1 до 5 звезд:"
+    )
+
+    keyboard = [
+        [KeyboardButton("⭐"), KeyboardButton("⭐⭐"), KeyboardButton("⭐⭐⭐")],
+        [KeyboardButton("⭐⭐⭐⭐"), KeyboardButton("⭐⭐⭐⭐⭐")],
+        [KeyboardButton("❌ Отмена")]
+    ]
+
+    send_telegram_message(
+        chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+    )
+
+
+@log_handler
+def start_review_editing(chat_id, booking, existing_review):
+    """Начать редактирование существующего отзыва"""
+    profile = _get_profile(chat_id)
+
+    # Сохраняем состояние с ID существующего отзыва
+    profile.telegram_state = {
+        "state": "user_review_rating",
+        "review_booking_id": booking.id,
+        "review_property_id": booking.property.id,
+        "review_mode": "edit",
+        "existing_review_id": existing_review.id
+    }
+    profile.save()
+
+    current_stars = "⭐" * existing_review.rating
+
+    text = (
+        f"✏️ *Редактирование отзыва*\n\n"
+        f"🏠 {booking.property.name}\n"
+        f"📅 Ваше пребывание: {booking.start_date.strftime('%d.%m.%Y')} - "
+        f"{booking.end_date.strftime('%d.%m.%Y')}\n\n"
+        f"Текущая оценка: {current_stars} ({existing_review.rating}/5)\n"
+        f"Текущий отзыв: {existing_review.text[:100] if existing_review.text else 'Без комментария'}...\n\n"
+        "Поставьте новую оценку:"
+    )
+
+    keyboard = [
+        [KeyboardButton("⭐"), KeyboardButton("⭐⭐"), KeyboardButton("⭐⭐⭐")],
+        [KeyboardButton("⭐⭐⭐⭐"), KeyboardButton("⭐⭐⭐⭐⭐")],
+        [KeyboardButton("🗑 Удалить отзыв"), KeyboardButton("❌ Отмена")]
+    ]
+
+    send_telegram_message(
+        chat_id,
+        text,
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+    )
+
+
+@log_handler
+def handle_user_review_rating(chat_id, text):
+    """Обработка выбора рейтинга пользователем"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+
+    if text == "❌ Отмена":
+        profile.telegram_state = {}
+        profile.save()
+        show_user_bookings_with_cancel(chat_id, "completed")
+        return
+
+    # Обработка удаления отзыва
+    if text == "🗑 Удалить отзыв":
+        existing_review_id = state_data.get('existing_review_id')
+        if existing_review_id:
+            try:
+                review = Review.objects.get(id=existing_review_id)
+                property_name = review.property.name
+                review.delete()
+
+                send_telegram_message(
+                    chat_id,
+                    f"✅ Отзыв о квартире «{property_name}» удален"
+                )
+            except Review.DoesNotExist:
+                send_telegram_message(chat_id, "❌ Отзыв не найден")
+
+        profile.telegram_state = {}
+        profile.save()
+        show_user_bookings_with_cancel(chat_id, "completed")
+        return
+
+    # Обработка рейтинга
+    rating = text.count("⭐")
+    if rating < 1 or rating > 5:
+        send_telegram_message(
+            chat_id,
+            "Пожалуйста, выберите оценку от 1 до 5 звезд"
+        )
+        return
+
+    # Сохраняем рейтинг и переходим к тексту
+    state_data["review_rating"] = rating
+    state_data["state"] = "user_review_text"
+    profile.telegram_state = state_data
+    profile.save()
+
+    booking_id = state_data.get("review_booking_id")
+    booking = Booking.objects.get(id=booking_id)
+
+    text_msg = (
+        f"Оценка: {'⭐' * rating}\n\n"
+        f"Напишите отзыв о квартире «{booking.property.name}»\n"
+        f"или нажмите 'Пропустить текст':"
+    )
+
+    keyboard = [
+        [KeyboardButton("Пропустить текст")],
+        [KeyboardButton("❌ Отмена")]
+    ]
+
+    send_telegram_message(
+        chat_id,
+        text_msg,
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard,
+            resize_keyboard=True,
+            input_field_placeholder="Напишите ваш отзыв..."
+        ).to_dict()
+    )
+
+
+@log_handler
+def handle_user_review_text(chat_id, text):
+    """Обработка текста отзыва пользователя"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+
+    if text == "❌ Отмена":
+        profile.telegram_state = {}
+        profile.save()
+        show_user_bookings_with_cancel(chat_id, "completed")
+        return
+
+    if text == "Пропустить текст":
+        text = ""
+
+    # Сохраняем текст и переходим к фото
+    state_data["review_text"] = text
+    state_data["state"] = "user_review_photos"
+    profile.telegram_state = state_data
+    profile.save()
+
+    text_msg = (
+        "📷 Хотите добавить фотографии к отзыву?\n"
+        "Можете отправить до 3 фотографий или пропустить этот шаг."
+    )
+
+    keyboard = [
+        [KeyboardButton("📷 Добавить фото")],
+        [KeyboardButton("✅ Сохранить без фото")],
+        [KeyboardButton("❌ Отмена")]
+    ]
+
+    send_telegram_message(
+        chat_id,
+        text_msg,
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+    )
+
+
+@log_handler
+def handle_user_review_photos(chat_id, text):
+    """Обработка выбора добавления фото к отзыву"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+
+    if text == "❌ Отмена":
+        profile.telegram_state = {}
+        profile.save()
+        show_user_bookings_with_cancel(chat_id, "completed")
+        return
+
+    if text == "✅ Сохранить без фото":
+        save_user_review(chat_id)
+        return
+
+    if text == "📷 Добавить фото":
+        state_data["state"] = "user_review_uploading"
+        state_data["review_photos"] = []
+        profile.telegram_state = state_data
+        profile.save()
+
+        keyboard = [
+            [KeyboardButton("✅ Завершить загрузку")],
+            [KeyboardButton("❌ Отмена")]
+        ]
+
+        send_telegram_message(
+            chat_id,
+            "📷 Отправьте фотографии (до 3 штук).\n"
+            "После загрузки всех фото нажмите '✅ Завершить загрузку'",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        )
+
+
+@log_handler
+def handle_user_review_photo_upload(chat_id, update, context):
+    """Обработка загрузки фото к отзыву пользователя"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+
+    if state_data.get("state") != "user_review_uploading":
+        return False
+
+    photos = state_data.get("review_photos", [])
+    if len(photos) >= 3:
+        send_telegram_message(
+            chat_id,
+            "Максимум 3 фотографии. Нажмите '✅ Завершить загрузку'"
+        )
+        return True
+
+    if update.message and update.message.photo:
+        # Берем фото лучшего качества
+        photo = max(update.message.photo, key=lambda p: getattr(p, 'file_size', 0) or 0)
+        photos.append(photo.file_id)
+        state_data["review_photos"] = photos
+        profile.telegram_state = state_data
+        profile.save()
+
+        send_telegram_message(
+            chat_id,
+            f"📷 Фото {len(photos)}/3 загружено.\n"
+            f"{'Можете добавить еще или ' if len(photos) < 3 else ''}"
+            f"нажмите '✅ Завершить загрузку'"
+        )
+        return True
+
+    return False
+
+
+@log_handler
+def handle_user_review_uploading(chat_id, text):
+    """Обработка завершения загрузки фото"""
+    profile = _get_profile(chat_id)
+
+    if text == "✅ Завершить загрузку":
+        save_user_review(chat_id)
+    elif text == "❌ Отмена":
+        profile.telegram_state = {}
+        profile.save()
+        show_user_bookings_with_cancel(chat_id, "completed")
+
+
+@log_handler
+def save_user_review(chat_id):
+    """Сохранение отзыва пользователя"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+
+    booking_id = state_data.get("review_booking_id")
+    property_id = state_data.get("review_property_id")
+    rating = state_data.get("review_rating", 5)
+    text = state_data.get("review_text", "")
+    photo_ids = state_data.get("review_photos", [])
+    review_mode = state_data.get("review_mode", "create")
+    existing_review_id = state_data.get("existing_review_id")
+
+    try:
+        booking = Booking.objects.get(id=booking_id)
+        property_obj = Property.objects.get(id=property_id)
+
+        if review_mode == "edit" and existing_review_id:
+            # Обновляем существующий отзыв
+            review = Review.objects.get(id=existing_review_id)
+            review.rating = rating
+            review.text = text
+            review.save()
+
+            # Удаляем старые фото отзыва
+            ReviewPhoto.objects.filter(review=review).delete()
+
+            action_text = "обновлен"
+        else:
+            # Создаем новый отзыв
+            review = Review.objects.create(
+                property=property_obj,
+                user=profile.user,
+                rating=rating,
+                text=text,
+                booking_id=booking_id  # Связываем с конкретным бронированием
+            )
+            action_text = "сохранен"
+
+        # Добавляем фото если есть
+        for file_id in photo_ids:
+            try:
+                # Получаем URL фото из Telegram
+                bot_token = settings.TELEGRAM_BOT_TOKEN
+                import requests
+
+                file_response = requests.get(
+                    f"https://api.telegram.org/bot{bot_token}/getFile",
+                    params={"file_id": file_id}
+                )
+
+                if file_response.status_code == 200:
+                    file_path = file_response.json()["result"]["file_path"]
+                    file_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+
+                    ReviewPhoto.objects.create(
+                        review=review,
+                        image_url=file_url
+                    )
+            except Exception as e:
+                logger.error(f"Error saving review photo: {e}")
+
+        # Отправляем подтверждение
+        text_msg = (
+            f"✅ Отзыв {action_text}!\n\n"
+            f"🏠 Квартира: {property_obj.name}\n"
+            f"⭐ Оценка: {'⭐' * rating} ({rating}/5)\n"
+        )
+
+        if text:
+            text_msg += f"💬 Текст: {text[:100]}{'...' if len(text) > 100 else ''}\n"
+
+        if photo_ids:
+            text_msg += f"📷 Фотографий: {len(photo_ids)}\n"
+
+        text_msg += "\nСпасибо за ваш отзыв!"
+
+        keyboard = [
+            [KeyboardButton("📋 Мои бронирования")],
+            [KeyboardButton("🧭 Главное меню")]
+        ]
+
+        send_telegram_message(
+            chat_id,
+            text_msg,
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        )
+
+        # Уведомляем владельца о новом отзыве
+        owner = property_obj.owner
+        if hasattr(owner, 'profile') and owner.profile.telegram_chat_id:
+            owner_text = (
+                f"⭐ Новый отзыв о вашей квартире!\n\n"
+                f"🏠 {property_obj.name}\n"
+                f"⭐ Оценка: {'⭐' * rating} ({rating}/5)\n"
+                f"👤 От: {profile.user.first_name or 'Гость'}\n"
+            )
+
+            if text:
+                owner_text += f"💬 {text}\n"
+
+            send_telegram_message(owner.profile.telegram_chat_id, owner_text)
+
+    except Exception as e:
+        logger.error(f"Error saving user review: {e}", exc_info=True)
+        send_telegram_message(
+            chat_id,
+            "❌ Ошибка при сохранении отзыва. Попробуйте позже."
+        )
+
+    # Очищаем состояние
+    profile.telegram_state = {}
+    profile.save()
+
+    # Возвращаемся к списку бронирований
+    show_user_bookings_with_cancel(chat_id, "completed")

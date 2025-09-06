@@ -1,0 +1,116 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "booking_bot"
+version = "1.0.0"
+description = "ЖильеGO Telegram bot for apartment rentals"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+    migrations
+    | \.venv
+    | __pycache__
+    | \.git
+    | \.tox
+    | build
+    | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+known_django = "django"
+known_first_party = "booking_bot"
+sections = ["FUTURE", "STDLIB", "DJANGO", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+skip_glob = ["migrations/*", ".venv/*"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["mypy_django_plugin.main"]
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+warn_unreachable = true
+strict_equality = true
+show_error_codes = true
+exclude = [
+    "migrations/",
+    "venv/",
+    ".venv/",
+    "__pycache__/",
+    "staticfiles/"
+]
+
+[tool.django-stubs]
+django_settings_module = "booking_bot.settings"
+
+[tool.flake8]
+max-line-length = 100
+extend-ignore = ["E203", "W503", "E501"]
+exclude = [
+    "migrations",
+    ".venv",
+    "__pycache__",
+    ".git",
+    ".tox",
+    "build",
+    "dist"
+]
+per-file-ignores = [
+    "__init__.py:F401"
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "booking_bot.settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+testpaths = ["booking_bot"]
+addopts = [
+    "--verbose",
+    "--tb=short",
+    "--strict-markers",
+    "--disable-warnings"
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests"
+]
+
+[tool.coverage.run]
+source = "booking_bot"
+omit = [
+    "*/migrations/*",
+    "*/venv/*",
+    "*/.venv/*",
+    "*/tests/*",
+    "manage.py",
+    "*/settings/*",
+    "*/__pycache__/*"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError"
+]

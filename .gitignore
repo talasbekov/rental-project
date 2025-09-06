@@ -5,8 +5,32 @@ db.sqlite3
 *.log
 staticfiles/
 media/
-db.sqlite3
 .env
+
+# Documentation
 /docs
 docs/
-migrations/
+
+# Migration cache files only, keep migration files
+*/migrations/__pycache__/
+*/migrations/*.pyc
+
+# Development tools
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak

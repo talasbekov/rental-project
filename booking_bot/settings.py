@@ -24,7 +24,7 @@ def get_env(var_name: str, default=None, required: bool = False):
 
 # SECURITY
 SECRET_KEY = get_env("DJANGO_SECRET_KEY", required=True)
-DEBUG = get_env("DJANGO_DEBUG", "False").lower() == "False"
+DEBUG = get_env("DJANGO_DEBUG", "False").lower() == "true"
 
 # ИСПРАВЛЕНИЕ: Более безопасная настройка ALLOWED_HOSTS
 allowed_hosts_env = get_env("DJANGO_ALLOWED_HOSTS", "")
@@ -199,7 +199,7 @@ else:
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = "DENY"
     SECURE_HSTS_SECONDS = 31536000
-    SECURE_HSTS_INCLUDE_SUBDOMАINS = True
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_SSL_REDIRECT = get_env("SECURE_SSL_REDIRECT", "True").lower() == "true"
 

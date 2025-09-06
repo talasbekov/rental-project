@@ -571,6 +571,13 @@ def handle_photo_management_states(chat_id, text, update, context):
     # Логируем для отладки
     logger.info(f"Photo management state: '{state}', text: '{text}'")
 
+    # Универсальная обработка кнопки "Назад к редактированию"
+    if text == "🔙 Назад к редактированию":
+        property_id = state_data.get("editing_property_id")
+        if property_id:
+            handle_edit_property_start(chat_id, property_id)
+            return True
+
     # Основное меню управления фото
     if state == STATE_PHOTO_MANAGEMENT:
         save_new_photo(chat_id, text)

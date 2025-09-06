@@ -2,8 +2,8 @@
 # Install with: pip install -r requirements-dev.txt
 
 # Type checking
-mypy==1.8.0
-django-stubs[compatible-mypy]==4.2.7
+mypy==1.7.1
+django-stubs==4.2.7
 types-requests==2.32.0.20240914
 types-redis==4.6.0.20240903
 types-pillow==10.2.0.20240423
@@ -13,7 +13,7 @@ black==23.12.1
 isort==5.13.2
 
 # Linting
-flake8==7.0.0
+flake8==6.1.0
 flake8-django==1.4.0
 
 # Pre-commit hooks

@@ -60,19 +60,7 @@ services:
 
   web:
     build: .
-    command: >
-      sh -c "
-        until pg_isready -h db -U $$POSTGRES_USER -d $$POSTGRES_DB; do
-          echo 'Waiting for database…'; sleep 2;
-        done &&
-        python manage.py migrate --noinput &&
-        python manage.py collectstatic --noinput &&
-        exec gunicorn booking_bot.wsgi:application
-          --bind 0.0.0.0:8000
-          --workers 3
-          --timeout 120
-          --access-logfile -
-      "
+    command: ["bash","-lc","until pg_isready -h db -U $POSTGRES_USER -d $POSTGRES_DB; do echo 'Waiting for database…'; sleep 2; done && python manage.py migrate --noinput && python manage.py collectstatic --noinput && exec gunicorn booking_bot.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120 --access-logfile -"]
     volumes:
       - .:/app
     env_file: .env

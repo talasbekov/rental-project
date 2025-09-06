@@ -27,7 +27,7 @@ def handle_review_booking_command(chat_id, booking_id):
             status="completed"
         )
 
-        # Проверяем, нет ли уже отзыва
+        # Проверяем, нет ли уже отзыва для этого конкретного бронирования
         existing_review = Review.objects.filter(
             property=booking.property,
             user=profile.user,
@@ -35,10 +35,30 @@ def handle_review_booking_command(chat_id, booking_id):
         ).first()
 
         if existing_review:
+            # Предлагаем редактировать существующий отзыв
+            text = (
+                f"📝 У вас уже есть отзыв на эту квартиру.\n\n"
+                f"⭐ Оценка: {'⭐' * existing_review.rating}\n"
+                f"💬 Текст: {existing_review.text[:100] if existing_review.text else 'Без комментария'}...\n\n"
+                f"Хотите изменить отзыв?"
+            )
+
+            keyboard = [
+                [KeyboardButton("✏️ Редактировать")],
+                [KeyboardButton("❌ Отмена")]
+            ]
+
+            profile.telegram_state = {
+                "state": "confirm_edit_review",
+                "review_booking_id": booking_id,
+                "existing_review_id": existing_review.id
+            }
+            profile.save()
+
             send_telegram_message(
                 chat_id,
-                f"У вас уже есть отзыв на эту квартиру.\n"
-                f"Для редактирования используйте: /edit_review_{booking_id}"
+                text,
+                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
             )
             return
 
@@ -48,7 +68,8 @@ def handle_review_booking_command(chat_id, booking_id):
     except Booking.DoesNotExist:
         send_telegram_message(
             chat_id,
-            "❌ Бронирование не найдено или еще не завершено"
+            "❌ Бронирование не найдено или еще не завершено.\n"
+            "Оценить можно только завершенные бронирования."
         )
 
 

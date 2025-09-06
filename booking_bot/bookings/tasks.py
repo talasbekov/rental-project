@@ -638,3 +638,48 @@ def check_property_updates_needed():
                     )
 
     return True
+
+
+@shared_task
+def send_review_reminder():
+    """Напоминание об оценке квартиры через 1 день после выезда"""
+    from booking_bot.bookings.models import Booking
+    from booking_bot.listings.models import Review
+    from booking_bot.telegram_bot.utils import send_telegram_message
+    from datetime import date, timedelta
+
+    yesterday = date.today() - timedelta(days=1)
+
+    # Находим вчерашние выезды без отзывов
+    bookings = Booking.objects.filter(
+        end_date=yesterday,
+        status="completed"
+    ).select_related('property', 'user__profile')
+
+    for booking in bookings:
+        # Проверяем, нет ли уже отзыва
+        if Review.objects.filter(
+                property=booking.property,
+                user=booking.user,
+                booking_id=booking.id
+        ).exists():
+            continue
+
+        # Отправляем напоминание
+        if hasattr(booking.user, 'profile') and booking.user.profile.telegram_chat_id:
+            text = (
+                f"⭐ *Оцените ваше пребывание!*\n\n"
+                f"Вчера закончилось ваше проживание в:\n"
+                f"🏠 {booking.property.name}\n\n"
+                f"Поделитесь впечатлениями и помогите другим гостям!\n"
+                f"Нажмите для оценки: /review_{booking.id}"
+            )
+
+            send_telegram_message(
+                booking.user.profile.telegram_chat_id,
+                text
+            )
+
+            logger.info(f"Review reminder sent for booking {booking.id}")
+
+    return bookings.count()

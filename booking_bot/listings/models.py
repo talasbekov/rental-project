@@ -95,11 +95,6 @@ class Property(models.Model):
         null=True, blank=True, verbose_name="Инструкции по заселению"
     )
 
-    # Контакты
-    owner_phone = models.CharField(
-        max_length=20, null=True, blank=True, verbose_name="Телефон владельца/риелтора"
-    )
-
     # Владелец и цена
     owner = models.ForeignKey(
         User,
@@ -404,14 +399,14 @@ class Review(models.Model):
     )
     user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name="reviews"
-    )  # User who wrote the review
+    )
     rating = models.PositiveIntegerField(
         choices=[(i, str(i)) for i in range(1, 6)]
-    )  # 1 to 5 stars
+    )
     text = models.TextField(
         blank=True
-    )  # Review text can be optional if only rating is given
-    booking_id = models.IntegerField(null=True, blank=True)
+    )
+    booking_id = models.IntegerField(null=True, blank=True)  # Связь с конкретным бронированием
     is_approved = models.BooleanField(default=True, verbose_name="Одобрен администратором")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -420,10 +415,9 @@ class Review(models.Model):
         return f"Review for {self.property.name} by {self.user.username} - {self.rating} stars"
 
     class Meta:
-        unique_together = (
-            "property",
-            "user",
-        )  # Assuming one review per user per property
+        # Изменить unique_together чтобы разрешить несколько отзывов от одного пользователя
+        # но только один отзыв на каждое бронирование
+        unique_together = ("user", "property", "booking_id")
         ordering = ["-created_at"]
 
 

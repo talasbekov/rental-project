@@ -2620,35 +2620,38 @@ def notify_owner_about_cancellation(booking, reason_text):
 
 @log_handler
 def show_user_bookings_with_cancel(chat_id, booking_type="active"):
-    """Показать бронирования с возможностью отмены и оценки (улучшенная версия)"""
+    """Показать бронирования с возможностью отмены и оценки"""
     profile = _get_profile(chat_id)
 
     if booking_type == "active":
         bookings = Booking.objects.filter(
-            user=profile.user, status="confirmed", end_date__gte=date.today()
-        ).order_by("start_date")
+            user=profile.user,
+            status="confirmed",
+            end_date__gte=date.today()
+        ).select_related('property', 'property__district__city').order_by("start_date")
         title = "📊 *Текущие бронирования*"
     elif booking_type == "completed":
         bookings = Booking.objects.filter(
-            user=profile.user, status="completed"
-        ).order_by("-end_date")[:15]  # Увеличили лимит до 15
+            user=profile.user,
+            status="completed"
+        ).select_related('property', 'property__district__city').order_by("-end_date")[:20]
         title = "📋 *Завершенные бронирования*"
     else:
         bookings = Booking.objects.filter(
-            user=profile.user, status__in=["completed", "cancelled"]
-        ).order_by("-created_at")[:15]
+            user=profile.user,
+            status__in=["completed", "cancelled"]
+        ).select_related('property', 'property__district__city').order_by("-created_at")[:20]
         title = "📋 *История бронирований*"
 
     if not bookings:
         status_text = {
             "active": "активных",
             "completed": "завершенных",
-            "all": "завершенных"
-        }.get(booking_type, "завершенных")
+            "all": ""
+        }.get(booking_type, "")
 
         text = f"{title}\n\nУ вас пока нет {status_text} бронирований."
 
-        # Предлагаем поиск квартир, если нет бронирований
         kb = [
             [KeyboardButton("🔍 Поиск квартир")],
             [KeyboardButton("🧭 Главное меню")]
@@ -2671,17 +2674,17 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
         # Базовая информация о бронировании
         text += (
             f"{emoji} *{i}. {booking.property.name}*\n"
-            f"   📅 {booking.start_date.strftime('%d.%m')} - {booking.end_date.strftime('%d.%m.%Y')}\n"
+            f"   📍 {booking.property.district.city.name if booking.property.district else 'Город не указан'}\n"
+            f"   📅 {booking.start_date.strftime('%d.%m.%Y')} - {booking.end_date.strftime('%d.%m.%Y')}\n"
             f"   💰 {booking.total_price:,.0f} ₸\n"
-            f"   🏠 #{booking.id}\n"
+            f"   🏠 Номер брони: #{booking.id}\n"
         )
 
-        # Для активных бронирований
+        # Для активных бронирований - возможность отмены
         if booking.status == "confirmed" and booking.is_cancellable():
             days_to_checkin = (booking.start_date - date.today()).days
             if days_to_checkin > 0:
                 text += f"   ⏰ До заезда: {days_to_checkin} дн.\n"
-
             text += f"   🚫 Отменить: /cancel_{booking.id}\n"
 
             # Кнопка продления за 3 дня до выезда
@@ -2691,21 +2694,21 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
 
         # Для завершенных бронирований - возможность оставить отзыв
         elif booking.status == "completed":
-            # Проверяем, есть ли уже отзыв от этого пользователя
+            # Проверяем, есть ли уже отзыв от этого пользователя для этого бронирования
             existing_review = Review.objects.filter(
                 property=booking.property,
                 user=profile.user,
-                booking_id=booking.id  # Связываем отзыв с конкретным бронированием
+                booking_id=booking.id
             ).first()
 
             if existing_review:
                 # Показываем существующий отзыв
                 stars = "⭐" * existing_review.rating
-                text += f"   {stars} Ваша оценка: {existing_review.rating}/5\n"
+                text += f"   📝 *Ваша оценка: {stars}*\n"
 
                 if existing_review.text:
-                    preview_text = existing_review.text[:40]
-                    if len(existing_review.text) > 40:
+                    preview_text = existing_review.text[:50]
+                    if len(existing_review.text) > 50:
                         preview_text += "..."
                     text += f"   💬 «{preview_text}»\n"
 
@@ -2714,65 +2717,71 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
                 if photo_count > 0:
                     text += f"   📷 Фотографий: {photo_count}\n"
 
-                text += f"   ✏️ Изменить: /edit_review_{booking.id}\n"
+                text += f"   ✏️ Редактировать отзыв: /edit_review_{booking.id}\n"
             else:
                 # Предлагаем оставить отзыв
                 days_since_checkout = (date.today() - booking.end_date).days
-                if days_since_checkout <= 30:  # Предлагаем оценить в течение 30 дней
-                    text += f"   ⭐ Оценить: /review_{booking.id}\n"
+
+                # Показываем более активное предложение оценить
+                if days_since_checkout <= 7:
+                    text += f"   ⭐ *Оцените квартиру!* /review_{booking.id}\n"
+                    text += f"   💡 _Поделитесь впечатлениями_\n"
+                elif days_since_checkout <= 30:
+                    text += f"   ⭐ Оставить отзыв: /review_{booking.id}\n"
                 else:
-                    text += f"   ⭐ Оценить: /review_{booking.id} (поздний отзыв)\n"
+                    text += f"   ⭐ Можно оценить: /review_{booking.id}\n"
 
         # Для отмененных бронирований
         elif booking.status == "cancelled":
-            if hasattr(booking, 'cancellation_reason') and booking.cancellation_reason:
-                text += f"   📝 Причина: {booking.cancellation_reason}\n"
+            if booking.cancel_reason:
+                reason_display = {
+                    "changed_plans": "Изменились планы",
+                    "found_better": "Нашел лучший вариант",
+                    "too_expensive": "Слишком дорого",
+                    "payment_issues": "Проблемы с оплатой",
+                    "wrong_dates": "Ошибка в датах",
+                    "emergency": "Форс-мажор",
+                    "owner_cancelled": "Отменено владельцем",
+                    "no_response": "Нет ответа от владельца",
+                    "other": "Другая причина"
+                }.get(booking.cancel_reason, booking.cancel_reason)
+                text += f"   📝 Причина: {reason_display}\n"
 
         text += "\n"
 
-    # Добавляем счетчик и навигацию
-    total_bookings = Booking.objects.filter(
-        user=profile.user,
-        status="completed" if booking_type == "completed" else ["completed", "cancelled"]
-    ).count()
+    # Добавляем статистику отзывов
+    if booking_type == "completed":
+        # Считаем статистику отзывов пользователя
+        user_reviews_count = Review.objects.filter(user=profile.user).count()
+        completed_count = Booking.objects.filter(
+            user=profile.user,
+            status="completed"
+        ).count()
 
-    if booking_type == "completed" and total_bookings > 15:
-        text += f"📊 Показано последние 15 из {total_bookings} завершенных бронирований\n\n"
-
-    # Кнопки переключения между типами бронирований
-    kb = []
-
-    # Кнопки переключения
-    if booking_type == "active":
-        kb.append([KeyboardButton("📋 Завершенные бронирования")])
-
-        # Показываем статистику если есть завершенные
-        completed_count = Booking.objects.filter(user=profile.user, status="completed").count()
         if completed_count > 0:
-            # Считаем средний рейтинг отзывов пользователя
+            review_percentage = (user_reviews_count / completed_count) * 100
+            text += f"\n📊 *Статистика отзывов:*\n"
+            text += f"Вы оценили {user_reviews_count} из {completed_count} квартир ({review_percentage:.0f}%)\n"
+
+            # Средний рейтинг отзывов пользователя
             user_reviews = Review.objects.filter(user=profile.user)
             if user_reviews.exists():
-                avg_rating = user_reviews.aggregate(avg_rating=models.Avg('rating'))['avg_rating']
-                text += f"📈 Ваш средний рейтинг: {avg_rating:.1f}⭐ ({user_reviews.count()} отзывов)\n"
+                from django.db.models import Avg
+                avg_rating = user_reviews.aggregate(avg_rating=Avg('rating'))['avg_rating']
+                text += f"Ваш средний рейтинг: {'⭐' * int(avg_rating)} ({avg_rating:.1f})\n"
 
+    # Кнопки переключения
+    kb = []
+
+    if booking_type == "active":
+        kb.append([KeyboardButton("📋 Завершенные бронирования")])
     elif booking_type == "completed":
         kb.append([KeyboardButton("📊 Текущие бронирования")])
 
-        # Статистика отзывов
-        user_reviews_count = Review.objects.filter(user=profile.user).count()
-        completed_count = bookings.count()
-        if completed_count > 0:
-            review_percentage = (user_reviews_count / completed_count) * 100
-            text += f"📝 Вы оставили {user_reviews_count} отзывов из {completed_count} поездок ({review_percentage:.0f}%)\n"
-    else:
-        kb.append([
-            KeyboardButton("📊 Текущие"),
-            KeyboardButton("📋 Завершенные")
-        ])
-
-    # Общие кнопки
-    kb.append([KeyboardButton("🔍 Поиск квартир")])
-    kb.append([KeyboardButton("🧭 Главное меню")])
+    kb.extend([
+        [KeyboardButton("🔍 Поиск квартир")],
+        [KeyboardButton("🧭 Главное меню")]
+    ])
 
     send_telegram_message(
         chat_id,

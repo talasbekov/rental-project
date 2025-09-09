@@ -4,7 +4,6 @@ from datetime import date, timedelta
 from django.db import models
 from django.contrib.auth.models import User
 
-from booking_bot import bookings
 from booking_bot.core.models import AuditLog
 from booking_bot.core.security import EncryptionService
 
@@ -488,7 +487,6 @@ class Review(models.Model):
     def __str__(self):
         return f"Отзыв от {self.user.username} на {self.property.name} - {self.rating} звезд"
 
-    @property
     def rating_stars(self):
         """Возвращает строку со звездами для отображения"""
         full_stars = "⭐" * self.rating

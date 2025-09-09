@@ -356,7 +356,9 @@ def message_handler(chat_id, text, update=None, context=None):
             profile.role in ("admin", "super_admin")
             and text == "🛠 Панель администратора"
         ):
-            show_admin_panel(chat_id)
+            # Route to new enhanced admin menu
+            from .admin_property_handlers import handle_admin_menu
+            handle_admin_menu(chat_id, text)
             return
 
         if profile.role in ("admin", "super_admin"):
@@ -465,7 +467,14 @@ def message_handler(chat_id, text, update=None, context=None):
                 handle_add_property_start(chat_id, text)
                 return
             elif text == "🏠 Мои квартиры":
-                show_admin_properties(chat_id)
+                # Route to enhanced property list
+                from .admin_property_handlers import handle_property_list
+                handle_property_list(chat_id)
+                return
+            elif text == "📊 Дашборд":
+                # Route to enhanced admin dashboard
+                from .admin_property_handlers import handle_admin_dashboard
+                handle_admin_dashboard(chat_id)
                 return
             elif text == "📊 Статистика":
                 show_detailed_statistics(chat_id, period="month")

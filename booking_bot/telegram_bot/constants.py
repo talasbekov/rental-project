@@ -1,15 +1,11 @@
 import logging
 import re
 import unicodedata
-from urllib.parse import urljoin
-
-import requests
 from django.db import transaction
 from django.contrib.auth import get_user_model
 from telegram import KeyboardButton, ReplyKeyboardMarkup
 
 from .utils import send_telegram_message
-from .. import settings
 from booking_bot.users.models import UserProfile
 
 logger = logging.getLogger(__name__)

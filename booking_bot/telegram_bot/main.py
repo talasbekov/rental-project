@@ -108,6 +108,15 @@ def telegram_callback_query_handler(update: Update, context: CallbackContext):
             start_command_handler,
             prompt_city
         )
+        from .admin_property_handlers import (
+            handle_property_list,
+            handle_property_detail, 
+            handle_property_bookings,
+            handle_property_reviews,
+            handle_admin_dashboard,
+            handle_edit_property_menu,
+            handle_edit_access_codes
+        )
         
         # ГЛОБАЛЬНЫЕ inline кнопки (работают из любого состояния)
         if data == "main_menu":
@@ -197,6 +206,33 @@ def telegram_callback_query_handler(update: Update, context: CallbackContext):
                 elif action == "delete":
                     from .admin_handlers import confirm_property_deletion
                     confirm_property_deletion(chat_id, int(property_id))
+            return
+            
+        # ADMIN PROPERTY HANDLERS
+        elif data.startswith("admin_"):
+            parts = data.split("_")
+            if len(parts) >= 2:
+                if data == "admin_property_list":
+                    handle_property_list(chat_id)
+                elif data == "admin_property_refresh":
+                    handle_property_list(chat_id)
+                elif data == "admin_dashboard":
+                    handle_admin_dashboard(chat_id)
+                elif data.startswith("admin_property_detail_"):
+                    property_id = int(parts[3])
+                    handle_property_detail(chat_id, property_id)
+                elif data.startswith("admin_bookings_"):
+                    property_id = int(parts[2])
+                    handle_property_bookings(chat_id, property_id)
+                elif data.startswith("admin_reviews_"):
+                    property_id = int(parts[2])
+                    handle_property_reviews(chat_id, property_id)
+                elif data.startswith("admin_edit_property_"):
+                    property_id = int(parts[3])
+                    handle_edit_property_menu(chat_id, property_id)
+                elif data.startswith("admin_codes_"):
+                    property_id = int(parts[2])
+                    handle_edit_access_codes(chat_id, property_id)
             return
         
         # Неизвестная inline кнопка

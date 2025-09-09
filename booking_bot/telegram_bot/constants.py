@@ -1,4 +1,6 @@
 import logging
+import re
+import unicodedata
 from urllib.parse import urljoin
 
 import requests
@@ -19,6 +21,7 @@ STATE_SELECT_CITY = "select_city"
 STATE_SELECT_DISTRICT = "select_district"
 STATE_SELECT_CLASS = "select_class"
 STATE_SELECT_ROOMS = "select_rooms"
+STATE_SEARCH_REFINED = "search_refined"
 STATE_SHOWING_RESULTS = "showing_results"
 STATE_AWAITING_CHECK_IN = "awaiting_check_in"
 STATE_AWAITING_CHECK_OUT = "awaiting_check_out"
@@ -76,6 +79,75 @@ def log_handler(func):
 
 
 User = get_user_model()
+
+
+def normalize_text(text):
+    """
+    Нормализация текста для надежного сравнения строк.
+    
+    Выполняет:
+    - Unicode нормализацию NFKC (совместимая композиция)
+    - Удаление лишних пробелов
+    - Схлопывание множественных пробелов в один
+    - Приведение к нижнему регистру
+    
+    Args:
+        text (str): исходный текст
+        
+    Returns:
+        str: нормализованный текст
+    """
+    if not isinstance(text, str):
+        return ""
+    
+    # Unicode нормализация NFKC
+    normalized = unicodedata.normalize("NFKC", text)
+    
+    # Удаление лишних пробелов в начале и конце
+    normalized = normalized.strip()
+    
+    # Схлопывание множественных пробелов в один
+    normalized = re.sub(r'\s+', ' ', normalized)
+    
+    # Приведение к нижнему регистру
+    normalized = normalized.lower()
+    
+    return normalized
+
+
+def text_matches(input_text, expected_text):
+    """
+    Сравнение текстов с нормализацией.
+    
+    Args:
+        input_text (str): входной текст от пользователя
+        expected_text (str): ожидаемый текст для сравнения
+        
+    Returns:
+        bool: True если тексты совпадают после нормализации
+    """
+    return normalize_text(input_text) == normalize_text(expected_text)
+
+
+def text_in_list(input_text, expected_list):
+    """
+    Проверка вхождения нормализованного текста в список.
+    
+    Args:
+        input_text (str): входной текст от пользователя
+        expected_list (list): список ожидаемых значений
+        
+    Returns:
+        bool: True если нормализованный текст есть в списке
+    """
+    normalized_input = normalize_text(input_text)
+    normalized_list = [normalize_text(item) for item in expected_list]
+    return normalized_input in normalized_list
+
+
+def log_state_transition(chat_id, old_state, new_state, context=""):
+    """Log FSM state transitions"""
+    logger.info(f"STATE_TRANSITION chat_id={chat_id} {old_state} → {new_state} {context}")
 
 
 @log_handler
@@ -187,9 +259,10 @@ def start_command_handler(chat_id, first_name=None, last_name=None):
         "• Забронировать жилье онлайн\n"
         "• Получить коды доступа\n"
         "• Оставить отзыв\n\n"
-        "Готовы начать? Нажмите «🔍 *Поиск квартир*»!"
+        "Выберите действие:"
     )
 
+    # Reply клавиатура для основных функций
     keyboard = [
         [KeyboardButton("🔍 Поиск квартир"), KeyboardButton("📋 Мои бронирования")],
         [KeyboardButton("📊 Статус текущей брони"), KeyboardButton("⭐️ Избранное")],

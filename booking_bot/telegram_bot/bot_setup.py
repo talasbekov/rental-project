@@ -112,7 +112,15 @@ def setup_application():
         )
     )
 
-    # Обработчик команд отмены через /cancel_ID
+    # ПРАВИЛЬНЫЙ ПОРЯДОК РЕГИСТРАЦИИ: СПЕЦИФИЧНЫЕ → ОБЩИЕ → CATCH-ALL
+    
+    # 1. СПЕЦИФИЧНЫЕ ХЕНДЛЕРЫ (group=0, по умолчанию)
+    # Callback query handler для inline кнопок (специфичный)
+    from telegram.ext import CallbackQueryHandler
+    from .main import telegram_callback_query_handler
+    application.add_handler(CallbackQueryHandler(telegram_callback_query_handler))
+    
+    # Обработчик команд отмены через /cancel_ID (специфичный regex)
     application.add_handler(
         MessageHandler(
             filters.Regex(r"^/cancel_(\d+)$"),
@@ -120,9 +128,11 @@ def setup_application():
         )
     )
 
-    # Основной обработчик сообщений
+    # 2. CATCH-ALL ХЕНДЛЕРЫ (group=90, низкий приоритет)
+    # Основной обработчик сообщений (catch-all) - регистрируем в group=90
     application.add_handler(
-        MessageHandler(filters.TEXT | filters.PHOTO, telegram_message_handler)
+        MessageHandler(filters.TEXT | filters.PHOTO, telegram_message_handler),
+        group=90
     )
 
     # Настройка меню при запуске

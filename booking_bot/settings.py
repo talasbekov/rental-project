@@ -322,8 +322,8 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(hour=10, minute=0),  # каждый день в 10:00
     },
     # Запрос отзыва после выезда
-    "review-request": {
-        "task": "booking_bot.bookings.tasks.send_review_request",
+    "review-reminder": {
+        "task": "booking_bot.bookings.tasks.send_review_reminder",
         "schedule": crontab(hour=12, minute=0),  # каждый день в 12:00
     },
     # Предложение продления за 2 дня до выезда

@@ -11,13 +11,6 @@ from booking_bot.settings import TELEGRAM_BOT_TOKEN
 
 logger = logging.getLogger(__name__)
 
-@shared_task
-def send_review_request(booking_id: int) -> None:
-    # нақты бір броньға шолу/отзыв сұрау жібереді
-    booking = Booking.objects.get(id=booking_id)
-    # ... мұнда хабарлама/почта/телеграм жіберу логикасы ...
-    booking.review_requested_at = timezone.now()
-    booking.save(update_fields=["review_requested_at"])
 
 @shared_task
 def enqueue_daily_review_requests() -> int:
@@ -28,12 +21,14 @@ def enqueue_daily_review_requests() -> int:
     end   = start.replace(hour=23, minute=59, second=59, microsecond=999999)
 
     qs = (Booking.objects
-          .filter(ends_at__range=(start, end),
-                  review_requested_at__isnull=True,
-                  status="completed"))  # өз шарттарыңызды қойыңыз
+          .filter(end_date__range=(start.date(), end.date()),
+                  status="completed"))  # Fixed to use end_date and check for completed bookings
 
     for b in qs:
-        send_review_request.delay(b.id)
+        # Check if review doesn't exist yet before sending request
+        from booking_bot.listings.models import Review
+        if not Review.objects.filter(property=b.property, user=b.user, booking=b).exists():
+            send_review_request.delay(b.id)
 
     return qs.count()
 

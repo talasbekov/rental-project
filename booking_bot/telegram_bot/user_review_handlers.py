@@ -31,7 +31,7 @@ def handle_review_booking_command(chat_id, booking_id):
         existing_review = Review.objects.filter(
             property=booking.property,
             user=profile.user,
-            booking_id=booking.id
+            booking=booking
         ).first()
 
         if existing_review:
@@ -39,7 +39,7 @@ def handle_review_booking_command(chat_id, booking_id):
             text = (
                 f"📝 У вас уже есть отзыв на эту квартиру.\n\n"
                 f"⭐ Оценка: {'⭐' * existing_review.rating}\n"
-                f"💬 Текст: {existing_review.text[:100] if existing_review.text else 'Без комментария'}...\n\n"
+                f"💬 Текст: {existing_review.comment[:100] if existing_review.comment else 'Без комментария'}...\n\n"
                 f"Хотите изменить отзыв?"
             )
 
@@ -88,7 +88,7 @@ def handle_edit_review_command(chat_id, booking_id):
         existing_review = Review.objects.filter(
             property=booking.property,
             user=profile.user,
-            booking_id=booking.id
+            booking=booking
         ).first()
 
         if not existing_review:
@@ -167,7 +167,7 @@ def start_review_editing(chat_id, booking, existing_review):
         f"📅 Ваше пребывание: {booking.start_date.strftime('%d.%m.%Y')} - "
         f"{booking.end_date.strftime('%d.%m.%Y')}\n\n"
         f"Текущая оценка: {current_stars} ({existing_review.rating}/5)\n"
-        f"Текущий отзыв: {existing_review.text[:100] if existing_review.text else 'Без комментария'}...\n\n"
+        f"Текущий отзыв: {existing_review.comment[:100] if existing_review.comment else 'Без комментария'}...\n\n"
         "Поставьте новую оценку:"
     )
 
@@ -408,7 +408,7 @@ def save_user_review(chat_id):
             # Обновляем существующий отзыв
             review = Review.objects.get(id=existing_review_id)
             review.rating = rating
-            review.text = text
+            review.comment = text
             review.updated_at = timezone.now()
             review.save()
 
@@ -422,8 +422,8 @@ def save_user_review(chat_id):
                 property=property_obj,
                 user=profile.user,
                 rating=rating,
-                text=text,
-                booking_id=booking_id  # Связываем с конкретным бронированием
+                comment=text,
+                booking=booking  # Связываем с конкретным бронированием
             )
             action_text = "сохранен"
 
@@ -509,3 +509,211 @@ def save_user_review(chat_id):
     # Возвращаемся к списку бронирований
     from .handlers import show_user_bookings_with_cancel
     show_user_bookings_with_cancel(chat_id, "completed")
+
+
+@log_handler
+def handle_show_property_reviews(chat_id, property_id, page=1):
+    """Обработчик просмотра отзывов о квартире с пагинацией"""
+    profile = _get_profile(chat_id)
+    
+    try:
+        property_obj = Property.objects.get(id=property_id)
+        
+        # Параметры пагинации
+        per_page = 3
+        offset = (page - 1) * per_page
+        
+        # Получаем отзывы с фильтрацией
+        reviews = Review.objects.filter(
+            property=property_obj,
+            is_approved=True
+        ).select_related('user').order_by('-created_at')[offset:offset + per_page]
+        
+        # Общая статистика
+        total_reviews = Review.objects.filter(
+            property=property_obj,
+            is_approved=True
+        ).count()
+        
+        total_pages = (total_reviews + per_page - 1) // per_page
+        
+        if total_reviews == 0:
+            text = (
+                f"📝 *Отзывы о квартире*\n\n"
+                f"🏠 {property_obj.name}\n\n"
+                "❌ Отзывов пока нет.\n"
+                "Будьте первым, кто оставит отзыв!"
+            )
+            
+            keyboard = [
+                [KeyboardButton("🔙 К описанию квартиры")]
+            ]
+            
+            send_telegram_message(
+                chat_id,
+                text,
+                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+            )
+            return
+        
+        # Формируем текст со списком отзывов
+        text = (
+            f"📝 *Отзывы о квартире*\n\n"
+            f"🏠 {property_obj.name}\n"
+            f"{property_obj.rating_stars}\n"
+            f"📊 Всего отзывов: {total_reviews}\n\n"
+        )
+        
+        for i, review in enumerate(reviews, 1):
+            review_date = review.created_at.strftime('%d.%m.%Y')
+            user_name = review.user.first_name or review.user.username or "Гость"
+            
+            text += f"👤 *{html.escape(user_name)}* • {review_date}\n"
+            text += f"{review.rating_stars}\n"
+            
+            if review.comment:
+                # Ограничиваем длину комментария
+                comment = review.comment[:200]
+                if len(review.comment) > 200:
+                    comment += "..."
+                text += f"💬 {html.escape(comment)}\n"
+            
+            # Добавляем информацию о фотографиях
+            photos_count = review.photos.count()
+            if photos_count > 0:
+                text += f"📷 Фотографий: {photos_count}\n"
+            
+            text += "\n" + "─" * 25 + "\n\n"
+        
+        # Добавляем навигацию по страницам
+        if total_pages > 1:
+            text += f"📄 Страница {page} из {total_pages}\n"
+        
+        # Клавиатура навигации
+        keyboard = []
+        
+        # Навигация по страницам
+        nav_row = []
+        if page > 1:
+            nav_row.append(KeyboardButton("⬅️ Предыдущая"))
+        if page < total_pages:
+            nav_row.append(KeyboardButton("➡️ Следующая"))
+        
+        if nav_row:
+            keyboard.append(nav_row)
+        
+        # Дополнительные опции
+        keyboard.append([KeyboardButton("📷 Показать фото из отзывов")])
+        keyboard.append([KeyboardButton("🔙 К описанию квартиры")])
+        
+        # Сохраняем состояние для пагинации
+        profile.telegram_state = {
+            "state": "viewing_reviews",
+            "property_id": property_id,
+            "current_page": page,
+            "total_pages": total_pages
+        }
+        profile.save()
+        
+        send_telegram_message(
+            chat_id,
+            text,
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        )
+        
+    except Property.DoesNotExist:
+        send_telegram_message(chat_id, "❌ Квартира не найдена")
+
+
+@log_handler
+def handle_reviews_navigation(chat_id, text):
+    """Обработчик навигации по отзывам"""
+    profile = _get_profile(chat_id)
+    state_data = profile.telegram_state or {}
+    
+    if state_data.get("state") != "viewing_reviews":
+        return False
+    
+    property_id = state_data.get("property_id")
+    current_page = state_data.get("current_page", 1)
+    total_pages = state_data.get("total_pages", 1)
+    
+    if text == "⬅️ Предыдущая" and current_page > 1:
+        handle_show_property_reviews(chat_id, property_id, current_page - 1)
+        return True
+    
+    elif text == "➡️ Следующая" and current_page < total_pages:
+        handle_show_property_reviews(chat_id, property_id, current_page + 1)
+        return True
+    
+    elif text == "📷 Показать фото из отзывов":
+        show_review_photos(chat_id, property_id)
+        return True
+    
+    elif text == "🔙 К описанию квартиры":
+        # Очищаем состояние и возвращаемся к описанию квартиры
+        profile.telegram_state = {}
+        profile.save()
+        
+        from .handlers import show_property_details
+        show_property_details(chat_id, property_id)
+        return True
+    
+    return False
+
+
+@log_handler
+def show_review_photos(chat_id, property_id):
+    """Показать фотографии из отзывов"""
+    try:
+        property_obj = Property.objects.get(id=property_id)
+        
+        # Получаем все фотографии из одобренных отзывов
+        review_photos = ReviewPhoto.objects.filter(
+            review__property=property_obj,
+            review__is_approved=True
+        ).select_related('review', 'review__user')[:10]  # Ограничиваем до 10 фото
+        
+        if not review_photos:
+            send_telegram_message(
+                chat_id,
+                "📷 К отзывам о данной квартире пока не прикреплено фотографий."
+            )
+            return
+        
+        # Группируем фотографии для отправки
+        photo_urls = []
+        for photo in review_photos:
+            if photo.image_url:
+                photo_urls.append({
+                    'url': photo.image_url,
+                    'caption': f"Фото от {photo.review.user.first_name or 'Гостя'} "
+                              f"({photo.review.created_at.strftime('%d.%m.%Y')})"
+                })
+        
+        if photo_urls:
+            send_telegram_message(
+                chat_id,
+                f"📷 *Фотографии из отзывов*\n🏠 {property_obj.name}\n\n"
+                f"Показываю {len(photo_urls)} фото из отзывов:"
+            )
+            
+            # Отправляем фотографии группами по 10
+            for i in range(0, len(photo_urls), 10):
+                batch = photo_urls[i:i+10]
+                send_photo_group(chat_id, batch)
+        
+    except Property.DoesNotExist:
+        send_telegram_message(chat_id, "❌ Квартира не найдена")
+    except Exception as e:
+        logger.error(f"Error showing review photos: {e}")
+        send_telegram_message(
+            chat_id, 
+            "❌ Ошибка при загрузке фотографий. Попробуйте позже."
+        )
+
+
+@log_handler
+def handle_property_reviews_command(chat_id, property_id):
+    """Обработчик команды /reviews_<property_id>"""
+    handle_show_property_reviews(chat_id, property_id, page=1)

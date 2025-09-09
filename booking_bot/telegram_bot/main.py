@@ -84,7 +84,7 @@ application = None
 
 
 def telegram_callback_query_handler(update: Update, context: CallbackContext):
-    """Обработчик inline кнопок (callback_data)."""
+    """Обработчик inline кнопок (callback_data) с поддержкой FSM states."""
     try:
         query = update.callback_query
         chat_id = query.message.chat.id
@@ -95,31 +95,114 @@ def telegram_callback_query_handler(update: Update, context: CallbackContext):
         # Подтверждаем получение callback query
         query.answer()
         
+        # Получаем текущее состояние пользователя
+        from .constants import _get_profile
+        profile = _get_profile(chat_id)
+        current_state = profile.telegram_state.get("state") if profile.telegram_state else None
+        
         # Импортируем необходимые функции
         from .handlers import (
             handle_review_rating_callback,
             handle_submit_review_with_photos,
-            show_user_bookings_with_cancel
+            show_user_bookings_with_cancel,
+            start_command_handler,
+            prompt_city
         )
         
-        if data.startswith("review_"):
-            # Обработка выбора рейтинга: review_booking_id_rating
-            parts = data.split("_")
-            if len(parts) == 3:
-                booking_id = int(parts[1])
-                rating = int(parts[2])
-                handle_review_rating_callback(chat_id, booking_id, rating)
-        
+        # ГЛОБАЛЬНЫЕ inline кнопки (работают из любого состояния)
+        if data == "main_menu":
+            # Возврат в главное меню
+            start_command_handler(chat_id)
+            return
+            
+        elif data == "cancel":
+            # Отмена/возврат в главное меню
+            start_command_handler(chat_id)
+            return
+            
         elif data == "main_current":
             # Возврат к текущим бронированиям
             show_user_bookings_with_cancel(chat_id, "active")
+            return
             
-        elif data == "submit_review_with_photos":
-            # Завершение загрузки фото для отзыва
-            handle_submit_review_with_photos(chat_id)
+        elif data == "search_apartments":
+            # Начать поиск квартир
+            prompt_city(chat_id, profile)
+            return
         
+        # STATE-ЗАВИСИМЫЕ inline кнопки
+        # Обработка рейтинга отзывов (работает в любом состоянии)
+        if data and len(data.split("_")) == 3 and data.split("_")[0] == "review":
+            parts = data.split("_")
+            try:
+                booking_id = int(parts[1])
+                rating = int(parts[2])
+                if 1 <= rating <= 5:  # Валидация рейтинга
+                    handle_review_rating_callback(chat_id, booking_id, rating)
+                else:
+                    logger.warning(f"Invalid rating value: {rating}")
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Invalid review callback format: {data}, error: {e}")
+            return
+        
+        # Завершение загрузки фото для отзыва
+        elif data == "submit_review_with_photos":
+            handle_submit_review_with_photos(chat_id)
+            return
+        
+        # НАВИГАЦИЯ ПО РЕЗУЛЬТАТАМ ПОИСКА
+        elif data.startswith("nav_"):
+            from .handlers import navigate_results
+            # Форматы: nav_prev, nav_next, nav_page_<num>
+            if data == "nav_prev":
+                navigate_results(chat_id, profile, "◀️ Назад")
+            elif data == "nav_next":  
+                navigate_results(chat_id, profile, "Вперёд ▶️")
+            elif data.startswith("nav_page_"):
+                page_num = data.split("_")[-1]
+                navigate_results(chat_id, profile, f"Страница {page_num}")
+            return
+            
+        # УПРАВЛЕНИЕ БРОНИРОВАНИЯМИ
+        elif data.startswith("booking_"):
+            # Форматы: booking_view_<id>, booking_cancel_<id>, booking_extend_<id>
+            parts = data.split("_")
+            if len(parts) >= 3:
+                action = parts[1]
+                booking_id = parts[2]
+                if action == "view":
+                    from .handlers import show_booking_details
+                    show_booking_details(chat_id, int(booking_id))
+                elif action == "cancel":
+                    from .handlers import handle_cancel_booking_start
+                    handle_cancel_booking_start(chat_id, int(booking_id))
+                elif action == "extend":
+                    from .handlers import handle_extend_booking_start  
+                    handle_extend_booking_start(chat_id, int(booking_id))
+            return
+            
+        # УПРАВЛЕНИЕ КВАРТИРАМИ (для админов)
+        elif data.startswith("property_"):
+            # Форматы: property_view_<id>, property_edit_<id>, property_delete_<id>
+            parts = data.split("_")
+            if len(parts) >= 3:
+                action = parts[1]
+                property_id = parts[2]
+                if action == "view":
+                    from .handlers import show_property_details
+                    show_property_details(chat_id, int(property_id))
+                elif action == "edit":
+                    from .admin_handlers import show_edit_property_menu
+                    show_edit_property_menu(chat_id, int(property_id))
+                elif action == "delete":
+                    from .admin_handlers import confirm_property_deletion
+                    confirm_property_deletion(chat_id, int(property_id))
+            return
+        
+        # Неизвестная inline кнопка
         else:
-            logger.warning(f"Unknown callback data: {data}")
+            logger.warning(f"Unknown callback data: {data} from state: {current_state}")
+            query.answer("Неизвестная команда")
             
     except Exception as e:
         logger.error(f"Error in callback query handler: {e}", exc_info=True)
@@ -165,7 +248,10 @@ def setup_application():
     builder = Application.builder().token(settings.TELEGRAM_BOT_TOKEN)
     application = builder.build()
 
-    # Commands
+    # ПРАВИЛЬНЫЙ ПОРЯДОК РЕГИСТРАЦИИ: СПЕЦИФИЧНЫЕ → ОБЩИЕ → CATCH-ALL
+    
+    # 1. СПЕЦИФИЧНЫЕ ХЕНДЛЕРЫ (group=0, по умолчанию)
+    # Команды (самые специфичные)
     application.add_handler(
         CommandHandler(
             "start",
@@ -182,18 +268,20 @@ def setup_application():
         )
     )
 
-    # Callback query handler для inline кнопок
+    # Callback query handler для inline кнопок (специфичный)
     application.add_handler(CallbackQueryHandler(telegram_callback_query_handler))
     
-    # Добавляем логгер для всех входящих сообщений с высоким приоритетом (group=99)
+    # 2. CATCH-ALL ХЕНДЛЕРЫ (group=90-99, низкий приоритет)
+    # Основной обработчик сообщений (catch-all) - group=90
+    application.add_handler(
+        MessageHandler(filters.TEXT | filters.PHOTO, telegram_message_handler),
+        group=90
+    )
+    
+    # Логгер для всех входящих сообщений (мониторинг) - group=99 (самый низкий)
     application.add_handler(
         MessageHandler(filters.TEXT | filters.PHOTO, message_logging_handler),
         group=99
-    )
-    
-    # УБИРАЕМ дублирующиеся обработчики и оставляем только один основной
-    application.add_handler(
-        MessageHandler(filters.TEXT | filters.PHOTO, telegram_message_handler)
     )
 
     # Set commands and menu button

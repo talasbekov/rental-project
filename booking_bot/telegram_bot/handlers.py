@@ -15,7 +15,9 @@ from .constants import (
     STATE_SELECT_DISTRICT,
     STATE_SELECT_CLASS,
     STATE_SELECT_ROOMS,
+    STATE_SEARCH_REFINED,
     STATE_SHOWING_RESULTS,
+    log_state_transition,
     STATE_CANCEL_REASON_TEXT,
     STATE_CANCEL_REASON,
     STATE_CANCEL_BOOKING,
@@ -32,6 +34,7 @@ from .constants import (
     STATE_WAITING_NEW_DESCRIPTION,
     STATE_WAITING_NEW_STATUS,
     STATE_PHOTO_MANAGEMENT, STATE_PHOTO_ADD_URL, STATE_PHOTO_DELETE,
+    normalize_text, text_matches, text_in_list,
 )
 from .edit_handlers import save_new_price, save_new_description, save_new_status, save_new_photo, \
     handle_photo_add_choice, handle_photo_url_input, handle_manage_photos_start, handle_photo_delete, \
@@ -228,8 +231,8 @@ def message_handler(chat_id, text, update=None, context=None):
         handle_user_review_uploading(chat_id, text)
         return
 
-    # Ловим варианты «Отмена», «Отменить» и «Главное меню»
-    if text in ("❌ Отмена", "❌ Отменить", "🧭 Главное меню"):
+    # Ловим варианты «Отмена», «Отменить» и «Главное меню» с нормализацией
+    if text_in_list(text, ["❌ Отмена", "❌ Отменить", "🧭 Главное меню"]):
         start_command_handler(chat_id)
         return
 
@@ -390,8 +393,9 @@ def message_handler(chat_id, text, update=None, context=None):
                     send_telegram_message(chat_id, "❌ Неверный формат команды")
                     return
 
-            # Обработка переключения периодов в обычной статистике
-            if state_data.get('state') == 'detailed_stats' and text in ["Неделя", "Месяц", "Квартал", "Год"]:
+            # Обработка переключения периодов в обычной статистике (точный фильтр)
+            if (state_data.get('state') == 'detailed_stats' and 
+                text in ["Неделя", "Месяц", "Квартал", "Год"]):
                 period_map = {
                     "Неделя": "week",
                     "Месяц": "month",
@@ -413,8 +417,9 @@ def message_handler(chat_id, text, update=None, context=None):
                     export_statistics_csv(chat_id, context, period='month')
                 return
 
+            # Точная проверка состояния оценки гостя
             if state_data.get('state') == 'guest_review_rating':
-                # Обработка выбора рейтинга - исправленная версия
+                # Обработка выбора рейтинга с точным маппингом
                 rating_map = {
                     "⭐": 1,
                     "⭐⭐": 2,
@@ -449,6 +454,7 @@ def message_handler(chat_id, text, update=None, context=None):
                     show_admin_panel(chat_id)
                     return
 
+            # Точная проверка состояния текста отзыва
             if state_data.get('state') == 'guest_review_text':
                 # Обработка текста отзыва о госте
                 handle_guest_review_text(chat_id, text)
@@ -476,6 +482,7 @@ def message_handler(chat_id, text, update=None, context=None):
                 from .admin_handlers import handle_moderate_review_start
                 handle_moderate_review_start(chat_id, review_id)
                 return
+            # Точная проверка состояния модерации
             elif state_data.get('state') == 'moderate_review_action':
                 from .admin_handlers import handle_moderate_review_action
                 handle_moderate_review_action(chat_id, text)
@@ -626,7 +633,7 @@ def message_handler(chat_id, text, update=None, context=None):
                     show_plan_fact(chat_id)
                     return
 
-                # Управление администраторами
+                # Точная проверка: добавление админа
                 if state_data.get('state') == "add_admin_username":
                     if text != "❌ Отмена":
                         process_add_admin(chat_id, text)
@@ -635,6 +642,7 @@ def message_handler(chat_id, text, update=None, context=None):
                     show_super_admin_menu(chat_id)
                     return
 
+                # Точная проверка: удаление админа
                 if state_data.get('state') == "remove_admin":
                     if text != "❌ Отмена":
                         process_remove_admin(chat_id, text)
@@ -643,11 +651,12 @@ def message_handler(chat_id, text, update=None, context=None):
                     show_super_admin_menu(chat_id)
                     return
 
-                # План-факт
+                # Точная проверка: выбор объекта для плана
                 if state_data.get('state') == "select_property_for_target":
                     handle_target_property_selection(chat_id, text)
                     return
 
+                # Точная проверка: установка целевой выручки
                 if state_data.get('state') == "set_target_revenue":
                     save_property_target(chat_id, text)
                     return
@@ -676,6 +685,11 @@ def message_handler(chat_id, text, update=None, context=None):
     if state == STATE_SHOWING_RESULTS:
         navigate_results(chat_id, profile, text)
         return
+    
+    # Refined search state
+    if state == STATE_SEARCH_REFINED:
+        navigate_refined_search(chat_id, profile, text)
+        return
 
     # Fallback
     send_telegram_message(chat_id, "Используйте кнопки для навигации или /start.")
@@ -703,10 +717,25 @@ def prompt_city(chat_id, profile):
 def select_city(chat_id, profile, text):
     try:
         city = City.objects.get(name=text)
-        profile.telegram_state.update(
-            {"city_id": city.id, "state": STATE_SELECT_DISTRICT}
-        )
+        sd = profile.telegram_state or {}
+        old_state = sd.get("state", STATE_MAIN_MENU)
+        
+        # Check if we're in refined search mode
+        if sd.get("base_filters"):
+            # Store in refined filters
+            refined_filters = sd.get("refined_filters", {})
+            refined_filters["city_id"] = city.id
+            sd["refined_filters"] = refined_filters
+            sd["state"] = STATE_SELECT_DISTRICT
+        else:
+            # Normal flow - store in main state
+            sd.update({"city_id": city.id, "state": STATE_SELECT_DISTRICT})
+        
+        profile.telegram_state = sd
         profile.save()
+        
+        log_state_transition(chat_id, old_state, STATE_SELECT_DISTRICT, f"selected_city_{city.name}")
+        
         districts = District.objects.filter(city=city).order_by("name")
         if not districts.exists():
             # Если районов нет, отправляем сообщение и предлагаем вернуться назад
@@ -734,10 +763,25 @@ def select_city(chat_id, profile, text):
 def select_district(chat_id, profile, text):
     try:
         district = District.objects.get(name=text)
-        profile.telegram_state.update(
-            {"district_id": district.id, "state": STATE_SELECT_CLASS}
-        )
+        sd = profile.telegram_state or {}
+        old_state = sd.get("state", STATE_MAIN_MENU)
+        
+        # Check if we're in refined search mode
+        if sd.get("base_filters"):
+            # Store in refined filters
+            refined_filters = sd.get("refined_filters", {})
+            refined_filters["district_id"] = district.id
+            sd["refined_filters"] = refined_filters
+            sd["state"] = STATE_SELECT_CLASS
+        else:
+            # Normal flow - store in main state
+            sd.update({"district_id": district.id, "state": STATE_SELECT_CLASS})
+        
+        profile.telegram_state = sd
         profile.save()
+        
+        log_state_transition(chat_id, old_state, STATE_SELECT_CLASS, f"selected_district_{district.name}")
+        
         classes = [
             ("comfort", "Комфорт"),
             ("business", "Бизнес"),
@@ -818,11 +862,21 @@ def show_search_results(chat_id, profile, offset=0):
     """Show search results with fixed photo handling and review queries"""
     sd = profile.telegram_state or {}
 
+    # Merge base filters with refined filters for search
+    base_filters = sd.get("base_filters", {})
+    refined_filters = sd.get("refined_filters", {})
+    
+    # Use refined filters if available, otherwise use current state or base filters
+    city_id = refined_filters.get("city_id") or sd.get('city_id') or base_filters.get("city_id")
+    district_id = refined_filters.get("district_id") or sd.get('district_id') or base_filters.get("district_id") 
+    property_class = refined_filters.get("property_class") or sd.get('property_class') or base_filters.get("property_class")
+    rooms = refined_filters.get("rooms") or sd.get('rooms') or base_filters.get("rooms")
+
     query = Property.objects.filter(
-        district__city_id=sd.get('city_id'),
-        district_id=sd.get('district_id'),
-        property_class=sd.get('property_class'),
-        number_of_rooms=sd.get('rooms'),
+        district__city_id=city_id,
+        district_id=district_id,
+        property_class=property_class,
+        number_of_rooms=rooms,
         status='Свободна'
     ).order_by('price_per_day')
 
@@ -947,10 +1001,50 @@ def show_search_results(chat_id, profile, offset=0):
     # Новый поиск / главное меню
     keyboard.append([KeyboardButton("🔍 Поиск квартир"), KeyboardButton("🧭 Главное меню")])
 
+    # Inline кнопки для быстрых действий
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    inline_keyboard = []
+    
+    # Кнопки действий с квартирой
+    actions_row = []
+    if prop.status == 'Свободна':
+        actions_row.append(InlineKeyboardButton("📅 Забронировать", callback_data=f"booking_create_{prop.id}"))
+    
+    if is_favorite:
+        actions_row.append(InlineKeyboardButton("💔 Убрать из избранного", callback_data=f"favorite_remove_{prop.id}"))
+    else:
+        actions_row.append(InlineKeyboardButton("⭐ В избранное", callback_data=f"favorite_add_{prop.id}"))
+    
+    if actions_row:
+        inline_keyboard.append(actions_row)
+    
+    # Навигация
+    nav_row = []
+    if offset > 0:
+        nav_row.append(InlineKeyboardButton("⬅️", callback_data="nav_prev"))
+    
+    nav_row.append(InlineKeyboardButton(f"{offset + 1}/{total}", callback_data=f"nav_page_{offset + 1}"))
+    
+    if offset < total - 1:
+        nav_row.append(InlineKeyboardButton("➡️", callback_data="nav_next"))
+    
+    if nav_row:
+        inline_keyboard.append(nav_row)
+    
+    # Глобальные действия
+    global_row = [
+        InlineKeyboardButton("🔍 Новый поиск", callback_data="search_apartments"),
+        InlineKeyboardButton("🧭 Главное меню", callback_data="main_menu")
+    ]
+    inline_keyboard.append(global_row)
+    
+    inline_markup = InlineKeyboardMarkup(inline_keyboard).to_dict() if inline_keyboard else None
+
     send_telegram_message(
         chat_id,
         text,
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict()
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
+        inline_markup=inline_markup
     )
 
 @log_handler
@@ -1744,6 +1838,53 @@ def toggle_favorite(chat_id, property_id):
 
 
 @log_handler
+def navigate_refined_search(chat_id, profile, text):
+    """Handle refined search flow - when user clicks 'Поиск квартир' within search results"""
+    sd = profile.telegram_state or {}
+    old_state = sd.get("state", STATE_MAIN_MENU)
+    
+    if text == "🔍 Поиск квартир":
+        # Store current search filters as base filters
+        base_filters = {
+            "city_id": sd.get("city_id"),
+            "district_id": sd.get("district_id"), 
+            "property_class": sd.get("property_class"),
+            "rooms": sd.get("rooms")
+        }
+        
+        # Update state to store both base and reset refined filters
+        sd.update({
+            "state": STATE_SELECT_CITY,
+            "base_filters": base_filters,
+            "refined_filters": {},
+            "search_offset": 0  # Reset pagination
+        })
+        profile.telegram_state = sd
+        profile.save()
+        
+        log_state_transition(chat_id, old_state, STATE_SELECT_CITY, "refined_search_start")
+        prompt_city(chat_id, profile)
+        return
+    elif text == "🧭 Главное меню":
+        # Clear all search state and return to main menu
+        sd.update({
+            "state": STATE_MAIN_MENU,
+            "base_filters": {},
+            "refined_filters": {},
+            "search_offset": 0
+        })
+        profile.telegram_state = sd
+        profile.save()
+        
+        log_state_transition(chat_id, old_state, STATE_MAIN_MENU, "return_to_main_from_refined")
+        start_command_handler(chat_id)
+        return
+    else:
+        # Handle other navigation like regular results navigation
+        navigate_results(chat_id, profile, text)
+
+
+@log_handler
 def navigate_results(chat_id, profile, text):
     sd = profile.telegram_state or {}
     if text == "➡️ Следующая":
@@ -1766,7 +1907,8 @@ def navigate_results(chat_id, profile, text):
         show_property_card(chat_id, Property.objects.get(id=pid))
     elif text.startswith("💬 Отзывы"):
         pid = int(text.split()[-1])
-        show_property_reviews(chat_id, pid, offset=0)
+        from .user_review_handlers import handle_show_property_reviews
+        handle_show_property_reviews(chat_id, pid, page=1)
     else:
         send_telegram_message(chat_id, "Нажмите кнопку для навигации.")
 
@@ -1776,24 +1918,37 @@ def show_property_card(chat_id, property_obj):
     photos = PropertyPhoto.objects.filter(property=property_obj)[:6]
     if photos:
         send_photo_group(chat_id, [p.image_url for p in photos])
-    stats = Review.objects.filter(property=property_obj).aggregate(
-        avg=Avg("rating"), cnt=Count("id")
-    )
+    
     text = (
         f"*{property_obj.name}*\n"
         f"📍 {property_obj.district.city.name}, {property_obj.district.name}\n"
         f"🏠 Класс: {property_obj.get_property_class_display()}\n"
         f"🛏 Комнат: {property_obj.number_of_rooms}\n"
+        f"📐 Площадь: {property_obj.area} м²\n"
         f"💰 Цена: *{property_obj.price_per_day} ₸/сутки*\n"
     )
-    if stats["avg"]:
-        text += f"⭐ Рейтинг: {stats['avg']:.1f}/5 ({stats['cnt']} отзывов)\n"
+    
+    # Используем новые поля модели для рейтинга
+    if property_obj.reviews_count > 0:
+        text += f"⭐ {property_obj.rating_stars}\n"
+    else:
+        text += "⭐ Отзывов пока нет\n"
+    
+    text += f"\n{property_obj.description}"
+    
     buttons = []
     if property_obj.status == "Свободна":
         buttons.append([KeyboardButton(f"📅 Забронировать {property_obj.id}")])
-    if stats["cnt"] > 0:
-        buttons.append([KeyboardButton(f"💬 Отзывы {property_obj.id}")])
+    
+    # Всегда показываем кнопку отзывов
+    buttons.append([KeyboardButton(f"💬 Отзывы {property_obj.id}")])
+    
+    # Добавляем кнопки для фото и избранного
+    photo_button_text = f"📷 Фото ({photos.count()})" if photos else "📷 Фото"
+    buttons.append([KeyboardButton(photo_button_text)])
+    
     buttons.append([KeyboardButton("🧭 Главное меню")])
+    
     send_telegram_message(
         chat_id,
         text,

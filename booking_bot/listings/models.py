@@ -106,6 +106,19 @@ class Property(models.Model):
     price_per_day = models.DecimalField(
         max_digits=10, decimal_places=2, verbose_name="Цена за сутки"
     )
+    
+    # Рейтинг
+    average_rating = models.DecimalField(
+        max_digits=3, 
+        decimal_places=2, 
+        default=0.00,
+        verbose_name="Средний рейтинг",
+        help_text="Средняя оценка по всем отзывам"
+    )
+    reviews_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Количество отзывов"
+    )
 
     # Временные метки
     created_at = models.DateTimeField(auto_now_add=True)
@@ -296,6 +309,42 @@ class Property(models.Model):
                 send_whatsapp_message(user.profile.whatsapp_phone, message)
 
         return True
+    
+    def update_average_rating(self):
+        """Обновляет средний рейтинг и количество отзывов"""
+        from django.db.models import Avg, Count
+        
+        stats = self.reviews.filter(is_approved=True).aggregate(
+            avg_rating=Avg('rating'),
+            count=Count('id')
+        )
+        
+        self.average_rating = stats['avg_rating'] or 0.00
+        self.reviews_count = stats['count']
+        
+        # Используем update чтобы избежать рекурсивного вызова save()
+        Property.objects.filter(id=self.id).update(
+            average_rating=self.average_rating,
+            reviews_count=self.reviews_count
+        )
+    
+    @property
+    def rating_stars(self):
+        """Возвращает строку со звездами для отображения рейтинга"""
+        if self.reviews_count == 0:
+            return "Нет отзывов"
+        
+        full_stars = int(self.average_rating)
+        has_half_star = (self.average_rating - full_stars) >= 0.5
+        
+        stars = "⭐" * full_stars
+        if has_half_star:
+            stars += "⭐"
+        
+        empty_stars = 5 - full_stars - (1 if has_half_star else 0)
+        stars += "☆" * empty_stars
+        
+        return f"{stars} ({self.average_rating:.1f})"
 
     def __str__(self):
         return f"{self.name} - {self.district}"
@@ -400,25 +449,68 @@ class Review(models.Model):
     user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name="reviews"
     )
+    booking = models.ForeignKey(
+        "bookings.Booking",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="review",
+        help_text="Связанное бронирование"
+    )
     rating = models.PositiveIntegerField(
-        choices=[(i, str(i)) for i in range(1, 6)]
+        choices=[(i, str(i)) for i in range(1, 6)],
+        verbose_name="Оценка"
     )
-    text = models.TextField(
-        blank=True
+    comment = models.TextField(
+        blank=True,
+        verbose_name="Комментарий",
+        help_text="Текст отзыва"
     )
-    booking_id = models.IntegerField(null=True, blank=True)  # Связь с конкретным бронированием
-    is_approved = models.BooleanField(default=True, verbose_name="Одобрен администратором")
+    is_approved = models.BooleanField(
+        default=True, 
+        verbose_name="Одобрен администратором"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def __str__(self):
-        return f"Review for {self.property.name} by {self.user.username} - {self.rating} stars"
-
     class Meta:
-        # Изменить unique_together чтобы разрешить несколько отзывов от одного пользователя
-        # но только один отзыв на каждое бронирование
-        unique_together = ("user", "property", "booking_id")
+        unique_together = ("user", "booking")
         ordering = ["-created_at"]
+        verbose_name = "Отзыв"
+        verbose_name_plural = "Отзывы"
+        indexes = [
+            models.Index(fields=["property", "is_approved"]),
+            models.Index(fields=["user", "property"]),
+            models.Index(fields=["created_at"]),
+            models.Index(fields=["rating"]),
+        ]
+
+    def __str__(self):
+        return f"Отзыв от {self.user.username} на {self.property.name} - {self.rating} звезд"
+
+    @property
+    def rating_stars(self):
+        """Возвращает строку со звездами для отображения"""
+        full_stars = "⭐" * self.rating
+        empty_stars = "☆" * (5 - self.rating)
+        return full_stars + empty_stars
+
+    def clean(self):
+        """Валидация модели"""
+        from django.core.exceptions import ValidationError
+        
+        if self.booking and self.booking.property != self.property:
+            raise ValidationError("Бронирование должно относиться к тому же объекту")
+        
+        if self.booking and self.booking.user != self.user:
+            raise ValidationError("Отзыв может оставить только пользователь, который делал бронирование")
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+        
+        # Обновляем средний рейтинг объекта после сохранения отзыва
+        self.property.update_average_rating()
 
 
 class ReviewPhoto(models.Model):

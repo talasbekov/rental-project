@@ -40,7 +40,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```dotenv
 # Core / Django
 DJANGO_SETTINGS_MODULE=booking_bot.settings
-DJANGO_DEBUG=1
+DEBUG=1
 SECRET_KEY=<django_secret_key>
 ALLOWED_HOSTS=127.0.0.1,localhost
 TIME_ZONE=Asia/Almaty

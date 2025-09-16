@@ -1,48 +1,16 @@
 import os
 from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
-
-# Optionally load .env file if using python-dotenv
 from dotenv import load_dotenv
+from celery.schedules import crontab
+from .env_helper import get_env
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-
-# Celery beat schedule helpers
-from celery.schedules import crontab
-
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-# Helper to get environment variables or raise
-
-
-def get_env(var_name: str, default=None, required: bool = False):
-    value = os.environ.get(var_name, default)
-    if required and value in (None, ""):
-        raise ImproperlyConfigured(f"Missing required environment variable: {var_name}")
-    return value
-
-
-# SECURITY
-SECRET_KEY = get_env("DJANGO_SECRET_KEY", required=True)
-DEBUG = get_env("DJANGO_DEBUG", "False").lower() == "true"
-
-# ИСПРАВЛЕНИЕ: Более безопасная настройка ALLOWED_HOSTS
-allowed_hosts_env = get_env("DJANGO_ALLOWED_HOSTS", "")
-if allowed_hosts_env:
-    ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_env.split(",") if host.strip()]
-else:
-    # По умолчанию для разработки
-    if DEBUG:
-        ALLOWED_HOSTS = ['*']  # В DEBUG режиме разрешаем все хосты
-    else:
-        ALLOWED_HOSTS = ['jgo.kz', 'www.jgo.kz']  # В продакшене только ваши домены
-
+SECRET_KEY = get_env("SECRET_KEY", required=True)
+DEBUG = get_env("DEBUG", "False").lower() == "true"
+ALLOWED_HOSTS = get_env("ALLOWED_HOSTS", "*").split(",")
 APPEND_SLASH = True
-
-# Добавляем настройку для фильтрации подозрительных запросов
-USE_X_FORWARDED_HOST = True
-USE_X_FORWARDED_PORT = True
-
 
 # Application definition
 INSTALLED_APPS = [
@@ -104,8 +72,8 @@ DATABASES = {
         "NAME": get_env("POSTGRES_DB", required=True),
         "USER": get_env("POSTGRES_USER", required=True),
         "PASSWORD": get_env("POSTGRES_PASSWORD", required=True),
-        "HOST": get_env("DB_HOST", "localhost"),
-        "PORT": get_env("DB_PORT", "5432"),
+        "HOST": get_env("POSTGRES_HOST"),
+        "PORT": get_env("POSTGRES_PORT"),
     }
 }
 
@@ -145,12 +113,7 @@ WHATSAPP_VERIFY_TOKEN = get_env(
     "WHATSAPP_VERIFY_TOKEN", default="your-verify-token-here"
 )
 
-# Encryption key for custom fields
-# ENCRYPTION_KEY = get_env('ENCRYPTION_KEY', required=True)
-
 # Domain configuration
-# Use DJANGO_DOMAIN environment variable to configure the domain without relying on ngrok.
-# In development, default to localhost. SITE_URL points to the same domain.
 DOMAIN = get_env("DJANGO_DOMAIN", "http://localhost:8000")
 SITE_URL = DOMAIN
 API_BASE = f"{DOMAIN}/api/v1"
@@ -169,18 +132,10 @@ PAYMENT_SUCCESS_URL = f"{SITE_URL}/payments/success/"
 PAYMENT_FAIL_URL = f"{SITE_URL}/payments/fail/"
 PAYMENT_TIMEOUT_MINUTES = 15
 
-# Для разработки - автоматическое подтверждение платежей
-AUTO_CONFIRM_PAYMENTS = DEBUG  # True только в DEBUG режиме
-
 # CSRF settings
 raw_csrf = get_env("CSRF_TRUSTED_ORIGINS", default="")
 CSRF_TRUSTED_ORIGINS = [host.strip() for host in raw_csrf.split(",") if host.strip()]
 CSRF_EXEMPT_URLS = [r"^/telegram/webhook/$"]
-
-# Security hardening
-# SECURE_SSL_REDIRECT = True
-# Security hardening
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 if DEBUG:
     SESSION_COOKIE_SECURE = False
@@ -191,7 +146,10 @@ if DEBUG:
     SECURE_HSTS_SECONDS = 0
     SECURE_HSTS_INCLUDE_SUBDOMAINS = False
     SECURE_HSTS_PRELOAD = False
-    # SECURE_SSL_REDIRECT = False  # при желании
+    AUTO_CONFIRM_PAYMENTS = True
+    S3_ENDPOINT_URL = get_env("S3_ENDPOINT_URL", "http://minio:9000")  # Внутренний адрес для Docker
+    S3_PUBLIC_BASE = get_env("S3_PUBLIC_BASE", "http://localhost:9000/jgo-photos")  # Внешний адрес для Telegram
+
 else:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
@@ -201,14 +159,18 @@ else:
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
+    USE_X_FORWARDED_HOST = True
+    USE_X_FORWARDED_PORT = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = get_env("SECURE_SSL_REDIRECT", "True").lower() == "true"
+    S3_ENDPOINT_URL = get_env("S3_ENDPOINT_URL", "http://minio:9000")
+    S3_PUBLIC_BASE = get_env("S3_PUBLIC_BASE", "https://cdn.jgo.kz")  # Ваш CDN
 
 
-# File upload limits
+
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 
-# Celery / Redis
 REDIS_HOST = get_env("REDIS_HOST", "redis")
 REDIS_PASSWORD = get_env("REDIS_PASSWORD", "")
 _redis_auth = f":{REDIS_PASSWORD}@" if REDIS_PASSWORD else ""
@@ -224,17 +186,6 @@ CELERY_RESULT_SERIALIZER = "json"
 
 # S3/MinIO настройки
 S3_ENABLED = get_env("S3_ENABLED", "true").lower() == "true"
-
-# ИСПРАВЛЕНИЕ: Используем правильные адреса для разных окружений
-if DEBUG:
-    # В режиме разработки
-    S3_ENDPOINT_URL = get_env("S3_ENDPOINT_URL", "http://minio:9000")  # Внутренний адрес для Docker
-    S3_PUBLIC_BASE = get_env("S3_PUBLIC_BASE", "http://localhost:9000/jgo-photos")  # Внешний адрес для Telegram
-else:
-    # В продакшене
-    S3_ENDPOINT_URL = get_env("S3_ENDPOINT_URL", "http://minio:9000")
-    S3_PUBLIC_BASE = get_env("S3_PUBLIC_BASE", "https://cdn.jgo.kz")  # Ваш CDN
-
 S3_ACCESS_KEY = get_env("S3_ACCESS_KEY", get_env("AWS_ACCESS_KEY_ID", "minio_access_key"))
 S3_SECRET_KEY = get_env("S3_SECRET_KEY", get_env("AWS_SECRET_ACCESS_KEY", "minio_secret_key"))
 S3_BUCKET_NAME = get_env("S3_BUCKET_NAME", get_env("AWS_STORAGE_BUCKET_NAME", "jgo-photos"))
@@ -242,22 +193,14 @@ S3_REGION = get_env("S3_REGION", get_env("AWS_S3_REGION_NAME", "us-east-1"))
 S3_ADDRESSING_STYLE = get_env("S3_ADDRESSING_STYLE", "path")
 S3_USE_SSL = get_env("S3_USE_SSL", "false").lower() == "true"
 
-# CloudFront CDN (опционально)
 AWS_CLOUDFRONT_DOMAIN = get_env("AWS_CLOUDFRONT_DOMAIN", None)
-
-# Включаем наш кастомный сторедж по умолчанию (если используете его глобально)
+AWS_S3_OBJECT_PARAMETERS = { "CacheControl": "max-age=86400" }
 if S3_ENABLED and S3_ENDPOINT_URL:
     DEFAULT_FILE_STORAGE = "booking_bot.core.storage.S3PhotoStorage"
 
-# Настройки оптимизации фотографий
-PHOTO_MAX_SIZE = 5 * 1024 * 1024  # 5 МБ
-PHOTO_MAX_DIMENSION = 1920  # Максимальная ширина/высота
-PHOTO_THUMBNAIL_SIZE = (400, 300)  # Размер миниатюры
-
-# Кэширование
-AWS_S3_OBJECT_PARAMETERS = {
-    "CacheControl": "max-age=86400",  # 1 день
-}
+PHOTO_MAX_SIZE = 5 * 1024 * 1024
+PHOTO_MAX_DIMENSION = 1920
+PHOTO_THUMBNAIL_SIZE = (400, 300)
 
 # Celery beat schedule example tasks. Adjust schedules as needed.
 CELERY_BEAT_SCHEDULE = {
@@ -333,7 +276,6 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-# Логирование подозрительных запросов
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -365,7 +307,6 @@ LOGGING = {
     },
 }
 
-# В разделе LOGGING добавьте логгер для платежей
 LOGGING["loggers"]["booking_bot.payments"] = {
     "handlers": ["console"],
     "level": "INFO",

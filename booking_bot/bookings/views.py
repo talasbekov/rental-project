@@ -1,27 +1,23 @@
+import logging
+
 from django.contrib.auth import get_user_model
-from rest_framework import viewsets, status, serializers as drf_serializers
+from django.db import transaction
+from rest_framework import generics, status, viewsets, serializers as drf_serializers
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
 from .models import Booking
 from .serializers import BookingSerializer
-from rest_framework.permissions import IsAuthenticated, AllowAny
-
-# TODO: Add custom permission to ensure only booking owner or admin can cancel/modify
-from rest_framework import generics  # Added for ListAPIView
-
-from ..listings.models import Property
 from ..users.models import UserProfile
+from booking_bot.services.booking_service import (
+    BookingError,
+    BookingRequest,
+    cancel_booking as service_cancel_booking,
+    create_booking,
+)
 
 User = get_user_model()
-
-# booking_bot/bookings/views.py - исправленная версия с защитой от гонок
-from django.utils import timezone
-from django.db import transaction
-from rest_framework import viewsets, status, serializers as drf_serializers
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from datetime import datetime, timedelta
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -33,53 +29,31 @@ class BookingViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def perform_create(self, serializer):
-        """Создание бронирования с защитой от гонок"""
-        logger.info(f"Creating booking for user: {self.request.user}")
+        """Создание бронирования через сервисный слой"""
+        logger.info("Creating booking for user: %s", self.request.user)
 
-        # Получаем данные из валидированного сериализатора
-        prop = serializer.validated_data["property"]
-        sd = serializer.validated_data["start_date"]
-        ed = serializer.validated_data["end_date"]
-
-        # Блокируем квартиру для проверки (SELECT FOR UPDATE)
-        locked_property = Property.objects.select_for_update().get(id=prop.id)
-
-        # Проверяем доступность на выбранные даты
-        conflicting_bookings = Booking.objects.filter(
-            property=locked_property,
-            status__in=["pending_payment", "confirmed"],
-            start_date__lt=ed,
-            end_date__gt=sd,
-        ).exists()
-
-        if conflicting_bookings:
-            raise drf_serializers.ValidationError(
-                {"dates": "Выбранные даты уже забронированы"}
-            )
-
-        # Вычисляем стоимость
-        duration = (ed - sd).days
-        if duration <= 0:
-            raise drf_serializers.ValidationError(
-                "Минимальный срок бронирования - 1 день"
-            )
-
-        total_price = duration * locked_property.price_per_day
-
-        # Создаем бронирование со статусом pending_payment
-        booking = serializer.save(
+        data = serializer.validated_data
+        request_dto = BookingRequest(
             user=self.request.user,
-            total_price=total_price,
+            property=data["property"],
+            start_date=data["start_date"],
+            end_date=data["end_date"],
             status="pending_payment",
-            expires_at=timezone.now() + timedelta(minutes=15),  # 15 минут на оплату
+            hold_calendar=False,
         )
 
-        logger.info(f"Booking created: {booking.id}, expires at {booking.expires_at}")
+        try:
+            booking = create_booking(request_dto)
+        except BookingError as exc:
+            logger.info("Booking creation failed: %s", exc)
+            raise drf_serializers.ValidationError({"detail": str(exc)}) from exc
 
-        # Запускаем отложенную задачу для отмены неоплаченного бронирования
+        serializer.instance = booking
+
         from booking_bot.bookings.tasks import cancel_expired_booking
 
-        cancel_expired_booking.apply_async(args=[booking.id], eta=booking.expires_at)
+        if booking.expires_at:
+            cancel_expired_booking.apply_async(args=[booking.id], eta=booking.expires_at)
 
         return booking
 
@@ -118,22 +92,17 @@ class BookingViewSet(viewsets.ModelViewSet):
             )
 
         # Блокируем запись для изменения
-        locked_booking = Booking.objects.select_for_update().get(id=booking.id)
-
-        # Сохраняем причину отмены
         cancel_reason = request.data.get("reason", "Отменено пользователем")
 
-        locked_booking.status = "cancelled"
-        locked_booking.cancelled_at = timezone.now()
-        locked_booking.cancel_reason = cancel_reason
-        locked_booking.save()
-
-        # Освобождаем календарные дни (если используется система календаря)
-        if hasattr(self, "_update_calendar_availability"):
-            self._update_calendar_availability(locked_booking, "free")
+        cancelled = service_cancel_booking(booking, reason=cancel_reason)
+        cancelled.cancelled_by = request.user
+        cancelled.save(update_fields=["cancelled_by"])
 
         logger.info(
-            f"Booking {booking.id} cancelled by {request.user}, reason: {cancel_reason}"
+            "Booking %s cancelled by %s, reason: %s",
+            booking.id,
+            request.user,
+            cancel_reason,
         )
 
         return Response({"message": "Бронирование успешно отменено"})

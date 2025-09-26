@@ -2,6 +2,7 @@
 
 from cryptography.fernet import Fernet
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.db import models
 from django.contrib.auth.models import User
 import json
@@ -18,8 +19,9 @@ class EncryptionService:
         # Получаем ключ из настроек или генерируем новый
         key = getattr(settings, "ENCRYPTION_KEY", None)
         if not key:
-            key = Fernet.generate_key()
-            logger.warning("No ENCRYPTION_KEY in settings, generated new one")
+            raise ImproperlyConfigured(
+                "ENCRYPTION_KEY must be configured to work with encrypted fields"
+            )
 
         if isinstance(key, str):
             key = key.encode()

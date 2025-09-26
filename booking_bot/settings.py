@@ -1,5 +1,7 @@
 import os
 from pathlib import Path
+
+import structlog
 from django.core.exceptions import ImproperlyConfigured
 
 # Optionally load .env file if using python-dotenv
@@ -31,11 +33,11 @@ allowed_hosts_env = get_env("DJANGO_ALLOWED_HOSTS", "")
 if allowed_hosts_env:
     ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_env.split(",") if host.strip()]
 else:
-    # По умолчанию для разработки
+    # По умолчанию для разработки используем явный список доверенных хостов
     if DEBUG:
-        ALLOWED_HOSTS = ['*']  # В DEBUG режиме разрешаем все хосты
+        ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
     else:
-        ALLOWED_HOSTS = ['jgo.kz', 'www.jgo.kz']  # В продакшене только ваши домены
+        ALLOWED_HOSTS = ["jgo.kz", "www.jgo.kz"]  # В продакшене только ваши домены
 
 APPEND_SLASH = True
 
@@ -52,6 +54,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django_prometheus",
     "django_filters",
     "rest_framework",
     "booking_bot.core",
@@ -67,6 +70,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "django_prometheus.middleware.PrometheusBeforeMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "booking_bot.middleware.FilterHostMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -76,6 +80,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
 
 ROOT_URLCONF = "booking_bot.urls"
@@ -100,7 +105,7 @@ WSGI_APPLICATION = "booking_bot.wsgi.application"
 # Database configuration (PostgreSQL)
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
+        "ENGINE": "django_prometheus.db.backends.postgresql",
         "NAME": get_env("POSTGRES_DB", required=True),
         "USER": get_env("POSTGRES_USER", required=True),
         "PASSWORD": get_env("POSTGRES_PASSWORD", required=True),
@@ -146,7 +151,7 @@ WHATSAPP_VERIFY_TOKEN = get_env(
 )
 
 # Encryption key for custom fields
-# ENCRYPTION_KEY = get_env('ENCRYPTION_KEY', required=True)
+ENCRYPTION_KEY = get_env("ENCRYPTION_KEY", required=True)
 
 # Domain configuration
 # Use DJANGO_DOMAIN environment variable to configure the domain without relying on ngrok.
@@ -215,6 +220,31 @@ _redis_auth = f":{REDIS_PASSWORD}@" if REDIS_PASSWORD else ""
 
 CELERY_BROKER_URL = get_env("CELERY_BROKER_URL", f"redis://{_redis_auth}{REDIS_HOST}:6379/0")
 CELERY_RESULT_BACKEND = get_env("CELERY_RESULT_BACKEND", f"redis://{_redis_auth}{REDIS_HOST}:6379/1")
+
+# Django cache configuration
+DEFAULT_CACHE_URL = get_env("CACHE_URL", get_env("REDIS_CACHE_URL", ""))
+
+if DEFAULT_CACHE_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": DEFAULT_CACHE_URL,
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            },
+        }
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "booking-bot-cache",
+        }
+    }
+
+SEARCH_CACHE_ENABLED = get_env("SEARCH_CACHE_ENABLED", "true").lower() == "true"
+SEARCH_CACHE_TIMEOUT = int(get_env("SEARCH_CACHE_TIMEOUT", "120"))
+SEARCH_CACHE_PREFIX = get_env("SEARCH_CACHE_PREFIX", "search:properties")
 
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_SERIALIZER = "json"
@@ -334,40 +364,50 @@ CELERY_BEAT_SCHEDULE = {
 }
 
 # Логирование подозрительных запросов
+structlog.configure(
+    processors=[
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.add_log_level,
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+    ],
+    wrapper_class=structlog.stdlib.BoundLogger,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "verbose": {"format": "{levelname} {asctime} {module} {message}", "style": "{"},
-        "simple": {"format": "{levelname} {message}", "style": "{"},
+        "json": {
+            "()": "structlog.stdlib.ProcessorFormatter",
+            "processor": structlog.processors.JSONRenderer(),
+        }
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
-            "formatter": "simple",
+            "formatter": "json",
             "level": "INFO",
-        },
-        "security": {
-            "class": "logging.StreamHandler",
-            "formatter": "verbose",
-            "level": "WARNING",
-        },
+        }
     },
     "root": {"handlers": ["console"], "level": "WARNING"},
     "loggers": {
         "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "booking_bot": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "django.security.DisallowedHost": {
-            "handlers": ["security"],
+            "handlers": ["console"],
             "level": "WARNING",
+            "propagate": False,
+        },
+        "booking_bot.payments": {
+            "handlers": ["console"],
+            "level": "INFO",
             "propagate": False,
         },
     },
 }
 
-# В разделе LOGGING добавьте логгер для платежей
-LOGGING["loggers"]["booking_bot.payments"] = {
-    "handlers": ["console"],
-    "level": "INFO",
-    "propagate": False,
-}
+PROMETHEUS_EXPORT_MIGRATIONS = False

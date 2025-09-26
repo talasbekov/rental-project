@@ -7,9 +7,13 @@ from drf_spectacular.views import (
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
+from booking_bot.core.views import healthz
 
 urlpatterns = [
     path("embankment/", admin.site.urls),
+    # Health check endpoint
+    path("healthz", healthz, name="healthz"),
+    path("metrics/", include("django_prometheus.urls")),
     # API v1 paths
     path("api/v1/", include("booking_bot.users.urls")),
     path("api/v1/", include("booking_bot.listings.urls")),

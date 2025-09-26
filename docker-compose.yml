@@ -13,7 +13,7 @@ services:
       retries: 20
       start_period: 20s   # опционально: даём Postgres время на старт/инициализацию
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ./pgdata:/var/lib/postgresql/data
 
   minio:
     image: minio/minio:latest
@@ -156,5 +156,4 @@ services:
         condition: service_healthy
 
 volumes:
-  pgdata:
   minio_data:

@@ -1,17 +1,11 @@
 import logging
 import requests
-from datetime import date, timedelta
-from typing import Optional
-from decimal import Decimal
 from telegram import KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 
 from booking_bot.users.models import UserProfile
-from booking_bot.listings.models import Property, City, District
-from booking_bot.bookings.models import Booking
 from booking_bot.core.models import AuditLog
 from .constants import (
-    _get_profile, log_handler, log_state_transition,
-    STATE_ADMIN_MAIN_MENU, start_command_handler
+    _get_profile, log_handler, STATE_ADMIN_MENU
 )
 from .utils import send_telegram_message
 from ..settings import API_BASE
@@ -60,7 +54,7 @@ def handle_admin_menu(chat_id: int, text: str = None) -> bool:
     
     # Set admin state
     state_data = profile.telegram_state or {}
-    state_data['state'] = STATE_ADMIN_MAIN_MENU
+    state_data['state'] = STATE_ADMIN_MENU
     profile.telegram_state = state_data
     profile.save()
     

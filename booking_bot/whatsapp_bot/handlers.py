@@ -1,6 +1,15 @@
-from django.utils import timezone
 import logging
 from .constants import log_handler
+from booking_bot.services.booking_service import (
+    BookingError,
+    BookingRequest,
+    create_booking,
+)
+from booking_bot.notifications.delivery import (
+    build_confirmation_message,
+    log_codes_delivery,
+)
+from booking_bot.bookings.tasks import cancel_expired_booking
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +154,90 @@ def handle_button_click(phone_number, button_id, profile):
         handle_payment_confirmation(phone_number)
     elif button_id == "cancel_booking":
         start_command_handler(phone_number)
+    
+    # Admin panel buttons
+    elif button_id == "add_property":
+        handle_add_property_start(phone_number, "Добавить квартиру")
+    elif button_id == "my_properties":
+        show_admin_properties(phone_number)
+    elif button_id == "statistics":
+        show_detailed_statistics(phone_number)
+    elif button_id == "manage_admins":
+        show_super_admin_menu(phone_number)
+    elif button_id == "all_statistics":
+        show_extended_statistics(phone_number)
+    elif button_id == "main_menu":
+        start_command_handler(phone_number)
+    
+    # Statistics period buttons
+    elif button_id == "stat_week":
+        show_detailed_statistics(phone_number, "week")
+    elif button_id == "stat_month":
+        show_detailed_statistics(phone_number, "month")
+    elif button_id == "stat_quarter":
+        show_detailed_statistics(phone_number, "quarter")
+    elif button_id == "stat_csv":
+        export_statistics_csv(phone_number)
+    
+    # Admin add property workflow buttons
+    elif button_id.startswith("admin_city_"):
+        city_id = button_id.replace("admin_city_", "")
+        try:
+            city = City.objects.get(id=city_id)
+            handle_add_property_start(phone_number, city.name)
+        except City.DoesNotExist:
+            logger.warning(f"City with id {city_id} not found")
+    elif button_id.startswith("admin_district_"):
+        district_id = button_id.replace("admin_district_", "")
+        try:
+            district = District.objects.get(id=district_id)
+            handle_add_property_start(phone_number, district.name)
+        except District.DoesNotExist:
+            logger.warning(f"District with id {district_id} not found")
+    elif button_id.startswith("admin_class_"):
+        property_class = button_id.replace("admin_class_", "")
+        class_names = {"economy": "Комфорт", "business": "Бизнес", "luxury": "Премиум"}
+        class_display = class_names.get(property_class, property_class)
+        handle_add_property_start(phone_number, class_display)
+    elif button_id.startswith("admin_rooms_"):
+        rooms = button_id.replace("admin_rooms_", "")
+        room_display = "4+" if rooms == "4" else rooms
+        handle_add_property_start(phone_number, room_display)
+    
+    # Photo upload buttons
+    elif button_id == "photo_url":
+        handle_add_property_start(phone_number, "URL фото")
+    elif button_id == "photo_upload":
+        handle_add_property_start(phone_number, "Загрузить")
+    elif button_id == "skip_photos":
+        handle_add_property_start(phone_number, "Пропустить")
+    
+    # Super admin menu buttons
+    elif button_id == "list_admins":
+        # TODO: implement list_admins functionality
+        send_whatsapp_message(phone_number, "📋 Функционал 'Список админов' в разработке")
+    elif button_id == "add_admin":
+        # TODO: implement add_admin functionality
+        send_whatsapp_message(phone_number, "➕ Функционал 'Добавить админа' в разработке")
+    elif button_id == "city_stats":
+        # TODO: implement city_stats functionality
+        send_whatsapp_message(phone_number, "🏙️ Функционал 'Статистика по городам' в разработке")
+    elif button_id == "general_stats":
+        show_extended_statistics(phone_number)
+    elif button_id == "revenue_report":
+        # TODO: implement revenue_report functionality
+        send_whatsapp_message(phone_number, "💰 Функционал 'Отчет о доходах' в разработке")
+    elif button_id == "export_all":
+        # TODO: implement export_all functionality
+        send_whatsapp_message(phone_number, "📥 Функционал 'Экспорт всех данных' в разработке")
+    
+    # Navigation menu buttons
+    elif button_id == "new_search":
+        start_command_handler(phone_number)
+        prompt_city(phone_number, profile)
+    elif button_id == "cancel":
+        start_command_handler(phone_number)
+    
     else:
         logger.warning(f"Unknown button_id: {button_id}")
 
@@ -836,92 +929,87 @@ def handle_payment_confirmation(phone_number):
         check_in = date.fromisoformat(check_in_str)
         check_out = date.fromisoformat(check_out_str)
 
-        # Проверяем доступность дат
-        conflicts = Booking.objects.filter(
+        booking_request = BookingRequest(
+            user=profile.user,
             property=prop,
-            status__in=["pending_payment", "confirmed"],
-            start_date__lt=check_out,
-            end_date__gt=check_in,
-        ).exists()
+            start_date=check_in,
+            end_date=check_out,
+            status="pending_payment",
+            hold_calendar=True,
+        )
 
-        if conflicts:
+        try:
+            booking = create_booking(booking_request)
+        except BookingError as exc:
+            logger.info("WhatsApp booking failed for %s: %s", phone_number, exc)
             send_whatsapp_message(
-                phone_number, "❌ К сожалению, эти даты уже забронированы."
+                phone_number, f"❌ Невозможно создать бронирование: {exc}"
             )
             return
 
-        with transaction.atomic():
-            # Создаем бронирование
-            booking = Booking.objects.create(
-                user=profile.user,
-                property=prop,
-                start_date=check_in,
-                end_date=check_out,
-                total_price=total_price,
-                status="pending_payment",
-                created_at=timezone.now(),
+        if booking.expires_at:
+            cancel_expired_booking.apply_async(args=[booking.id], eta=booking.expires_at)
+
+        send_whatsapp_message(
+            phone_number, "⏳ Создаем платеж...\nПожалуйста, подождите..."
+        )
+
+        try:
+            # Инициируем платеж
+            payment_info = kaspi_initiate_payment(
+                booking_id=booking.id,
+                amount=float(booking.total_price),
+                description=f"Бронирование {prop.name}",
             )
+
+            if payment_info and payment_info.get("checkout_url"):
+                kaspi_payment_id = payment_info.get("payment_id")
+                if kaspi_payment_id:
+                    booking.kaspi_payment_id = kaspi_payment_id
+                    booking.save(update_fields=["kaspi_payment_id"])
+
+                checkout_url = payment_info["checkout_url"]
+
+                # В режиме разработки автоматически подтверждаем
+                if settings.DEBUG:
+                    import time
+
+                    time.sleep(2)
+
+                    booking.status = "confirmed"
+                    booking.save(update_fields=["status", "updated_at"])
+
+                    send_booking_confirmation(phone_number, booking)
+
+                    profile.whatsapp_state = {}
+                    profile.save()
+                else:
+                    # В продакшене отправляем ссылку
+                    send_whatsapp_message(
+                        phone_number,
+                        f"✅ Бронирование создано!\n"
+                        f"📋 Номер брони: #{booking.id}\n\n"
+                        f"💳 Для завершения перейдите по ссылке:\n"
+                        f"{checkout_url}\n\n"
+                        f"⏰ Ссылка действительна 15 минут",
+                        preview_url=True,
+                    )
+
+                    profile.whatsapp_state = {}
+                    profile.save()
+            else:
+                raise KaspiPaymentError("Не удалось получить ссылку для оплаты")
+
+        except KaspiPaymentError as e:
+            booking.status = "payment_failed"
+            booking.save(update_fields=["status", "updated_at"])
 
             send_whatsapp_message(
-                phone_number, "⏳ Создаем платеж...\nПожалуйста, подождите..."
+                phone_number,
+                f"❌ Ошибка при создании платежа.\n"
+                f"Попробуйте позже или обратитесь в поддержку.\n\n"
+                f"Код ошибки: {booking.id}",
             )
-
-            try:
-                # Инициируем платеж
-                payment_info = kaspi_initiate_payment(
-                    booking_id=booking.id,
-                    amount=float(total_price),
-                    description=f"Бронирование {prop.name}",
-                )
-
-                if payment_info and payment_info.get("checkout_url"):
-                    kaspi_payment_id = payment_info.get("payment_id")
-                    if kaspi_payment_id:
-                        booking.kaspi_payment_id = kaspi_payment_id
-                        booking.save()
-
-                    checkout_url = payment_info["checkout_url"]
-
-                    # В режиме разработки автоматически подтверждаем
-                    if settings.DEBUG:
-                        import time
-
-                        time.sleep(2)
-
-                        booking.status = "confirmed"
-                        booking.save()
-
-                        send_booking_confirmation(phone_number, booking)
-
-                        profile.whatsapp_state = {}
-                        profile.save()
-                    else:
-                        # В продакшене отправляем ссылку
-                        send_whatsapp_message(
-                            phone_number,
-                            f"✅ Бронирование создано!\n"
-                            f"📋 Номер брони: #{booking.id}\n\n"
-                            f"💳 Для завершения перейдите по ссылке:\n"
-                            f"{checkout_url}\n\n"
-                            f"⏰ Ссылка действительна 15 минут",
-                            preview_url=True,
-                        )
-
-                        profile.whatsapp_state = {}
-                        profile.save()
-                else:
-                    raise KaspiPaymentError("Не удалось получить ссылку для оплаты")
-
-            except KaspiPaymentError as e:
-                booking.status = "payment_failed"
-                booking.save()
-
-                send_whatsapp_message(
-                    phone_number,
-                    f"❌ Ошибка при создании платежа.\n"
-                    f"Попробуйте позже или обратитесь в поддержку.\n\n"
-                    f"Код ошибки: {booking.id}",
-                )
 
     except Property.DoesNotExist:
         send_whatsapp_message(phone_number, "❌ Квартира не найдена.")
@@ -935,38 +1023,33 @@ def handle_payment_confirmation(phone_number):
 
 def send_booking_confirmation(phone_number, booking):
     """Отправить подтверждение бронирования"""
-    property_obj = booking.property
+    text = build_confirmation_message(booking, include_owner_contact=True)
+    codes_block = log_codes_delivery(
+        booking, channel="whatsapp", recipient=phone_number
+    )
+    if codes_block:
+        codes_block = (
+            codes_block.replace("<b>", "*")
+            .replace("</b>", "*")
+            .replace("<code>", "`")
+            .replace("</code>", "`")
+            .replace("<", "")
+            .replace(">", "")
+        )
+        text += f"\n{codes_block}"
 
     text = (
-        f"✅ *Оплата подтверждена!*\n\n"
-        f"🎉 Ваше бронирование успешно оформлено!\n\n"
-        f"📋 *Детали бронирования:*\n"
-        f"Номер брони: #{booking.id}\n"
-        f"Квартира: {property_obj.name}\n"
-        f"Адрес: {property_obj.address}\n"
-        f"Заезд: {booking.start_date.strftime('%d.%m.%Y')}\n"
-        f"Выезд: {booking.end_date.strftime('%d.%m.%Y')}\n"
-        f"Стоимость: {booking.total_price:,.0f} ₸\n"
+        text.replace("<b>", "*")
+        .replace("</b>", "*")
+        .replace("<br>", "\n")
+        .replace("<br/>", "\n")
+        .replace("</br>", "\n")
+        .replace("&nbsp;", " ")
     )
-
-    if property_obj.entry_instructions:
-        text += f"\n📝 *Инструкции по заселению:*\n{property_obj.entry_instructions}\n"
-
-    if property_obj.digital_lock_code:
-        text += f"\n🔐 *Код от замка:* {property_obj.digital_lock_code}"
-    elif property_obj.key_safe_code:
-        text += f"\n🔑 *Код от сейфа:* {property_obj.key_safe_code}"
-
-    if (
-        hasattr(property_obj.owner, "profile")
-        and property_obj.owner.profile.phone_number
-    ):
-        text += f"\n\n📞 *Контакт владельца:* {property_obj.owner.profile.phone_number}"
-
-    text += "\n\n💬 Желаем приятного отдыха!"
 
     send_whatsapp_message(phone_number, text)
 
+    property_obj = booking.property
     # Отправляем фото квартиры
     photos = PropertyPhoto.objects.filter(property=property_obj)[:3]
     if photos:
@@ -1066,7 +1149,6 @@ def help_command_handler(phone_number):
 
 import logging
 from datetime import datetime, date, timedelta, timezone
-from django.db import transaction
 from django.db.models import Count, Avg
 
 from .constants import (
@@ -1107,6 +1189,7 @@ from .admin_handlers import (
     show_extended_statistics,
     export_statistics_csv,
     show_admin_properties,
+    show_super_admin_menu,
 )
 
 logger = logging.getLogger(__name__)
@@ -1249,6 +1332,90 @@ def handle_button_click(phone_number, button_id, profile):
         handle_payment_confirmation(phone_number)
     elif button_id == "cancel_booking":
         start_command_handler(phone_number)
+    
+    # Admin panel buttons
+    elif button_id == "add_property":
+        handle_add_property_start(phone_number, "Добавить квартиру")
+    elif button_id == "my_properties":
+        show_admin_properties(phone_number)
+    elif button_id == "statistics":
+        show_detailed_statistics(phone_number)
+    elif button_id == "manage_admins":
+        show_super_admin_menu(phone_number)
+    elif button_id == "all_statistics":
+        show_extended_statistics(phone_number)
+    elif button_id == "main_menu":
+        start_command_handler(phone_number)
+    
+    # Statistics period buttons
+    elif button_id == "stat_week":
+        show_detailed_statistics(phone_number, "week")
+    elif button_id == "stat_month":
+        show_detailed_statistics(phone_number, "month")
+    elif button_id == "stat_quarter":
+        show_detailed_statistics(phone_number, "quarter")
+    elif button_id == "stat_csv":
+        export_statistics_csv(phone_number)
+    
+    # Admin add property workflow buttons
+    elif button_id.startswith("admin_city_"):
+        city_id = button_id.replace("admin_city_", "")
+        try:
+            city = City.objects.get(id=city_id)
+            handle_add_property_start(phone_number, city.name)
+        except City.DoesNotExist:
+            logger.warning(f"City with id {city_id} not found")
+    elif button_id.startswith("admin_district_"):
+        district_id = button_id.replace("admin_district_", "")
+        try:
+            district = District.objects.get(id=district_id)
+            handle_add_property_start(phone_number, district.name)
+        except District.DoesNotExist:
+            logger.warning(f"District with id {district_id} not found")
+    elif button_id.startswith("admin_class_"):
+        property_class = button_id.replace("admin_class_", "")
+        class_names = {"economy": "Комфорт", "business": "Бизнес", "luxury": "Премиум"}
+        class_display = class_names.get(property_class, property_class)
+        handle_add_property_start(phone_number, class_display)
+    elif button_id.startswith("admin_rooms_"):
+        rooms = button_id.replace("admin_rooms_", "")
+        room_display = "4+" if rooms == "4" else rooms
+        handle_add_property_start(phone_number, room_display)
+    
+    # Photo upload buttons
+    elif button_id == "photo_url":
+        handle_add_property_start(phone_number, "URL фото")
+    elif button_id == "photo_upload":
+        handle_add_property_start(phone_number, "Загрузить")
+    elif button_id == "skip_photos":
+        handle_add_property_start(phone_number, "Пропустить")
+    
+    # Super admin menu buttons
+    elif button_id == "list_admins":
+        # TODO: implement list_admins functionality
+        send_whatsapp_message(phone_number, "📋 Функционал 'Список админов' в разработке")
+    elif button_id == "add_admin":
+        # TODO: implement add_admin functionality
+        send_whatsapp_message(phone_number, "➕ Функционал 'Добавить админа' в разработке")
+    elif button_id == "city_stats":
+        # TODO: implement city_stats functionality
+        send_whatsapp_message(phone_number, "🏙️ Функционал 'Статистика по городам' в разработке")
+    elif button_id == "general_stats":
+        show_extended_statistics(phone_number)
+    elif button_id == "revenue_report":
+        # TODO: implement revenue_report functionality
+        send_whatsapp_message(phone_number, "💰 Функционал 'Отчет о доходах' в разработке")
+    elif button_id == "export_all":
+        # TODO: implement export_all functionality
+        send_whatsapp_message(phone_number, "📥 Функционал 'Экспорт всех данных' в разработке")
+    
+    # Navigation menu buttons
+    elif button_id == "new_search":
+        start_command_handler(phone_number)
+        prompt_city(phone_number, profile)
+    elif button_id == "cancel":
+        start_command_handler(phone_number)
+    
     else:
         logger.warning(f"Unknown button_id: {button_id}")
 

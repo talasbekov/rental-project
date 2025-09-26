@@ -78,9 +78,17 @@ class NotificationService:
             except Exception as e:
                 logger.error(f"Error scheduling notification: {e}")
 
-        # Запускаем обработку если нужно отправить сразу
-        if delay_minutes == 0:
-            cls.process_queue()
+        # Запускаем обработку через Celery, если нужно отправить сразу
+        if delay_minutes == 0 and notifications:
+            try:
+                from .tasks import process_notification_queue
+
+                process_notification_queue.delay()
+            except Exception as exc:  # noqa: BLE001 - fallback
+                logger.warning(
+                    "Failed to enqueue notification queue processing: %s", exc
+                )
+                cls.process_queue()
 
         return notifications
 

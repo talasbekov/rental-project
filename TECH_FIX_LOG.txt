@@ -1,0 +1,93 @@
+Журнал внедрения улучшений ЖильеGO
+==============================
+
+Этап 1 (инициализация): Создан журнал этапов исправлений.
+Этап 2 (безопасность базовой конфигурации):
+- В settings скорректированы ALLOWED_HOSTS по умолчанию и удалено глобальное отключение CSRF.
+- Добавлено обязательное требование ENCRYPTION_KEY.
+- Сервис шифрования теперь отказывается работать без ключа.
+
+Этап 3 (план следующих улучшений):
+- Подготовить сервисный слой (booking/payment/notification) и начать декомпозицию telegram handlers.
+- Перевести обработчики Telegram-бота на async и вынести блокирующие вызовы.
+- Перенести NotificationService на фоновые задачи Celery и внедрить отказоустойчивые ретраи.
+- Разработать стратегию синхронизации календаря при бронированиях для всех каналов.
+- Настроить кэширование Redis, мониторинг (Prometheus/Sentry) и обновить тестовый контур.
+
+Этап 4 (сервисный слой — бронирования):
+- Создан пакет booking_bot/services с booking_service.py.
+- Реализованы BookingRequest, create_booking, cancel_booking и calculate_total_price.
+
+Этап 5 (REST API использует сервис бронирований):
+- BookingViewSet.perform_create перенесён на create_booking с обработкой ошибок BookingError.
+- Действие cancel теперь использует cancel_booking сервисного слоя и сохраняет cancelled_by.
+
+Этап 6 (следующие шаги):
+- Интегрировать booking_service в Telegram/WhatsApp потоках и унифицировать блокировку календаря.
+- Начать декомпозицию telegram_bot.handlers на модули + переход на async.
+- Перенести NotificationService на отложенную обработку через Celery, добавить ретраи.
+- Подготовить кэширование Redis для поиска и метрики (Prometheus/structlog/Sentry).
+
+Этап 7 (бот использует сервис бронирований):
+- handle_payment_confirmation в Telegram вызывает create_booking с блокировкой календаря и обработкой BookingError.
+- Настроено планирование auto-cancel через таск, логика оплаты очищает состояние после успеха/ошибок.
+
+Этап 8 (оценка WhatsApp-потока):
+- Обнаружено прямое использование Booking.objects.create в booking_bot/whatsapp_bot/handlers.py:939; требуется аналогичная интеграция с сервисным слоем.
+- Задача запланирована на следующий цикл вместе с общим рефакторингом бота.
+
+Этап 9 (WhatsApp-бот на сервисном слое):
+- handle_payment_confirmation в WhatsApp использует BookingRequest/create_booking и планирует автоотмену.
+- Убраны прямые Booking.objects.create, платежи используют booking.total_price.
+
+Этап 10 (план рефакторинга ботов и уведомлений):
+- Подготовить выделение модулей telegram_bot.payment_flow и telegram_bot.booking_flow для async-обработчиков.
+- Аналогично декомпозировать whatsapp_bot на подмодули (state management, payments).
+- Перевести send_booking_confirmation и связанные функции на единый сервис уведомлений, переиспользуемый ботами.
+- Переписать NotificationService на Celery задачи и структурированные логи.
+
+Этап 11 (декомпозиция Telegram бота):
+- Создан модуль booking_bot/telegram_bot/payment_flow.py с handle_payment_confirmation и send_booking_confirmation.
+- Из handlers.py удалена громоздкая логика оплаты; импорты упрощены.
+- send_booking_confirmation сохраняет отправку кодов и запрос отзывов с защитой от ошибок.
+
+Этап 12 (следующие шаги по уведомлениям):
+- Выделить общие функции уведомлений ботов в сервис notification_delivery.
+- Переписать NotificationService на Celery-задачи с ретраями и structured logging.
+- Подготовить набор интеграционных тестов ботов и уведомлений после рефакторинга.
+
+Этап 13 (общие уведомления ботов):
+- Создан booking_bot/notifications/delivery.py с генерацией текстов и логированием кодов доступа.
+- Telegram payment_flow и WhatsApp handlers используют общие функции для отправки подтверждений.
+
+Этап 14 (NotificationService refactor план):
+- Вынести синхронный вызов process_queue в Celery таску.
+- Ввести новую задачу notifications.tasks.process_queue_async, использующую log delivery.
+- Обновить места вызова NotificationService.schedule для асинхронной обработки.
+
+Этап 15 (асинхронная обработка уведомлений):
+- NotificationService.schedule теперь вызывает Celery-задачу process_notification_queue вместо синхронного process_queue.
+- При ошибке постановки в очередь выполнен запасной синхронный запуск.
+
+Этап 16 (декомпозиция booking flow):
+- Создан booking_bot/telegram_bot/booking_flow.py с обработчиками начала бронирования и выбора дат/времени.
+- handlers.py теперь импортирует эти функции и избавлен от дублирования логики.
+
+Этап 17 (план state-manager):
+- Вынести навигацию поиска, обновление состояний и отмену бронирования в отдельный модуль state_flow.py.
+- Подготовить каркас для async-хендлеров с согласованным интерфейсом.
+
+Этап 18 (state_flow внедрение):
+- Реализован полноценный booking_bot/telegram_bot/state_flow.py: вынесены поиск, избранное, карточки и отмена брони, добавлено единое управление причинами отмены.
+- handlers.py и связанные модули переключены на state_flow; добавлена маршрутизация состояний STATE_CANCEL_* и удалены дублирующие реализации.
+- Обновлены main.py, bot_setup.py, user_review_handlers.py и views.py для использования новых импортов, проверена компиляция python-модулей.
+
+Этап 19 (кэширование поиска):
+- Добавлена конфигурация Django Cache с поддержкой Redis/LocMem и параметры SEARCH_CACHE_* в settings.py.
+- Реализован booking_bot/listings/cache.py с кешированием результатов поиска, сигналами инвалидции и интеграцией в state_flow.show_search_results.
+- Обновлены зависимости (django-redis), добавлены сигнал-подписчики и очищены строки уведомлений для успешной компиляции.
+
+Этап 20 (observability):
+- Подключены django-prometheus и маршрут /metrics, база переведена на инструментированный backend.
+- В settings.py настроен structlog JSON-логгер и добавлены Prometheus middleware; healthz теперь логирует в структурированном формате.
+- Добавлены зависимости django-prometheus и structlog, обновлены urls и проверена компиляция модулей.

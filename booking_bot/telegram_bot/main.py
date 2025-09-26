@@ -104,8 +104,10 @@ def telegram_callback_query_handler(update: Update, context: CallbackContext):
         from .handlers import (
             handle_review_rating_callback,
             handle_submit_review_with_photos,
+            start_command_handler
+        )
+        from .state_flow import (
             show_user_bookings_with_cancel,
-            start_command_handler,
             prompt_city
         )
         from .admin_property_handlers import (
@@ -161,7 +163,7 @@ def telegram_callback_query_handler(update: Update, context: CallbackContext):
         
         # НАВИГАЦИЯ ПО РЕЗУЛЬТАТАМ ПОИСКА
         elif data.startswith("nav_"):
-            from .handlers import navigate_results
+            from .state_flow import navigate_results
             # Форматы: nav_prev, nav_next, nav_page_<num>
             if data == "nav_prev":
                 navigate_results(chat_id, profile, "◀️ Назад")
@@ -183,7 +185,7 @@ def telegram_callback_query_handler(update: Update, context: CallbackContext):
                     from .handlers import show_booking_details
                     show_booking_details(chat_id, int(booking_id))
                 elif action == "cancel":
-                    from .handlers import handle_cancel_booking_start
+                    from .state_flow import handle_cancel_booking_start
                     handle_cancel_booking_start(chat_id, int(booking_id))
                 elif action == "extend":
                     from .handlers import handle_extend_booking_start  

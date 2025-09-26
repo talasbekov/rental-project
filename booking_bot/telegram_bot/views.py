@@ -17,10 +17,10 @@ from booking_bot.bookings.models import Booking
 from booking_bot.telegram_bot.handlers import (
     start_command_handler,
     help_command_handler,
-    show_user_bookings,
     message_handler,
     date_input_handler,
 )
+from booking_bot.telegram_bot.state_flow import show_user_bookings
 
 # Добавляем импорт для обработки фото
 from booking_bot.telegram_bot.admin_handlers import handle_photo_upload

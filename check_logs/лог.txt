@@ -1,0 +1,867 @@
+web-1          | INFO CALL  show_detailed_statistics args=(1016528941,) kwargs={'period': 'month'}
+web-1          | INFO CALL  _get_profile args=(1016528941,) kwargs={}
+web-1          | /usr/local/lib/python3.11/site-packages/django/db/models/fields/__init__.py:1612: RuntimeWarning: DateTimeField Booking.created_at received a naive datetime (2025-07-20 00:00:00) while time zone support is active.
+web-1          |   warnings.warn(
+web-1          | 172.18.0.1 - - [19/Aug/2025:09:49:48 +0500] "POST /telegram/webhook/ HTTP/1.0" 200 12 "-" "-"
+web-1          | INFO CALL  message_handler args=(1016528941, 'Неделя', <booking_bot.telegram_bot.views.telegram_webhook.<locals>.MockUpdate object at 0x7645107f8550>, <booking_bot.telegram_bot.views.telegram_webhook.<locals>.MockContext object at 0x7645107f9410>) kwargs={}
+web-1          | INFO CALL  _get_or_create_local_profile args=(1016528941,) kwargs={}
+web-1          | INFO CALL  handle_add_property_start args=(1016528941, 'Неделя') kwargs={}
+web-1          | INFO CALL  _get_profile args=(1016528941,) kwargs={}
+web-1          | 172.18.0.1 - - [19/Aug/2025:09:49:50 +0500] "POST /telegram/webhook/ HTTP/1.0" 200 12 "-" "-"
+web-1          | ERROR 2025-08-19 09:50:54,209 log Invalid HTTP_HOST header: '0.0.0.0:8000'. You may need to add '0.0.0.0' to ALLOWED_HOSTS.
+web-1          | Traceback (most recent call last):
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/core/handlers/exception.py", line 55, in inner
+web-1          |     response = get_response(request)
+web-1          |                ^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/utils/deprecation.py", line 119, in __call__
+web-1          |     response = self.process_request(request)
+web-1          |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/middleware/security.py", line 28, in process_request
+web-1          |     host = self.redirect_host or request.get_host()
+web-1          |                                  ^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/http/request.py", line 191, in get_host
+web-1          |     raise DisallowedHost(msg)
+web-1          | django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: '0.0.0.0:8000'. You may need to add '0.0.0.0' to ALLOWED_HOSTS.
+web-1          | 185.189.182.234 - - [19/Aug/2025:09:50:54 +0500] "GET / HTTP/1.1" 400 143 "-" "-"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:10:07:06 +0500] "GET / HTTP/1.0" 404 179 "-" "bitdiscovery-suggestions"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:10:07:06 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | 172.18.0.1 - - [19/Aug/2025:10:39:00 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:10:39:00 +0500] "GET /odinhttpcall1755581940 HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; Odin; https://docs.getodin.com/)"
+web-1          | WARNING Not Found: /odinhttpcall1755581940
+web-1          | WARNING Not Found: /sdk
+web-1          | 172.18.0.1 - - [19/Aug/2025:10:39:00 +0500] "POST /sdk HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; Odin; https://docs.getodin.com/)"
+web-1          | WARNING Not Found: /HNAP1
+web-1          | 172.18.0.1 - - [19/Aug/2025:10:39:01 +0500] "GET /HNAP1 HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; Odin; https://docs.getodin.com/)"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:10:39:02 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:10:39:02 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:10:39:03 +0500] "POST / HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:10:39:03 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; Odin; https://docs.getodin.com/)"
+web-1          | WARNING Not Found: /favicon.ico
+web-1          | 172.18.0.1 - - [19/Aug/2025:10:39:04 +0500] "GET /favicon.ico HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:10:43:48 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,like Gecko) Chrome/95.0.4638.69 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:10:46:05 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.190 Safari/537.36"
+web-1          | WARNING Not Found: /ecp/Current/exporttool/microsoft.exchange.ediscovery.exporttool.application
+web-1          | 172.18.0.1 - - [19/Aug/2025:10:54:14 +0500] "GET /ecp/Current/exporttool/microsoft.exchange.ediscovery.exporttool.application HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:11:17:46 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | WARNING Not Found: /.env
+web-1          | 172.18.0.1 - - [19/Aug/2025:11:31:41 +0500] "GET /.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.142 Safari/537.36 OPR/62.0.3331.116"
+web-1          | WARNING Not Found: /robots.txt
+web-1          | 172.18.0.1 - - [19/Aug/2025:11:35:03 +0500] "GET /robots.txt HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.134 Safari/537.36"
+web-1          | 147.185.132.72 - - [19/Aug/2025:11:58:04 +0500] "GET / HTTP/1.1" 301 0 "-" "curl/7.68.0"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:12:24:32 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.190 Safari/537.36"
+web-1          | WARNING Not Found: /favicon.ico
+web-1          | 172.18.0.1 - - [19/Aug/2025:12:24:41 +0500] "GET /favicon.ico HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.88 Safari/537.36"
+web-1          | ERROR 2025-08-19 12:40:36,501 log Invalid HTTP_HOST header: 'example.com:443'. You may need to add 'example.com' to ALLOWED_HOSTS.
+web-1          | Traceback (most recent call last):
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/core/handlers/exception.py", line 55, in inner
+web-1          |     response = get_response(request)
+web-1          |                ^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/utils/deprecation.py", line 119, in __call__
+web-1          |     response = self.process_request(request)
+web-1          |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/middleware/security.py", line 28, in process_request
+web-1          |     host = self.redirect_host or request.get_host()
+web-1          |                                  ^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/http/request.py", line 191, in get_host
+web-1          |     raise DisallowedHost(msg)
+web-1          | django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'example.com:443'. You may need to add 'example.com' to ALLOWED_HOSTS.
+web-1          | 176.65.148.92 - - [19/Aug/2025:12:40:36 +0500] "CONNECT example.com:443 HTTP/1.1" 400 143 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:13:23:22 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:13:23:22 +0500] "GET / HTTP/1.0" 404 179 "-" "bitdiscovery-suggestions"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:13:26:04 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | 203.55.131.3 - - [19/Aug/2025:13:51:16 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:13:51:42 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Linux; Android 10; LIO-AN00 Build/HUAWEILIO-AN00; wv) MicroMessenger Weixin QQ AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/78.0.3904.62 XWEB/2692 MMWEBSDK/200901 Mobile Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:14:01:22 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:14:10:12 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36 Edg/91.0.864.54"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:14:44:14 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:15:15:37 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64; rv:139.0) Gecko/20100101 Firefox/139.0"
+web-1          | WARNING Not Found: /favicon.ico
+web-1          | 172.18.0.1 - - [19/Aug/2025:15:15:40 +0500] "GET /favicon.ico HTTP/1.0" 404 179 "https://185.4.180.127/" "Mozilla/5.0 (X11; Linux x86_64; rv:139.0) Gecko/20100101 Firefox/139.0"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:15:16:17 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /.env
+web-1          | 172.18.0.1 - - [19/Aug/2025:15:19:56 +0500] "GET /.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (iPhone; CPU iPhone OS 13_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0 Mobile/15E148 Safari/604.1"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:15:55:26 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.117 Safari/537.36"
+web-1          | 152.32.178.47 - - [19/Aug/2025:15:58:04 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0"
+web-1          | 152.32.178.47 - - [19/Aug/2025:15:58:22 +0500] "GET /favicon.ico HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_7_0) AppleWebKit/535.11 (KHTML, like Gecko) Chrome/17.0.963.56 Safari/535.11"
+web-1          | 152.32.178.47 - - [19/Aug/2025:15:58:40 +0500] "GET /robots.txt HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_7_0) AppleWebKit/535.11 (KHTML, like Gecko) Chrome/17.0.963.56 Safari/535.11"
+web-1          | 152.32.178.47 - - [19/Aug/2025:15:58:58 +0500] "GET /sitemap.xml HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_7_0) AppleWebKit/535.11 (KHTML, like Gecko) Chrome/17.0.963.56 Safari/535.11"
+web-1          | [2025-08-19 16:14:45 +0500] [11] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:45 +0500] [11] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:45 +0500] [12] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:45 +0500] [12] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:45 +0500] [12] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:45 +0500] [12] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:45 +0500] [12] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:45 +0500] [12] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:45 +0500] [11] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:45 +0500] [16] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:46 +0500] [11] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:46 +0500] [11] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:46 +0500] [11] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:46 +0500] [16] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:47 +0500] [12] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:47 +0500] [16] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:47 +0500] [16] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | [2025-08-19 16:14:48 +0500] [16] [WARNING] Invalid request from ip=176.46.158.5: Invalid HTTP request line: "\x03\x00\x00,'à\x00\x00\x00\x00\x00Cookie: mstshash=Domain"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:16:19:55 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; InternetMeasurement/1.0; +https://internet-measurement.com/)"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:16:20:39 +0500] "GET / HTTP/1.0" 404 179 "-" "Hello from Palo Alto Networks, find out more about our scans in https://docs-cortex.paloaltonetworks.com/r/1/Cortex-Xpanse/Scanning-activity"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:16:33:47 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,like Gecko) Chrome/95.0.4638.69 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:16:39:58 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /ews
+web-1          | 172.18.0.1 - - [19/Aug/2025:16:40:02 +0500] "GET /ews HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /owa
+web-1          | 172.18.0.1 - - [19/Aug/2025:16:40:06 +0500] "GET /owa HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /raephaeyeip4fawe
+web-1          | 172.18.0.1 - - [19/Aug/2025:16:40:10 +0500] "GET /raephaeyeip4fawe HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | 206.168.34.85 - - [19/Aug/2025:17:33:16 +0500] "GET / HTTP/1.1" 301 0 "-" "-"
+web-1          | 206.168.34.85 - - [19/Aug/2025:17:34:54 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:17:36:37 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /ews
+web-1          | 172.18.0.1 - - [19/Aug/2025:17:36:40 +0500] "GET /ews HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /owa
+web-1          | 172.18.0.1 - - [19/Aug/2025:17:36:42 +0500] "GET /owa HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /raephaeyeip4fawe
+web-1          | 172.18.0.1 - - [19/Aug/2025:17:36:45 +0500] "GET /raephaeyeip4fawe HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:17:49:48 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | 139.59.32.165 - - [19/Aug/2025:17:51:07 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (X11; Linux x86_64; rv:139.0) Gecko/20100101 Firefox/139.0"
+web-1          | 139.59.32.165 - - [19/Aug/2025:17:51:07 +0500] "GET /favicon.ico HTTP/1.1" 301 0 "http://185.4.180.127:8000/" "Mozilla/5.0 (X11; Linux x86_64; rv:139.0) Gecko/20100101 Firefox/139.0"
+web-1          | WARNING Not Found: /wiki
+web-1          | 172.18.0.1 - - [19/Aug/2025:17:51:50 +0500] "GET /wiki HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:17:54:06 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /ews
+web-1          | 172.18.0.1 - - [19/Aug/2025:17:54:10 +0500] "GET /ews HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /owa
+web-1          | 172.18.0.1 - - [19/Aug/2025:17:54:12 +0500] "GET /owa HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /raephaeyeip4fawe
+web-1          | 172.18.0.1 - - [19/Aug/2025:17:54:15 +0500] "GET /raephaeyeip4fawe HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:18:05:22 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:18:20:55 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | 185.247.137.116 - - [19/Aug/2025:18:28:13 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (compatible; InternetMeasurement/1.0; +https://internet-measurement.com/)"
+web-1          | 172.18.0.1 - - [19/Aug/2025:18:29:35 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; ModatScanner/1.1; +https://modat.io/)"
+web-1          | WARNING Not Found: /
+web-1          | 147.185.132.138 - - [19/Aug/2025:18:35:17 +0500] "GET / HTTP/1.1" 301 0 "-" "curl/7.68.0"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:19:02:51 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | WARNING Not Found: /wiki
+web-1          | 172.18.0.1 - - [19/Aug/2025:19:04:17 +0500] "GET /wiki HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | 2.57.122.234 - - [19/Aug/2025:20:09:37 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:20:09:38 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+web-1          | [2025-08-19 20:11:37 +0500] [1] [CRITICAL] WORKER TIMEOUT (pid:12)
+web-1          | [2025-08-19 20:11:37 +0500] [12] [ERROR] Error handling request (no URI read)
+web-1          | Traceback (most recent call last):
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/sync.py", line 133, in handle
+web-1          |     req = next(parser)
+web-1          |           ^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/parser.py", line 41, in __next__
+web-1          |     self.mesg = self.mesg_class(self.cfg, self.unreader, self.source_addr, self.req_count)
+web-1          |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 259, in __init__
+web-1          |     super().__init__(cfg, unreader, peer_addr)
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 60, in __init__
+web-1          |     unused = self.parse(self.unreader)
+web-1          |              ^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 274, in parse
+web-1          |     line, rbuf = self.read_line(unreader, buf, self.limit_request_line)
+web-1          |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 326, in read_line
+web-1          |     self.get_data(unreader, buf)
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 262, in get_data
+web-1          |     data = unreader.read()
+web-1          |            ^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/unreader.py", line 36, in read
+web-1          |     d = self.chunk()
+web-1          |         ^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/unreader.py", line 63, in chunk
+web-1          |     return self.sock.recv(self.mxchunk)
+web-1          |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 204, in handle_abort
+web-1          |     sys.exit(1)
+web-1          | SystemExit: 1
+web-1          | [2025-08-19 20:11:37 +0500] [12] [INFO] Worker exiting (pid: 12)
+web-1          | [2025-08-19 20:11:38 +0500] [1] [ERROR] Worker (pid:12) was sent SIGKILL! Perhaps out of memory?
+web-1          | [2025-08-19 20:11:38 +0500] [17] [INFO] Booting worker with pid: 17
+web-1          | 172.18.0.1 - - [19/Aug/2025:20:13:14 +0500] "GET /login.html HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /login.html
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:20:24:58 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /.env
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:17 +0500] "GET /.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Linux; U; Android 4.1.2; en-us; SCH-S960L Build/JZO54K) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30"
+web-1          | WARNING Not Found: /api/.env
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:19 +0500] "GET /api/.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows; U; Windows NT 6.0; it; rv:1.8.1.9) Gecko/20071025 Firefox/2.0.0.9"
+web-1          | WARNING Not Found: /backend/.env
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:19 +0500] "GET /backend/.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2687.0 Safari/537.36 OPR/38.0.2205.0 (Edition developer)"
+web-1          | WARNING Not Found: /admin/.env
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:20 +0500] "GET /admin/.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Linux; U; Android 4.0.4; en-us; Xoom Build/IMM76) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Safari/534.30"
+web-1          | WARNING Not Found: /.env.example
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:20 +0500] "GET /.env.example HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; U; Linux i686; en-US) AppleWebKit/534.13 (KHTML, like Gecko) Ubuntu/9.10 Chromium/9.0.592.0 Chrome/9.0.592.0 Safari/534.13"
+web-1          | WARNING Not Found: /app_dev.php/_profiler/phpinfo
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:20 +0500] "GET /app_dev.php/_profiler/phpinfo HTTP/1.0" 404 179 "-" "Mozilla/4.0 (compatible; MSIE 6.0; Windows CE; IEMobile 7.11)"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:21 +0500] "GET /?phpinfo=-1 HTTP/1.0" 404 179 "-" "HTC_Dream Mozilla/5.0 (Linux; U; Android 1.5; en-ca; Build/CUPCAKE) AppleWebKit/528.5  (KHTML, like Gecko) Version/3.1.2 Mobile Safari/525.20.1"
+web-1          | WARNING Not Found: /stag/.env
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:21 +0500] "GET /stag/.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Linux; Android 6.0.1; SM-G928V Build/MMB29K; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/61.0.3163.98 Mobile Safari/537.36"
+web-1          | WARNING Not Found: /public_html/.env
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:22 +0500] "GET /public_html/.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 5.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36"
+web-1          | WARNING Not Found: /.env.development
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:22 +0500] "GET /.env.development HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/534.59.10 (KHTML, like Gecko) Version/5.0.5 Safari/533.21.1"
+web-1          | WARNING Not Found: /portal/.env
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:22 +0500] "GET /portal/.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.1.12) Gecko/20080208 Firefox/2.0.0.12"
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:23 +0500] "GET /project/.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows ME; U) Opera 6.05  [de]"
+web-1          | WARNING Not Found: /project/.env
+web-1          | WARNING Not Found: /.aws/credentials
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:23 +0500] "GET /.aws/credentials HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.0; en) AppleWebKit/522.12.1 (KHTML, like Gecko) Version/3.0.1 Safari/522.12.2"
+web-1          | WARNING Not Found: /app/config/parameters.yml
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:23 +0500] "GET /app/config/parameters.yml HTTP/1.0" 404 179 "-" "Mozilla/5.0 (iPhone; CPU iPhone OS 11_0_3 like Mac OS X) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/11.0 Mobile/15A432 Safari/604.1"
+web-1          | WARNING Not Found: /exapi/.env
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:24 +0500] "GET /exapi/.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 6.1; rv:27.0) Gecko/20100101 Firefox/27.0"
+web-1          | WARNING Not Found: /client_secrets.json
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:24 +0500] "GET /client_secrets.json HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; ASJB; rv:11.0) like Gecko"
+web-1          | WARNING Not Found: /pinfo.php
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:11:24 +0500] "GET /pinfo.php HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 5.1; rv:27.0) Gecko/20100101 Firefox/27.0"
+web-1          | WARNING Not Found: /.env
+web-1          | 172.18.0.1 - - [19/Aug/2025:21:37:11 +0500] "GET /.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.103 Safari/537.36 OPR/60.0.3255.170"
+web-1          | WARNING Not Found: /WebInterface/
+web-1          | 172.18.0.1 - - [19/Aug/2025:22:23:34 +0500] "GET /WebInterface/ HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:22:45:56 +0500] "GET / HTTP/1.0" 404 179 "-" "okhttp/4.9.2"
+web-1          | WARNING Not Found: /favicon.ico
+web-1          | 172.18.0.1 - - [19/Aug/2025:22:45:56 +0500] "GET /favicon.ico HTTP/1.0" 404 179 "-" "okhttp/4.9.2"
+web-1          | WARNING Not Found: /favicon.png
+web-1          | 172.18.0.1 - - [19/Aug/2025:22:45:56 +0500] "GET /favicon.png HTTP/1.0" 404 179 "-" "okhttp/4.9.2"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:22:58:27 +0500] "GET / HTTP/1.0" 404 179 "-" "Scrapy/2.12.0 (+https://scrapy.org)"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:23:12:45 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:23:13:34 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.112 Safari/537.36"
+web-1          | 205.210.31.239 - - [19/Aug/2025:23:15:15 +0500] "GET / HTTP/1.1" 301 0 "-" "Hello from Palo Alto Networks, find out more about our scans in https://docs-cortex.paloaltonetworks.com/r/1/Cortex-Xpanse/Scanning-activity"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:23:41:02 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [19/Aug/2025:23:42:08 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.190 Safari/537.36"
+web-1          | 3.143.33.63 - - [20/Aug/2025:00:29:59 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36"
+web-1          | 3.143.33.63 - - [20/Aug/2025:00:30:54 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:00:41:58 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.190 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:00:44:44 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.64 Safari/537.36 Edg/101.0.1210.47"
+web-1          | 172.18.0.1 - - [20/Aug/2025:00:45:47 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:134.0) Gecko/20100101 Firefox/134.0"
+web-1          | WARNING Not Found: /
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:00:47:03 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /favicon.ico
+web-1          | 172.18.0.1 - - [20/Aug/2025:00:47:06 +0500] "GET /favicon.ico HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"
+web-1          | 3.130.96.91 - - [20/Aug/2025:01:04:03 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36"
+web-1          | 3.130.96.91 - - [20/Aug/2025:01:04:03 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36"
+web-1          | 172.18.0.1 - - [20/Aug/2025:01:11:31 +0500] "GET / HTTP/1.0" 404 179 "-" "python-requests/2.32.4"
+web-1          | WARNING Not Found: /
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:01:45:27 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.1"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:01:49:23 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 5.1; rv:9.0.1) Gecko/20100101 Firefox/9.0.1"
+web-1          | WARNING Not Found: /HNAP1/
+web-1          | 172.18.0.1 - - [20/Aug/2025:01:49:24 +0500] "GET /HNAP1/ HTTP/1.0" 404 179 "https://185.4.180.127/" "Mozilla/5.0 (Windows NT 5.1; rv:9.0.1) Gecko/20100101 Firefox/9.0.1"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:02:30:53 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:134.0) Gecko/20100101 Firefox/134.0"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:02:39:03 +0500] "GET /?XDEBUG_SESSION_START=phpstorm HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:02:44:12 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux i686; rv:109.0) Gecko/20100101 Firefox/120.0"
+web-1          | 3.149.59.26 - - [20/Aug/2025:03:02:00 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36"
+web-1          | 3.149.59.26 - - [20/Aug/2025:03:05:03 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36"
+web-1          | [2025-08-20 03:09:30 +0500] [16] [WARNING] Invalid request from ip=3.149.59.26: Invalid HTTP request line: 'SSH-2.0-Go'
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:03:20:53 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.95 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:03:21:59 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,like Gecko) Chrome/95.0.4638.69 Safari/537.36"
+web-1          | 3.131.215.38 - - [20/Aug/2025:03:33:43 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36"
+web-1          | 3.131.215.38 - - [20/Aug/2025:03:35:00 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36"
+web-1          | [2025-08-20 03:38:20 +0500] [16] [WARNING] Invalid request from ip=3.131.215.38: Invalid HTTP request line: 'SSH-2.0-Go'
+web-1          | WARNING Not Found: /actuator/gateway/routes
+web-1          | 172.18.0.1 - - [20/Aug/2025:04:21:18 +0500] "GET /actuator/gateway/routes HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36"
+web-1          | 199.45.155.99 - - [20/Aug/2025:05:00:29 +0500] "GET / HTTP/1.1" 301 0 "-" "-"
+web-1          | 199.45.155.99 - - [20/Aug/2025:05:01:47 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | WARNING Not Found: /ReportServer
+web-1          | 172.18.0.1 - - [20/Aug/2025:05:26:28 +0500] "GET /ReportServer HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /.git/config
+web-1          | 172.18.0.1 - - [20/Aug/2025:05:59:48 +0500] "GET /.git/config HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 Edg/107.0.1418.52"
+web-1          | WARNING Not Found: /.env
+web-1          | 172.18.0.1 - - [20/Aug/2025:06:26:04 +0500] "GET /.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+web-1          | WARNING Not Found: /.env.save
+web-1          | 172.18.0.1 - - [20/Aug/2025:06:26:04 +0500] "GET /.env.save HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+web-1          | WARNING Not Found: /.env.prod
+web-1          | 172.18.0.1 - - [20/Aug/2025:06:26:05 +0500] "GET /.env.prod HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+web-1          | WARNING Not Found: /api/.env
+web-1          | 172.18.0.1 - - [20/Aug/2025:06:26:05 +0500] "GET /api/.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+web-1          | WARNING Not Found: /dev/.env
+web-1          | 172.18.0.1 - - [20/Aug/2025:06:26:06 +0500] "GET /dev/.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+web-1          | WARNING Not Found: /application/.env
+web-1          | 172.18.0.1 - - [20/Aug/2025:06:26:06 +0500] "GET /application/.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+web-1          | WARNING Not Found: /phpinfo.php
+web-1          | 172.18.0.1 - - [20/Aug/2025:06:26:07 +0500] "GET /phpinfo.php HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+web-1          | WARNING Not Found: /phpinfo
+web-1          | 172.18.0.1 - - [20/Aug/2025:06:26:07 +0500] "GET /phpinfo HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+web-1          | WARNING Not Found: /php_info.php
+web-1          | 172.18.0.1 - - [20/Aug/2025:06:26:08 +0500] "GET /php_info.php HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+web-1          | WARNING Not Found: /_profiler/phpinfo
+web-1          | 172.18.0.1 - - [20/Aug/2025:06:26:08 +0500] "GET /_profiler/phpinfo HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+web-1          | WARNING Not Found: /backend/.env
+web-1          | 172.18.0.1 - - [20/Aug/2025:06:26:09 +0500] "GET /backend/.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+web-1          | WARNING Not Found: /.env.example
+web-1          | 172.18.0.1 - - [20/Aug/2025:06:26:09 +0500] "GET /.env.example HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+web-1          | WARNING Not Found: /admin/.env
+web-1          | 172.18.0.1 - - [20/Aug/2025:06:26:10 +0500] "GET /admin/.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+web-1          | WARNING Not Found: /info
+web-1          | 172.18.0.1 - - [20/Aug/2025:06:26:10 +0500] "GET /info HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:06:26:10 +0500] "POST / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+web-1          | 167.94.138.193 - - [20/Aug/2025:07:00:55 +0500] "GET / HTTP/1.1" 301 0 "-" "-"
+web-1          | 167.94.138.193 - - [20/Aug/2025:07:02:17 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:07:18:14 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux i686; rv:109.0) Gecko/20100101 Firefox/120.0"
+web-1          | 205.210.31.148 - - [20/Aug/2025:07:30:14 +0500] "GET / HTTP/1.1" 301 0 "-" "curl/7.68.0"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:07:39:42 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /favicon.ico
+web-1          | 172.18.0.1 - - [20/Aug/2025:07:43:36 +0500] "GET /favicon.ico HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /robots.txt
+web-1          | 172.18.0.1 - - [20/Aug/2025:08:25:15 +0500] "GET /robots.txt HTTP/1.0" 404 179 "http://jgo.kz/robots.txt" "Mozilla/5.0 (Linux; Android 14; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.280 Mobile Safari/537.36 OPR/80.4.4244.7786"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:08:25:16 +0500] "GET / HTTP/1.0" 404 179 "http://jgo.kz/" "Mozilla/5.0 (Linux; Android 14; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.280 Mobile Safari/537.36 OPR/80.4.4244.7786"
+web-1          | WARNING Not Found: /robots.txt
+web-1          | 172.18.0.1 - - [20/Aug/2025:08:38:21 +0500] "GET /robots.txt HTTP/1.0" 404 179 "-" "CheckMarkNetwork/1.0 (+http://www.checkmarknetwork.com/spider.html)"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:08:38:22 +0500] "HEAD / HTTP/1.0" 404 179 "-" "CheckMarkNetwork/1.0 (+http://www.checkmarknetwork.com/spider.html)"
+web-1          | 172.18.0.1 - - [20/Aug/2025:08:38:24 +0500] "GET /robots.txt HTTP/1.0" 404 179 "-" "CheckMarkNetwork/1.0 (+http://www.checkmarknetwork.com/spider.html)"
+web-1          | WARNING Not Found: /robots.txt
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:08:38:24 +0500] "HEAD / HTTP/1.0" 404 179 "-" "CheckMarkNetwork/1.0 (+http://www.checkmarknetwork.com/spider.html)"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:09:08:19 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | [2025-08-20 09:53:54 +0500] [1] [CRITICAL] WORKER TIMEOUT (pid:11)
+web-1          | [2025-08-20 09:53:54 +0500] [11] [ERROR] Error handling request (no URI read)
+web-1          | Traceback (most recent call last):
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/sync.py", line 133, in handle
+web-1          |     req = next(parser)
+web-1          |           ^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/parser.py", line 41, in __next__
+web-1          |     self.mesg = self.mesg_class(self.cfg, self.unreader, self.source_addr, self.req_count)
+web-1          |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 259, in __init__
+web-1          |     super().__init__(cfg, unreader, peer_addr)
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 60, in __init__
+web-1          |     unused = self.parse(self.unreader)
+web-1          |              ^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 271, in parse
+web-1          |     self.get_data(unreader, buf, stop=True)
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 262, in get_data
+web-1          |     data = unreader.read()
+web-1          |            ^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/unreader.py", line 36, in read
+web-1          |     d = self.chunk()
+web-1          |         ^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/unreader.py", line 63, in chunk
+web-1          |     return self.sock.recv(self.mxchunk)
+web-1          |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 204, in handle_abort
+web-1          |     sys.exit(1)
+web-1          | SystemExit: 1
+web-1          | [2025-08-20 09:53:54 +0500] [11] [INFO] Worker exiting (pid: 11)
+web-1          | [2025-08-20 09:53:55 +0500] [1] [ERROR] Worker (pid:11) was sent SIGKILL! Perhaps out of memory?
+web-1          | [2025-08-20 09:53:55 +0500] [18] [INFO] Booting worker with pid: 18
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:10:08:59 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | 172.18.0.1 - - [20/Aug/2025:10:08:59 +0500] "GET / HTTP/1.0" 404 179 "-" "bitdiscovery-suggestions"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:10:10:50 +0500] "POST /telegram/webhook/ HTTP/1.0" 200 12 "-" "-"
+web-1          | 172.18.0.1 - - [20/Aug/2025:10:11:02 +0500] "POST /telegram/webhook/ HTTP/1.0" 200 12 "-" "-"
+web-1          | 172.18.0.1 - - [20/Aug/2025:10:11:08 +0500] "POST /telegram/webhook/ HTTP/1.0" 200 12 "-" "-"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:11:05:10 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | WARNING Not Found: /.git/HEAD
+web-1          | 172.18.0.1 - - [20/Aug/2025:11:09:16 +0500] "GET /.git/HEAD HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Linux; Android 9; G8141) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.89 Mobile Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:11:18:10 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:11:30:22 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:11:30:22 +0500] "GET / HTTP/1.0" 404 179 "-" "bitdiscovery-suggestions"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:11:30:55 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:11:32:29 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | WARNING Not Found: /favicon.ico
+web-1          | 172.18.0.1 - - [20/Aug/2025:11:32:50 +0500] "GET /favicon.ico HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | WARNING Not Found: /security.txt
+web-1          | 172.18.0.1 - - [20/Aug/2025:11:32:57 +0500] "GET /security.txt HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:11:46:07 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:12:01:52 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.190 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:12:20:18 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /webui/
+web-1          | 172.18.0.1 - - [20/Aug/2025:12:25:12 +0500] "GET /webui/ HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /favicon.ico
+web-1          | 172.18.0.1 - - [20/Aug/2025:12:28:25 +0500] "GET /favicon.ico HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0"
+web-1          | WARNING Not Found: /geoserver/web/
+web-1          | 172.18.0.1 - - [20/Aug/2025:12:39:46 +0500] "GET /geoserver/web/ HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /.git/config
+web-1          | 172.18.0.1 - - [20/Aug/2025:12:44:44 +0500] "GET /.git/config HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.2 Safari/605.1.15"
+web-1          | 45.43.33.218 - - [20/Aug/2025:12:51:28 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:134.0) Gecko/20100101 Firefox/134.0"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:13:21:50 +0500] "GET / HTTP/1.0" 404 179 "-" "Hello from Palo Alto Networks, find out more about our scans in https://docs-cortex.paloaltonetworks.com/r/1/Cortex-Xpanse/Scanning-activity"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:13:47:45 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,like Gecko) Chrome/95.0.4638.69 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:23:26 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.190 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:37:56 +0500] "GET / HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:38:40 +0500] "GET / HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /manage/account/login
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:39:09 +0500] "GET /manage/account/login HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /manage/account/login
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:39:33 +0500] "GET /manage/account/login HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /admin/index.html
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:39:47 +0500] "GET /admin/index.html HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /admin/index.html
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:40:01 +0500] "GET /admin/index.html HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /index.html
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:40:19 +0500] "GET /index.html HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /index.html
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:40:37 +0500] "GET /index.html HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /+CSCOE+/logon.html
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:40:55 +0500] "GET /+CSCOE+/logon.html HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /+CSCOE+/logon.html
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:41:13 +0500] "GET /+CSCOE+/logon.html HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /cgi-bin/login.cgi
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:41:27 +0500] "GET /cgi-bin/login.cgi HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /cgi-bin/login.cgi
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:41:41 +0500] "GET /cgi-bin/login.cgi HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /login.htm
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:42:19 +0500] "GET /login.htm HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /login.html
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:42:45 +0500] "GET /login.html HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /login.html
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:43:06 +0500] "GET /login.html HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /login.jsp
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:43:55 +0500] "GET /login.jsp HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /login
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:44:15 +0500] "GET /login HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /login
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:44:44 +0500] "GET /login HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /doc/index.html
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:45:09 +0500] "GET /doc/index.html HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /doc/index.html
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:45:39 +0500] "GET /doc/index.html HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /remote/login
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:46:26 +0500] "GET /remote/login HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: //admin/login.asp
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:46:47 +0500] "GET //admin/login.asp HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: //admin/login.asp
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:47:06 +0500] "GET //admin/login.asp HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /web/
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:47:27 +0500] "GET /web/ HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: //webpages/login.html
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:48:14 +0500] "GET //webpages/login.html HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: //webpages/login.html
+web-1          | 172.18.0.1 - - [20/Aug/2025:14:48:44 +0500] "GET //webpages/login.html HTTP/1.0" 404 179 "-" "'Mozilla/5.0 (compatible; GenomeCrawlerd/1.0; +https://www.nokia.com/genomecrawler)'"
+web-1          | WARNING Not Found: /dns-query
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:27 +0500] "GET /dns-query?dns=WAcBAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:27 +0500] "POST /dns-query HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /dns-query
+web-1          | WARNING Not Found: /dns-query
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:27 +0500] "GET /dns-query?name=example.com&type=A HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /dns-query
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:28 +0500] "GET /dns-query?dns=r2ABAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /dns-query
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:28 +0500] "POST /dns-query HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /dns-query
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:28 +0500] "GET /dns-query?name=example.com&type=A HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /query
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:28 +0500] "GET /query?dns=6acBAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:29 +0500] "POST /query HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /query
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:29 +0500] "GET /query?name=example.com&type=A HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /query
+web-1          | WARNING Not Found: /query
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:29 +0500] "GET /query?dns=c-4BAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /query
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:29 +0500] "POST /query HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /query
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:30 +0500] "GET /query?name=example.com&type=A HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /resolve
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:30 +0500] "GET /resolve?dns=qIEBAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /resolve
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:31 +0500] "POST /resolve HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /resolve
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:31 +0500] "GET /resolve?name=example.com&type=A HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /resolve
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:31 +0500] "GET /resolve?dns=_8MBAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /resolve
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:31 +0500] "POST /resolve HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /resolve
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:32 +0500] "GET /resolve?name=example.com&type=A HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:32 +0500] "GET /?dns=ph4BAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:32 +0500] "POST / HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:33 +0500] "GET /?name=example.com&type=A HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:33 +0500] "GET /?dns=FU4BAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:33 +0500] "POST / HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:09:33 +0500] "GET /?name=example.com&type=A HTTP/1.0" 404 179 "-" "Go-http-client/1.1"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:26:51 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:31:14 +0500] "GET / HTTP/1.0" 404 179 "https://kz.all-url.info/kz/jgo.kz/" "Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:109.0) Gecko/20100101 Firefox/113.0"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:15:57:34 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:16:43:07 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [20/Aug/2025:17:30:05 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+web-1          | WARNING Not Found: /.git/refs/
+web-1          | 172.18.0.1 - - [20/Aug/2025:18:34:58 +0500] "GET /.git/refs/ HTTP/1.0" 404 179 "-" "Mozilla/5.0 (iPhone; CPU iPhone OS 11_0 like Mac OS X) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/11.0 Mobile/15A356 Safari/604.1"
+web-1          | 147.185.132.58 - - [20/Aug/2025:18:35:14 +0500] "GET / HTTP/1.1" 301 0 "-" "curl/7.68.0"
+web-1          | WARNING Not Found: /owa/auth/x.js
+web-1          | 172.18.0.1 - - [20/Aug/2025:18:57:22 +0500] "GET /owa/auth/x.js HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /developmentserver/metadatauploader
+web-1          | 172.18.0.1 - - [20/Aug/2025:19:04:31 +0500] "GET /developmentserver/metadatauploader HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | 216.218.206.69 - - [20/Aug/2025:19:31:06 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (X11; Linux x86_64; rv:56.0) Gecko/20100101 Firefox/56.0"
+web-1          | 216.218.206.109 - - [20/Aug/2025:19:31:16 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+web-1          | 216.218.206.85 - - [20/Aug/2025:19:31:29 +0500] "GET /favicon.ico HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+web-1          | ERROR 2025-08-20 19:31:33,388 log Invalid HTTP_HOST header: 'api.ipify.org'. You may need to add 'api.ipify.org' to ALLOWED_HOSTS.
+web-1          | Traceback (most recent call last):
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/core/handlers/exception.py", line 55, in inner
+web-1          |     response = get_response(request)
+web-1          |                ^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/utils/deprecation.py", line 119, in __call__
+web-1          |     response = self.process_request(request)
+web-1          |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/middleware/security.py", line 28, in process_request
+web-1          |     host = self.redirect_host or request.get_host()
+web-1          |                                  ^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/http/request.py", line 191, in get_host
+web-1          |     raise DisallowedHost(msg)
+web-1          | django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'api.ipify.org'. You may need to add 'api.ipify.org' to ALLOWED_HOSTS.
+web-1          | 216.218.206.81 - - [20/Aug/2025:19:31:33 +0500] "GET http://api.ipify.org/?format=json HTTP/1.1" 400 143 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+web-1          | ERROR 2025-08-20 19:31:36,733 log Invalid HTTP_HOST header: 'www.shadowserver.org'. You may need to add 'www.shadowserver.org' to ALLOWED_HOSTS.
+web-1          | Traceback (most recent call last):
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/core/handlers/exception.py", line 55, in inner
+web-1          |     response = get_response(request)
+web-1          |                ^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/utils/deprecation.py", line 119, in __call__
+web-1          |     response = self.process_request(request)
+web-1          |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/middleware/security.py", line 28, in process_request
+web-1          |     host = self.redirect_host or request.get_host()
+web-1          |                                  ^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/django/http/request.py", line 191, in get_host
+web-1          |     raise DisallowedHost(msg)
+web-1          | django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'www.shadowserver.org'. You may need to add 'www.shadowserver.org' to ALLOWED_HOSTS.
+web-1          | 216.218.206.77 - - [20/Aug/2025:19:31:36 +0500] "CONNECT www.shadowserver.org:443 HTTP/1.1" 400 143 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:52:59 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:53:03 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:53:08 +0500] "GET /favicon.ico HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:53:13 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:53:16 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:53:20 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:53:25 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:53:29 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:53:33 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:53:37 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:53:45 +0500] "GET /favicon.ico HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:54:01 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:54:07 +0500] "GET /favicon.ico HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:54:10 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:54:14 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:54:19 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:54:23 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:54:26 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:54:31 +0500] "GET /favicon.ico HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:54:35 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:54:40 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:54:45 +0500] "GET /nobody/favicon.ico HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:54:49 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:54:53 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:54:56 +0500] "GET /favicon.ico HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:00 +0500] "GET /favicon.ico HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:04 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:08 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:12 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:16 +0500] "GET /favicon.ico HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:19 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:23 +0500] "GET /skin/default_1/images/logo.png HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:27 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:31 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:35 +0500] "GET /favicon.ico HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:40 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:44 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:47 +0500] "GET /login.rsp HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:51 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:55 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | 68.183.188.242 - - [20/Aug/2025:20:55:58 +0500] "GET /image/lgbg.jpg HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_0) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.79 Safari/537.4"
+web-1          | [2025-08-20 22:30:35 +0500] [16] [WARNING] Invalid request from ip=47.84.181.107: Invalid HTTP request line: ''
+web-1          | 147.185.132.84 - - [20/Aug/2025:23:14:13 +0500] "GET / HTTP/1.1" 301 0 "-" "Hello from Palo Alto Networks, find out more about our scans in https://docs-cortex.paloaltonetworks.com/r/1/Cortex-Xpanse/Scanning-activity"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:00:05:10 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux i686; rv:109.0) Gecko/20100101 Firefox/120.0"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:00:15:23 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:00:20:56 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.190 Safari/537.36"
+web-1          | 172.234.217.129 - - [21/Aug/2025:00:26:45 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+web-1          | 3.149.59.26 - - [21/Aug/2025:00:30:34 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36"
+web-1          | 3.149.59.26 - - [21/Aug/2025:00:32:55 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36"
+web-1          | [2025-08-21 00:37:48 +0500] [18] [WARNING] Invalid request from ip=3.149.59.26: Invalid HTTP request line: 'SSH-2.0-Go'
+web-1          | [2025-08-21 01:24:41 +0500] [1] [CRITICAL] WORKER TIMEOUT (pid:18)
+web-1          | [2025-08-21 01:24:41 +0500] [18] [ERROR] Error handling request (no URI read)
+web-1          | Traceback (most recent call last):
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/sync.py", line 133, in handle
+web-1          |     req = next(parser)
+web-1          |           ^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/parser.py", line 41, in __next__
+web-1          |     self.mesg = self.mesg_class(self.cfg, self.unreader, self.source_addr, self.req_count)
+web-1          |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 259, in __init__
+web-1          |     super().__init__(cfg, unreader, peer_addr)
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 60, in __init__
+web-1          |     unused = self.parse(self.unreader)
+web-1          |              ^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 271, in parse
+web-1          |     self.get_data(unreader, buf, stop=True)
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 262, in get_data
+web-1          |     data = unreader.read()
+web-1          |            ^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/unreader.py", line 36, in read
+web-1          |     d = self.chunk()
+web-1          |         ^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/unreader.py", line 63, in chunk
+web-1          |     return self.sock.recv(self.mxchunk)
+web-1          |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 204, in handle_abort
+web-1          |     sys.exit(1)
+web-1          | SystemExit: 1
+web-1          | [2025-08-21 01:24:41 +0500] [18] [INFO] Worker exiting (pid: 18)
+web-1          | [2025-08-21 01:24:42 +0500] [1] [ERROR] Worker (pid:18) was sent SIGKILL! Perhaps out of memory?
+web-1          | [2025-08-21 01:24:42 +0500] [19] [INFO] Booting worker with pid: 19
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:02:03:59 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:02:40:33 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,like Gecko) Chrome/95.0.4638.69 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:02:48:07 +0500] "GET / HTTP/1.0" 404 179 "-" "fasthttp"
+web-1          | WARNING Not Found: /aaa9
+web-1          | 172.18.0.1 - - [21/Aug/2025:02:48:08 +0500] "GET /aaa9 HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36"
+web-1          | WARNING Not Found: /aab9
+web-1          | 172.18.0.1 - - [21/Aug/2025:02:48:08 +0500] "GET /aab9 HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36"
+web-1          | 172.18.0.1 - - [21/Aug/2025:02:48:28 +0500] "GET /aaa9 HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36"
+web-1          | WARNING Not Found: /aaa9
+web-1          | WARNING Not Found: /aab9
+web-1          | 172.18.0.1 - - [21/Aug/2025:02:48:28 +0500] "GET /aab9 HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:02:53:15 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:03:20:03 +0500] "GET /?XDEBUG_SESSION_START=phpstorm HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36"
+web-1          | WARNING Not Found: /_profiler/phpinfo
+web-1          | 172.18.0.1 - - [21/Aug/2025:03:23:49 +0500] "GET /_profiler/phpinfo HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Linux; Android 5.1.1; A37f Build/LMY47V) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.126 Mobile Safari/537.36"
+web-1          | WARNING Not Found: /robots.txt
+web-1          | 172.18.0.1 - - [21/Aug/2025:03:25:15 +0500] "GET /robots.txt HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; DotBot/1.2; +https://opensiteexplorer.org/dotbot; help@moz.com)"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:03:27:48 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; DotBot/1.2; +https://opensiteexplorer.org/dotbot; help@moz.com)"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:03:59:08 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | WARNING Not Found: /favicon.ico
+web-1          | 172.18.0.1 - - [21/Aug/2025:03:59:26 +0500] "GET /favicon.ico HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | WARNING Not Found: /.well-known/security.txt
+web-1          | 172.18.0.1 - - [21/Aug/2025:03:59:32 +0500] "GET /.well-known/security.txt HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | [2025-08-21 04:27:22 +0500] [19] [WARNING] Invalid request from ip=165.154.41.56: Invalid HTTP request line: ''
+web-1          | WARNING Not Found: /robots.txt
+web-1          | 172.18.0.1 - - [21/Aug/2025:04:27:27 +0500] "GET /robots.txt HTTP/1.0" 404 179 "-" "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:04:27:29 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)"
+web-1          | 118.26.36.18 - - [21/Aug/2025:04:28:46 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/545.55 (KHTML, like Gecko) Chrome/61.0.891 Safari/537.36"
+web-1          | WARNING Not Found: /.git/config
+web-1          | 172.18.0.1 - - [21/Aug/2025:04:34:26 +0500] "GET /.git/config HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.119 Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:04:56:07 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.190 Safari/537.36"
+web-1          | WARNING Not Found: /.env
+web-1          | 172.18.0.1 - - [21/Aug/2025:05:09:05 +0500] "GET /.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.186 Safari/537.36"
+web-1          | WARNING Not Found: /actuator/gateway/routes
+web-1          | 172.18.0.1 - - [21/Aug/2025:05:17:40 +0500] "GET /actuator/gateway/routes HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36"
+web-1          | WARNING Not Found: /robots.txt
+web-1          | 172.18.0.1 - - [21/Aug/2025:05:31:06 +0500] "GET /robots.txt HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+web-1          | 47.245.102.134 - - [21/Aug/2025:06:04:56 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11"
+web-1          | 47.245.102.134 - - [21/Aug/2025:06:05:23 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11"
+web-1          | 47.245.102.134 - - [21/Aug/2025:06:05:48 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11"
+web-1          | 47.245.102.134 - - [21/Aug/2025:06:06:15 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11"
+web-1          | 47.245.102.134 - - [21/Aug/2025:06:06:40 +0500] "GET /favicon.ico HTTP/1.1" 301 0 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:06:16:19 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
+web-1          | WARNING Not Found: /webui/
+web-1          | 172.18.0.1 - - [21/Aug/2025:06:24:39 +0500] "GET /webui/ HTTP/1.0" 404 179 "-" "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0"
+web-1          | WARNING Not Found: /favicon.ico
+web-1          | 172.18.0.1 - - [21/Aug/2025:06:28:26 +0500] "GET /favicon.ico HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:06:30:24 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:06:46:37 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | 167.94.145.103 - - [21/Aug/2025:07:29:54 +0500] "GET / HTTP/1.1" 301 0 "-" "-"
+web-1          | WARNING Not Found: /.git/config
+web-1          | 172.18.0.1 - - [21/Aug/2025:07:31:50 +0500] "GET /.git/config HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.80 Safari/537.36"
+web-1          | [2025-08-21 07:31:58 +0500] [1] [CRITICAL] WORKER TIMEOUT (pid:17)
+web-1          | [2025-08-21 07:31:58 +0500] [17] [ERROR] Error handling request (no URI read)
+web-1          | Traceback (most recent call last):
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/sync.py", line 133, in handle
+web-1          |     req = next(parser)
+web-1          |           ^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/parser.py", line 41, in __next__
+web-1          |     self.mesg = self.mesg_class(self.cfg, self.unreader, self.source_addr, self.req_count)
+web-1          |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 259, in __init__
+web-1          |     super().__init__(cfg, unreader, peer_addr)
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 60, in __init__
+web-1          |     unused = self.parse(self.unreader)
+web-1          |              ^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 271, in parse
+web-1          |     self.get_data(unreader, buf, stop=True)
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 262, in get_data
+web-1          |     data = unreader.read()
+web-1          |            ^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/unreader.py", line 36, in read
+web-1          |     d = self.chunk()
+web-1          |         ^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/unreader.py", line 63, in chunk
+web-1          |     return self.sock.recv(self.mxchunk)
+web-1          |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 204, in handle_abort
+web-1          |     sys.exit(1)
+web-1          | SystemExit: 1
+web-1          | [2025-08-21 07:31:58 +0500] [17] [INFO] Worker exiting (pid: 17)
+web-1          | [2025-08-21 07:31:59 +0500] [20] [INFO] Booting worker with pid: 20
+web-1          | WARNING Not Found: /.git/config
+web-1          | 172.18.0.1 - - [21/Aug/2025:07:35:11 +0500] "GET /.git/config HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36"
+web-1          | WARNING Not Found: /robots.txt
+web-1          | 172.18.0.1 - - [21/Aug/2025:07:36:06 +0500] "GET /robots.txt HTTP/1.0" 404 179 "-" "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)"
+web-1          | 185.226.197.38 - - [21/Aug/2025:07:36:24 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.117 Safari/537.36"
+web-1          | 198.235.24.143 - - [21/Aug/2025:07:38:31 +0500] "GET / HTTP/1.1" 301 0 "-" "curl/7.68.0"
+web-1          | 167.94.138.60 - - [21/Aug/2025:07:38:43 +0500] "GET / HTTP/1.1" 301 0 "-" "-"
+web-1          | 167.94.138.60 - - [21/Aug/2025:07:40:03 +0500] "GET / HTTP/1.1" 301 0 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | [2025-08-21 08:53:09 +0500] [1] [CRITICAL] WORKER TIMEOUT (pid:16)
+web-1          | [2025-08-21 08:53:10 +0500] [16] [ERROR] Error handling request (no URI read)
+web-1          | Traceback (most recent call last):
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/sync.py", line 133, in handle
+web-1          |     req = next(parser)
+web-1          |           ^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/parser.py", line 41, in __next__
+web-1          |     self.mesg = self.mesg_class(self.cfg, self.unreader, self.source_addr, self.req_count)
+web-1          |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 259, in __init__
+web-1          |     super().__init__(cfg, unreader, peer_addr)
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 60, in __init__
+web-1          |     unused = self.parse(self.unreader)
+web-1          |              ^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 271, in parse
+web-1          |     self.get_data(unreader, buf, stop=True)
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/message.py", line 262, in get_data
+web-1          |     data = unreader.read()
+web-1          |            ^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/unreader.py", line 36, in read
+web-1          |     d = self.chunk()
+web-1          |         ^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/http/unreader.py", line 63, in chunk
+web-1          |     return self.sock.recv(self.mxchunk)
+web-1          |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+web-1          |   File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 204, in handle_abort
+web-1          |     sys.exit(1)
+web-1          | SystemExit: 1
+web-1          | [2025-08-21 08:53:10 +0500] [16] [INFO] Worker exiting (pid: 16)
+web-1          | [2025-08-21 08:53:10 +0500] [21] [INFO] Booting worker with pid: 21
+web-1          | WARNING Not Found: /.env
+web-1          | 172.18.0.1 - - [21/Aug/2025:09:45:18 +0500] "GET /.env HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Linux; U; Android 4.4.2; en-US; HM NOTE 1W Build/KOT49H) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 UCBrowser/11.0.5.850 U3/0.8.0 Mobile Safari/534.30"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:09:45:19 +0500] "POST / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Linux; U; Android 4.4.2; en-US; HM NOTE 1W Build/KOT49H) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 UCBrowser/11.0.5.850 U3/0.8.0 Mobile Safari/534.30"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:10:11:14 +0500] "GET / HTTP/1.0" 404 179 "-" "bitdiscovery-suggestions"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:10:11:14 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:10:24:43 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:10:24:43 +0500] "GET / HTTP/1.0" 404 179 "-" "bitdiscovery-suggestions"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:10:26:50 +0500] "GET / HTTP/1.0" 404 179 "-" "Hello from Palo Alto Networks, find out more about our scans in https://docs-cortex.paloaltonetworks.com/r/1/Cortex-Xpanse/Scanning-activity"
+web-1          | WARNING Not Found: /.env
+web-1          | 172.18.0.1 - - [21/Aug/2025:11:10:24 +0500] "GET /.env HTTP/1.0" 404 179 "-" "LG-GC900/V10a Obigo/WAP2.0 Profile/MIDP-2.1 Configuration/CLDC-1.1"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:11:20:32 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:11:31:08 +0500] "GET / HTTP/1.0" 404 179 "-" "-"
+web-1          | 172.18.0.1 - - [21/Aug/2025:11:48:39 +0500] "POST /telegram/webhook/ HTTP/1.0" 200 12 "-" "-"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:11:49:14 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | WARNING Not Found: /favicon.ico
+web-1          | 172.18.0.1 - - [21/Aug/2025:11:51:04 +0500] "GET /favicon.ico HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | WARNING Not Found: /wiki
+web-1          | 172.18.0.1 - - [21/Aug/2025:11:51:13 +0500] "GET /wiki HTTP/1.0" 404 179 "-" "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)"
+web-1          | WARNING Not Found: /login
+web-1          | 172.18.0.1 - - [21/Aug/2025:12:25:19 +0500] "GET /login HTTP/1.0" 404 179 "-" "Mozilla/5.0 zgrab/0.x"
+web-1          | WARNING Not Found: /
+web-1          | 172.18.0.1 - - [21/Aug/2025:12:31:19 +0500] "GET / HTTP/1.0" 404 179 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.190 Safari/537.36"
+web-1          | 172.18.0.1 - - [21/Aug/2025:12:33:34 +0500] "POST /telegram/webhook/ HTTP/1.0" 200 12 "-" "-"
+celery-beat-1  | [2025-08-21 12:35:00,000: INFO/MainProcess] Scheduler: Sending due task check-expired-bookings (booking_bot.bookings.tasks.check_all_expired_bookings)
+celery-beat-1  | [2025-08-21 12:35:00,008: INFO/MainProcess] Scheduler: Sending due task process-notifications (booking_bot.notifications.tasks.process_notification_queue)
+celery-1       | [2025-08-21 12:35:00,007: INFO/MainProcess] Task booking_bot.bookings.tasks.check_all_expired_bookings[1632e43c-6268-4b02-b429-5218e3828269] received
+celery-1       | [2025-08-21 12:35:00,016: INFO/MainProcess] Task booking_bot.notifications.tasks.process_notification_queue[20789e85-50dd-456e-b88a-018cd4344b78] received
+celery-1       | [2025-08-21 12:35:00,017: WARNING/ForkPoolWorker-2] /usr/local/lib/python3.11/site-packages/django/db/models/fields/__init__.py:1671: RuntimeWarning: DateTimeField Booking.expires_at received a naive datetime (2025-08-21 12:35:00.016034) while time zone support is active.
+celery-1       |   warnings.warn(
+celery-1       | 
+celery-1       | INFO Found and scheduled cancellation for 0 expired bookings
+celery-1       | INFO Processed notification queue
+celery-1       | [2025-08-21 12:35:00,085: INFO/ForkPoolWorker-2] Task booking_bot.bookings.tasks.check_all_expired_bookings[1632e43c-6268-4b02-b429-5218e3828269] succeeded in 0.07034139800816774s: None
+celery-1       | [2025-08-21 12:35:00,092: INFO/ForkPoolWorker-1] Task booking_bot.notifications.tasks.process_notification_queue[20789e85-50dd-456e-b88a-018cd4344b78] succeeded in 0.06419731501955539s: None
+celery-beat-1  | [2025-08-21 12:36:00,000: INFO/MainProcess] Scheduler: Sending due task process-notifications (booking_bot.notifications.tasks.process_notification_queue)
+celery-1       | [2025-08-21 12:36:00,013: INFO/MainProcess] Task booking_bot.notifications.tasks.process_notification_queue[aefb6143-331c-4c7e-9a41-9fe5c46ce7e4] received
+celery-1       | INFO Processed notification queue
+celery-1       | [2025-08-21 12:36:00,073: INFO/ForkPoolWorker-2] Task booking_bot.notifications.tasks.process_notification_queue[aefb6143-331c-4c7e-9a41-9fe5c46ce7e4] succeeded in 0.053915304015390575s: None
+celery-beat-1  | [2025-08-21 12:37:00,001: INFO/MainProcess] Scheduler: Sending due task process-notifications (booking_bot.notifications.tasks.process_notification_queue)
+celery-1       | [2025-08-21 12:37:00,014: INFO/MainProcess] Task booking_bot.notifications.tasks.process_notification_queue[6db25824-ad1e-45f4-bf06-ea46b513f8e8] received
+celery-1       | INFO Processed notification queue
+celery-1       | [2025-08-21 12:37:00,061: INFO/ForkPoolWorker-2] Task booking_bot.notifications.tasks.process_notification_queue[6db25824-ad1e-45f4-bf06-ea46b513f8e8] succeeded in 0.0413552179816179s: None
+
+что говорит лог, что тут происходило?

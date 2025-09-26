@@ -194,7 +194,7 @@ def handle_user_review_rating(chat_id, text):
         profile.telegram_state = {}
         profile.save()
         # Возвращаемся к списку бронирований
-        from .handlers import show_user_bookings_with_cancel
+        from .state_flow import show_user_bookings_with_cancel
         show_user_bookings_with_cancel(chat_id, "completed")
         return
 
@@ -216,7 +216,7 @@ def handle_user_review_rating(chat_id, text):
 
         profile.telegram_state = {}
         profile.save()
-        from .handlers import show_user_bookings_with_cancel
+        from .state_flow import show_user_bookings_with_cancel
         show_user_bookings_with_cancel(chat_id, "completed")
         return
 
@@ -269,7 +269,7 @@ def handle_user_review_text(chat_id, text):
     if text == "❌ Отмена":
         profile.telegram_state = {}
         profile.save()
-        from .handlers import show_user_bookings_with_cancel
+        from .state_flow import show_user_bookings_with_cancel
         show_user_bookings_with_cancel(chat_id, "completed")
         return
 
@@ -309,7 +309,7 @@ def handle_user_review_photos(chat_id, text):
     if text == "❌ Отмена":
         profile.telegram_state = {}
         profile.save()
-        from .handlers import show_user_bookings_with_cancel
+        from .state_flow import show_user_bookings_with_cancel
         show_user_bookings_with_cancel(chat_id, "completed")
         return
 
@@ -382,7 +382,7 @@ def handle_user_review_uploading(chat_id, text):
     elif text == "❌ Отмена":
         profile.telegram_state = {}
         profile.save()
-        from .handlers import show_user_bookings_with_cancel
+        from .state_flow import show_user_bookings_with_cancel
         show_user_bookings_with_cancel(chat_id, "completed")
 
 
@@ -507,7 +507,7 @@ def save_user_review(chat_id):
     profile.save()
 
     # Возвращаемся к списку бронирований
-    from .handlers import show_user_bookings_with_cancel
+    from .state_flow import show_user_bookings_with_cancel
     show_user_bookings_with_cancel(chat_id, "completed")
 
 

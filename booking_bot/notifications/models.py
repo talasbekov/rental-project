@@ -1,7 +1,7 @@
 # booking_bot/notifications/models.py - Модели для системы уведомлений
 
 from django.db import models
-from django.contrib.auth.models import User
+from django.conf import settings
 from django.utils import timezone
 import json
 
@@ -91,7 +91,7 @@ class NotificationQueue(models.Model):
     ]
 
     # Получатель
-    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True)
     phone_number = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
     telegram_chat_id = models.CharField(max_length=255, blank=True)

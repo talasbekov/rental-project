@@ -1,10 +1,12 @@
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.utils import timezone
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from booking_bot.users.models import UserProfile
 from booking_bot.listings.models import Property
 from booking_bot.bookings.models import Booking
+
+User = get_user_model()
 from unittest.mock import patch, MagicMock
 import json
 from datetime import date, timedelta

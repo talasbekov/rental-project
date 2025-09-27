@@ -1,11 +1,13 @@
 from django.test import TestCase
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from booking_bot.users.models import UserProfile
 from booking_bot.listings.models import Property
 from booking_bot.bookings.models import Booking
 from .handlers import handle_unknown_user, handle_known_user  # Assuming direct import
 from datetime import date, timedelta
 from unittest.mock import MagicMock  # For mocking Twilio's MessagingResponse
+
+User = get_user_model()
 
 
 class WhatsAppHandlerTests(TestCase):

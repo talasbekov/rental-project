@@ -6,11 +6,12 @@
 назначать/снимать администраторов и отображать показатели KO‑фактора гостей.
 """
 
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from booking_bot.users.models import UserProfile
 from booking_bot.listings.models import Property
 from .utils import send_telegram_message
 
+User = get_user_model()
 
 def show_admins_list(chat_id: int) -> None:
     """Вывести список всех администраторов."""
@@ -21,7 +22,14 @@ def show_admins_list(chat_id: int) -> None:
     lines = ["👥 *Администраторы:*\n"]
     for prof in admins:
         obj_count = Property.objects.filter(owner=prof.user).count()
-        username = prof.user.username or prof.user.get_full_name() or prof.user.email
+        username = ""
+        if prof.user:
+            if hasattr(prof.user, "get_username"):
+                username = prof.user.get_username()
+            else:
+                username = getattr(prof.user, "username", "")
+            if not username:
+                username = prof.user.get_full_name() or getattr(prof.user, "email", "")
         lines.append(f"· {username} (ID: {prof.user.id}) — {obj_count} объектов")
     send_telegram_message(chat_id, "\n".join(lines), parse_mode="Markdown")
 
@@ -37,8 +45,9 @@ def add_admin(chat_id: int, target_user_id: int) -> None:
 
     profile.role = "admin"
     profile.save()
+    username = user.get_username() if hasattr(user, "get_username") else getattr(user, "username", "")
     send_telegram_message(
-        chat_id, f"Пользователь {user.username} назначен администратором."
+        chat_id, f"Пользователь {username} назначен администратором."
     )
 
 

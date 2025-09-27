@@ -280,7 +280,9 @@ def analyze_guest_ko_factor():
     """Анализ KO-фактора гостей (процент отмен)"""
     from booking_bot.bookings.models import Booking
     from booking_bot.users.models import UserProfile
-    from django.contrib.auth.models import User
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
 
     # Анализируем пользователей за последние 6 месяцев
     six_months_ago = date.today() - timedelta(days=180)

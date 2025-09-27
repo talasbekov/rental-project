@@ -165,6 +165,10 @@ KASPI_API_KEY = get_env("KASPI_API_KEY", "")
 KASPI_MERCHANT_ID = get_env("KASPI_MERCHANT_ID", "")
 KASPI_SECRET_KEY = get_env("KASPI_SECRET_KEY", "")
 KASPI_API_BASE_URL = get_env("KASPI_API_BASE_URL", "https://api.kaspi.kz/v2/")
+KASPI_REFUND_URL = get_env(
+    "KASPI_REFUND_URL",
+    f"{KASPI_API_BASE_URL.rstrip('/')}/payments/refund",
+)
 
 # Убрать предупреждения про AutoField
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

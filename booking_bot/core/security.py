@@ -4,7 +4,6 @@ from cryptography.fernet import Fernet
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.db import models
-from django.contrib.auth.models import User
 import json
 import logging
 from datetime import datetime

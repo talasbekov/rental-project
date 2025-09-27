@@ -1,39 +1,25 @@
-from rest_framework import viewsets, status
-from rest_framework.response import Response
+import logging  # Recommended to add logger for views
+
+from django.contrib.auth import authenticate, get_user_model
+from django.db import transaction
+from rest_framework import status, viewsets
 from rest_framework.decorators import (
     api_view,
     permission_classes as decorator_permission_classes,
 )
 from rest_framework.permissions import AllowAny
-from django.contrib.auth.models import User
-
-# Remove authenticate from django.contrib.auth as simplejwt handles it or we do it manually for its views
-# from django.contrib.auth import authenticate # Not needed if using simplejwt views directly
-# from rest_framework.authtoken.models import Token # Not needed
-
-from .models import UserProfile
-from .serializers import UserSerializer, UserProfileSerializer
-
-# Import SimpleJWT views or components
+from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-# For a custom login view:
-from django.contrib.auth import authenticate  # We still need this for custom view
-
-# Add these imports
-from .serializers import (
-    UserSerializer,
-    UserProfileSerializer,
-    TelegramUserSerializer,
-)  # Add TelegramUserSerializer
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.permissions import AllowAny
-from django.contrib.auth.models import User
 from .models import UserProfile
-from django.db import transaction
-import logging  # Recommended to add logger for views
+from .serializers import (
+    TelegramUserSerializer,
+    UserProfileSerializer,
+    UserSerializer,
+)
+
+User = get_user_model()
 
 logger = logging.getLogger(__name__)  # Recommended: get a logger for the view
 

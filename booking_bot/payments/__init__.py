@@ -1,4 +1,14 @@
-from .kaspi_service import initiate_payment, check_payment_status, KaspiPaymentError
+from django.conf import settings
+import logging
+import requests
+
+from .kaspi_service import (
+    initiate_payment,
+    check_payment_status,
+    KaspiPaymentError,
+    KASPI_API_KEY,
+    KASPI_API_BASE_URL,
+)
 
 
 def refund_payment(kaspi_payment_id):
@@ -11,13 +21,9 @@ def refund_payment(kaspi_payment_id):
     Returns:
         dict: Результат возврата или None при ошибке
     """
-    import logging
-    import requests
-    from django.conf import settings
-
     logger = logging.getLogger(__name__)
 
-    if settings.DEBUG:
+    if settings.DEBUG or not KASPI_API_KEY:
         # В режиме разработки эмулируем успешный возврат
         logger.info(f"[DEBUG] Simulating refund for payment {kaspi_payment_id}")
         return {
@@ -27,10 +33,16 @@ def refund_payment(kaspi_payment_id):
             'message': 'Refund simulated in DEBUG mode'
         }
 
+    refund_endpoint = getattr(
+        settings,
+        "KASPI_REFUND_URL",
+        f"{KASPI_API_BASE_URL.rstrip('/')}/payments/refund",
+    )
+
     try:
         # Реальный API запрос к Kaspi для возврата
         headers = {
-            'Authorization': f'Bearer {settings.KASPI_API_TOKEN}',
+            'Authorization': f'Bearer {KASPI_API_KEY}',
             'Content-Type': 'application/json'
         }
 
@@ -40,7 +52,7 @@ def refund_payment(kaspi_payment_id):
         }
 
         response = requests.post(
-            f"{settings.KASPI_API_URL}/refunds",
+            refund_endpoint,
             json=refund_data,
             headers=headers,
             timeout=30

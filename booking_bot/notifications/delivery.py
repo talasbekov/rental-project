@@ -4,11 +4,13 @@ import html
 import logging
 from typing import Optional
 
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 
 from booking_bot.core.models import AuditLog
 
 logger = logging.getLogger(__name__)
+
+User = get_user_model()
 
 
 def build_confirmation_message(booking, include_owner_contact: bool = True) -> str:

@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.contrib.auth.models import User
+from django.conf import settings
 from booking_bot.listings.models import Property
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class Booking(models.Model):
 
     # Основные поля
     user = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="bookings",
         verbose_name="Пользователь",
@@ -95,7 +95,7 @@ class Booking(models.Model):
         null=True, blank=True, help_text="Дополнительное описание причины отмены"
     )
     cancelled_by = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -218,4 +218,10 @@ class Booking(models.Model):
         )
 
     def __str__(self):
-        return f"Бронирование #{self.id} - {self.property.name} ({self.user.username})"
+        user_name = ""
+        if self.user:
+            if hasattr(self.user, "get_username"):
+                user_name = self.user.get_username()
+            else:
+                user_name = getattr(self.user, "username", "")
+        return f"Бронирование #{self.id} - {self.property.name} ({user_name})"

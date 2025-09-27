@@ -2,7 +2,7 @@ import logging
 from datetime import date, timedelta
 
 from django.db import models
-from django.contrib.auth.models import User
+from django.conf import settings
 
 from booking_bot.core.models import AuditLog
 from booking_bot.core.security import EncryptionService
@@ -96,7 +96,7 @@ class Property(models.Model):
 
     # Владелец и цена
     owner = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="properties",
         limit_choices_to={"is_staff": True},
@@ -446,7 +446,7 @@ class Review(models.Model):
         Property, on_delete=models.CASCADE, related_name="reviews"
     )
     user = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="reviews"
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="reviews"
     )
     booking = models.ForeignKey(
         "bookings.Booking",
@@ -485,7 +485,13 @@ class Review(models.Model):
         ]
 
     def __str__(self):
-        return f"Отзыв от {self.user.username} на {self.property.name} - {self.rating} звезд"
+        username = ""
+        if self.user:
+            if hasattr(self.user, "get_username"):
+                username = self.user.get_username()
+            else:
+                username = getattr(self.user, "username", "")
+        return f"Отзыв от {username} на {self.property.name} - {self.rating} звезд"
 
     def rating_stars(self):
         """Возвращает строку со звездами для отображения"""
@@ -757,10 +763,10 @@ class GuestReview(models.Model):
         "bookings.Booking", on_delete=models.CASCADE, related_name="guest_review"
     )
     reviewer = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="guest_reviews_given"
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="guest_reviews_given"
     )
     guest = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="guest_reviews_received"
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="guest_reviews_received"
     )
     rating = models.PositiveIntegerField(choices=[(i, str(i)) for i in range(1, 6)])
     text = models.TextField(blank=True)
@@ -793,7 +799,7 @@ class PropertyTarget(models.Model):
 class Favorite(models.Model):
     """Избранные объекты для пользователей."""
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="favorites")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="favorites")
     property = models.ForeignKey(
         "listings.Property", on_delete=models.CASCADE, related_name="favorited_by"
     )
@@ -804,4 +810,10 @@ class Favorite(models.Model):
         verbose_name_plural = "Избранное"
 
     def __str__(self) -> str:  # pragma: no cover - строковое представление для админки
-        return f"{self.user.username} → {self.property.name}"
+        username = ""
+        if self.user:
+            if hasattr(self.user, "get_username"):
+                username = self.user.get_username()
+            else:
+                username = getattr(self.user, "username", "")
+        return f"{username} → {self.property.name}"

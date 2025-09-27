@@ -1,7 +1,7 @@
 # booking_bot/users/models.py
 
 from django.db import models
-from django.contrib.auth.models import User
+from django.conf import settings
 
 
 class UserProfile(models.Model):
@@ -13,13 +13,12 @@ class UserProfile(models.Model):
         ('super_admin', 'Super Admin'),
     ]
 
-    # ИСПРАВЛЕНИЕ: делаем user необязательным при создании, но добавляем проверки
     user = models.OneToOneField(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='profile',
-        null=True,  # Временно разрешаем NULL
-        blank=True
+        null=False,
+        blank=False
     )
 
     role = models.CharField(
@@ -83,9 +82,10 @@ class UserProfile(models.Model):
 
     def __str__(self):
         if self.user:
-            return f"{self.user.username} - {self.role}"
-        else:
-            return f"Profile {self.id} - {self.role} (no user)"
+            if hasattr(self.user, "get_username"):
+                return f"{self.user.get_username()} - {self.role}"
+            return f"{getattr(self.user, 'username', 'unknown')} - {self.role}"
+        return f"Profile {self.id} - {self.role} (no user)"
 
     def save(self, *args, **kwargs):
         # Убедимся, что обязательные поля заполнены
@@ -97,6 +97,9 @@ class UserProfile(models.Model):
             self.telegram_state = {}
         if self.whatsapp_state is None:
             self.whatsapp_state = {}
+
+        if not self.user:
+            raise ValueError("UserProfile.user must be set before saving")
 
         super().save(*args, **kwargs)
 

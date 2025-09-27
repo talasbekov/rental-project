@@ -1,7 +1,9 @@
 from rest_framework import serializers
 from .models import Property, Review, ReviewPhoto, District, City
 from booking_bot.bookings.models import Booking
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 
 class CitySerializer(serializers.ModelSerializer):
@@ -26,18 +28,27 @@ class ReviewPhotoSerializer(serializers.ModelSerializer):
 
 
 class ReviewSerializer(serializers.ModelSerializer):
-    user_name = serializers.CharField(source='user.username', read_only=True)
+    user_name = serializers.SerializerMethodField()
     photos = ReviewPhotoSerializer(many=True, read_only=True)
     
     class Meta:
         model = Review
         fields = ['id', 'user_name', 'rating', 'comment', 'photos', 'created_at', 'is_approved']
 
+    @staticmethod
+    def get_user_name(obj):
+        user = getattr(obj, "user", None)
+        if not user:
+            return ""
+        if hasattr(user, "get_username"):
+            return user.get_username()
+        return getattr(user, "username", "")
+
 
 class PropertySerializer(serializers.ModelSerializer):
     district = DistrictSerializer(read_only=True)
     district_id = serializers.IntegerField(write_only=True, required=False)
-    owner_username = serializers.CharField(source='owner.username', read_only=True)
+    owner_username = serializers.SerializerMethodField()
     reviews = ReviewSerializer(many=True, read_only=True)
     rating_display = serializers.CharField(source='rating_stars', read_only=True)
     
@@ -51,6 +62,15 @@ class PropertySerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'average_rating', 'reviews_count']
+
+    @staticmethod
+    def get_owner_username(obj):
+        owner = getattr(obj, "owner", None)
+        if not owner:
+            return ""
+        if hasattr(owner, "get_username"):
+            return owner.get_username()
+        return getattr(owner, "username", "")
         
 
 class PropertyAdminSerializer(PropertySerializer):
@@ -112,7 +132,7 @@ class PropertyAdminSerializer(PropertySerializer):
 
 class PropertyBookingSerializer(serializers.ModelSerializer):
     """Serializer for booking information"""
-    guest_name = serializers.CharField(source='user.username', read_only=True)
+    guest_name = serializers.SerializerMethodField()
     property_name = serializers.CharField(source='property.name', read_only=True)
     
     class Meta:
@@ -121,3 +141,12 @@ class PropertyBookingSerializer(serializers.ModelSerializer):
             'id', 'guest_name', 'property_name', 'start_date', 'end_date', 
             'status', 'total_price', 'created_at'
         ]
+
+    @staticmethod
+    def get_guest_name(obj):
+        user = getattr(obj, "user", None)
+        if not user:
+            return ""
+        if hasattr(user, "get_username"):
+            return user.get_username()
+        return getattr(user, "username", "")

@@ -1,4 +1,9 @@
 import logging
+from datetime import datetime, date
+from decimal import Decimal
+
+from django.contrib.auth import get_user_model
+
 from .constants import log_handler
 from booking_bot.services.booking_service import (
     BookingError,
@@ -10,6 +15,8 @@ from booking_bot.notifications.delivery import (
     log_codes_delivery,
 )
 from booking_bot.bookings.tasks import cancel_expired_booking
+
+User = get_user_model()
 
 logger = logging.getLogger(__name__)
 
@@ -1193,6 +1200,136 @@ from .admin_handlers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_phone(phone_number: str) -> str:
+    return "".join(ch for ch in phone_number if ch.isdigit())
+
+
+@log_handler
+def handle_unknown_user(phone_number: str, text: str, response):
+    """Простейшая регистрация пользователя из WhatsApp-команды."""
+    profile = _get_or_create_local_profile(phone_number)
+
+    if not profile.user:
+        profile.ensure_user_exists()
+
+    user = profile.user
+    normalized = _normalize_phone(phone_number)
+    desired_username = f"user_{normalized}" if normalized else user.get_username()
+
+    if user and desired_username and user.username != desired_username:
+        if not User.objects.filter(username=desired_username).exclude(pk=user.pk).exists():
+            user.username = desired_username
+            user.save(update_fields=["username"])
+
+    updates = {}
+    if profile.phone_number != phone_number:
+        updates["phone_number"] = phone_number
+    if profile.whatsapp_phone != phone_number:
+        updates["whatsapp_phone"] = phone_number
+    if not profile.role:
+        updates["role"] = "user"
+    if updates:
+        for field, value in updates.items():
+            setattr(profile, field, value)
+        profile.save(update_fields=list(updates.keys()))
+
+    if hasattr(response, "message"):
+        response.message(
+            f"Welcome! Registered as {user.get_username()}. "
+            "Use /book property_id:<id> from:<YYYY-MM-DD> to:<YYYY-MM-DD> to make a booking."
+        )
+
+    return profile
+
+
+@log_handler
+def handle_known_user(profile, command_text: str, response):
+    """Минимальная обработка команды /book для совместимости со старыми тестами."""
+    if not profile:
+        if hasattr(response, "message"):
+            response.message("Profile is required to process commands.")
+        return None
+
+    if not profile.user:
+        profile.ensure_user_exists()
+
+    command = (command_text or "").strip()
+    if not command.startswith("/book"):
+        if hasattr(response, "message"):
+            response.message(
+                "Unsupported command. Use /book property_id:<id> from:<YYYY-MM-DD> to:<YYYY-MM-DD>."
+            )
+        return None
+
+    payload = command[len("/book"):].strip()
+    parts = [part for part in payload.split() if ":" in part]
+    tokens = {}
+    for part in parts:
+        key, value = part.split(":", 1)
+        tokens[key.strip().lower()] = value.strip()
+
+    try:
+        property_id = int(tokens["property_id"])
+        start_date = datetime.strptime(tokens["from"], "%Y-%m-%d").date()
+        end_date = datetime.strptime(tokens["to"], "%Y-%m-%d").date()
+    except (KeyError, ValueError):
+        if hasattr(response, "message"):
+            response.message(
+                "Invalid booking command. Use /book property_id:<id> from:<YYYY-MM-DD> to:<YYYY-MM-DD>."
+            )
+        return None
+
+    if end_date <= start_date:
+        if hasattr(response, "message"):
+            response.message("End date must be after start date.")
+        return None
+
+    if start_date < date.today():
+        if hasattr(response, "message"):
+            response.message("Start date must not be in the past.")
+        return None
+
+    try:
+        property_obj = Property.objects.get(pk=property_id)
+    except Property.DoesNotExist:
+        if hasattr(response, "message"):
+            response.message(f"Property with ID {property_id} not found.")
+        return None
+
+    overlap_exists = Booking.objects.filter(
+        property=property_obj,
+        start_date__lt=end_date,
+        end_date__gt=start_date,
+        status__in=["pending", "pending_payment", "confirmed"],
+    ).exists()
+
+    if overlap_exists:
+        if hasattr(response, "message"):
+            response.message(
+                f"Sorry, {property_obj.name} is not available for the selected dates."
+            )
+        return None
+
+    nights = (end_date - start_date).days
+    total_price = property_obj.price_per_day * Decimal(nights)
+
+    booking = Booking.objects.create(
+        user=profile.user,
+        property=property_obj,
+        start_date=start_date,
+        end_date=end_date,
+        total_price=total_price,
+        status="pending",
+    )
+
+    if hasattr(response, "message"):
+        response.message(
+            "Booking successful! We'll confirm your reservation shortly."
+        )
+
+    return booking
 
 
 @log_handler

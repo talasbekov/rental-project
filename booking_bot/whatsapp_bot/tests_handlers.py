@@ -1,5 +1,5 @@
 from django.test import TestCase
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from booking_bot.users.models import UserProfile
 from booking_bot.listings.models import Property  # Added for potential future tests
 from booking_bot.bookings.models import Booking  # Added for potential future tests
@@ -16,6 +16,8 @@ from booking_bot.whatsapp_bot.handlers import (
 from twilio.twiml.messaging_response import MessagingResponse
 import json
 from unittest.mock import patch, MagicMock  # Added MagicMock
+
+User = get_user_model()
 
 # Mock kaspi_initiate_payment if any part of handlers calls it directly (not in current examples)
 # @patch('booking_bot.payments.kaspi_service.initiate_payment', return_value={'checkout_url': 'http://mockurl', 'payment_id': 'mock_kaspi_id'})

@@ -2,7 +2,6 @@ import requests
 import logging
 from django.conf import settings
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
-from booking_bot.listings import filters
 from booking_bot.telegram_bot.admin_handlers import show_admin_panel
 from booking_bot.telegram_bot.constants import _get_profile, start_command_handler
 from booking_bot.telegram_bot.handlers import (

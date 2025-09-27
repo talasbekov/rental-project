@@ -1,10 +1,14 @@
 from django.test import TestCase, RequestFactory
 from django.contrib.admin.sites import AdminSite
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from .admin import BookingAdmin
-from .models import Booking, Property
+from .models import Booking
+from booking_bot.listings.models import Property
 from booking_bot.users.models import UserProfile  # For creating property owner
 from datetime import date, timedelta
+
+
+User = get_user_model()
 
 
 class BookingAdminTests(TestCase):

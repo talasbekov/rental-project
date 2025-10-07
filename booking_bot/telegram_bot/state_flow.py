@@ -344,7 +344,21 @@ def select_class(chat_id, profile, text):
         send_telegram_message(chat_id, "Неверный класс. Попробуйте ещё раз.")
         return
 
-    _update_state(profile, property_class=property_class, state=STATE_SELECT_ROOMS)
+    state = _get_state(profile)
+    old_state = state.get("state", STATE_MAIN_MENU)
+
+    if state.get("base_filters"):
+        refined_filters = state.get("refined_filters", {})
+        refined_filters["property_class"] = property_class
+        state["refined_filters"] = refined_filters
+    else:
+        state["property_class"] = property_class
+
+    state["state"] = STATE_SELECT_ROOMS
+    _save_state(profile, state)
+
+    log_state_transition(chat_id, old_state, STATE_SELECT_ROOMS, f"selected_class_{text}")
+
     rows = [[KeyboardButton(option)] for option in ROOM_OPTIONS]
     _send_with_keyboard(
         chat_id,
@@ -364,7 +378,21 @@ def select_rooms(chat_id, profile, text):
         return
 
     rooms_value = 4 if text == "4+" else int(text)
-    _update_state(profile, rooms=rooms_value, state=STATE_SHOWING_RESULTS)
+
+    state = _get_state(profile)
+    old_state = state.get("state", STATE_MAIN_MENU)
+
+    if state.get("base_filters"):
+        refined_filters = state.get("refined_filters", {})
+        refined_filters["rooms"] = rooms_value
+        state["refined_filters"] = refined_filters
+    else:
+        state["rooms"] = rooms_value
+
+    state["state"] = STATE_SHOWING_RESULTS
+    _save_state(profile, state)
+
+    log_state_transition(chat_id, old_state, STATE_SHOWING_RESULTS, f"selected_rooms_{text}")
 
     send_telegram_message(chat_id, f"Количество комнат: {text}\nИщу варианты...")
     show_search_results(chat_id, profile, offset=0)

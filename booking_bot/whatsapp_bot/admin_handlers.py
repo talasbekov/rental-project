@@ -950,3 +950,179 @@ def show_super_admin_menu(phone_number):
     send_whatsapp_list_message(
         phone_number, text, "Выбрать действие", sections, header="Супер админ панель"
     )
+
+
+@log_handler
+def show_admins_list(phone_number):
+    """Показать список всех администраторов (Согласно ТЗ п.10)"""
+    profile = _get_profile(phone_number)
+    if profile.role not in ("super_admin", "super_user"):
+        send_whatsapp_message(phone_number, "❌ У вас нет доступа к этой функции.")
+        return
+
+    admins = UserProfile.objects.filter(role="admin").select_related("user")
+
+    if not admins.exists():
+        send_whatsapp_message(
+            phone_number,
+            "📋 *Список администраторов*\n\n"
+            "❌ Администраторы не найдены."
+        )
+        return
+
+    text = "📋 *Список администраторов*\n\n"
+
+    for i, admin in enumerate(admins[:50], 1):  # Ограничение 50 для отображения
+        user = admin.user
+        name = user.first_name or user.username or f"User {user.id}"
+        phone = admin.phone_number or admin.telegram_chat_id or "Не указан"
+
+        # Статистика админа
+        properties_count = Property.objects.filter(admin=admin).count()
+
+        text += (
+            f"{i}. *{name}*\n"
+            f"   📱 {phone}\n"
+            f"   🏠 Квартир: {properties_count}\n\n"
+        )
+
+    buttons = [
+        {"id": "add_admin", "title": "➕ Добавить админа"},
+        {"id": "admin_panel", "title": "🔙 Админ панель"},
+    ]
+
+    send_whatsapp_button_message(
+        phone_number,
+        text,
+        buttons,
+        header="Администраторы"
+    )
+
+
+@log_handler
+def show_city_statistics(phone_number, period="month"):
+    """Показать статистику по городам (Согласно ТЗ п.10)"""
+    profile = _get_profile(phone_number)
+    if profile.role not in ("super_admin", "super_user"):
+        send_whatsapp_message(phone_number, "❌ У вас нет доступа к этой функции.")
+        return
+
+    today = date.today()
+    if period == "week":
+        start_date = today - timedelta(days=7)
+        period_text = "за неделю"
+    elif period == "quarter":
+        start_date = today - timedelta(days=90)
+        period_text = "за квартал"
+    else:  # month
+        start_date = today - timedelta(days=30)
+        period_text = "за месяц"
+
+    cities = City.objects.all()
+
+    text = f"🏙️ *Статистика по городам* {period_text}\n\n"
+
+    for city in cities:
+        # Квартиры в городе
+        properties = Property.objects.filter(district__city=city)
+        properties_count = properties.count()
+
+        # Бронирования в городе за период
+        bookings = Booking.objects.filter(
+            property__district__city=city,
+            created_at__gte=start_date,
+            status__in=["confirmed", "completed"]
+        )
+        bookings_count = bookings.count()
+
+        # Доход
+        revenue = bookings.aggregate(total=Sum("total_price"))["total"] or 0
+
+        # Средняя загрузка
+        avg_rating = properties.aggregate(avg=Avg("average_rating"))["avg"] or 0
+
+        text += (
+            f"📍 *{city.name}*\n"
+            f"   🏠 Квартир: {properties_count}\n"
+            f"   📅 Броней: {bookings_count}\n"
+            f"   💰 Доход: {revenue:,.0f} ₸\n"
+            f"   ⭐ Средний рейтинг: {avg_rating:.1f}\n\n"
+        )
+
+    buttons = [
+        {"id": "admin_panel", "title": "🔙 Админ панель"},
+        {"id": "main_menu", "title": "🏠 Главное меню"},
+    ]
+
+    send_whatsapp_button_message(
+        phone_number,
+        text,
+        buttons,
+        header="Статистика по городам"
+    )
+
+
+@log_handler
+def handle_add_admin(phone_number, admin_phone):
+    """Добавить нового администратора (Согласно ТЗ п.10)"""
+    profile = _get_profile(phone_number)
+    if profile.role not in ("super_admin", "super_user"):
+        send_whatsapp_message(phone_number, "❌ У вас нет доступа к этой функции.")
+        return
+
+    # Нормализуем телефон
+    clean_phone = "".join(filter(str.isdigit, admin_phone))
+
+    if len(clean_phone) < 10:
+        send_whatsapp_message(
+            phone_number,
+            "❌ Неверный формат номера телефона.\n"
+            "Введите номер в формате: +7XXXXXXXXXX или 8XXXXXXXXXX"
+        )
+        return
+
+    # Ищем пользователя
+    try:
+        target_profile = UserProfile.objects.get(
+            Q(phone_number__contains=clean_phone) |
+            Q(whatsapp_phone__contains=clean_phone)
+        )
+
+        if target_profile.role in ("admin", "super_admin", "super_user"):
+            send_whatsapp_message(
+                phone_number,
+                f"ℹ️ Пользователь {target_profile.user.first_name or target_profile.phone_number} "
+                f"уже имеет роль: {target_profile.get_role_display()}"
+            )
+            return
+
+        # Повышаем до админа
+        target_profile.role = "admin"
+        target_profile.save()
+
+        send_whatsapp_message(
+            phone_number,
+            f"✅ Пользователь {target_profile.user.first_name or target_profile.phone_number} "
+            f"успешно назначен администратором!"
+        )
+
+        # Уведомляем нового админа
+        if target_profile.whatsapp_phone:
+            send_whatsapp_message(
+                target_profile.whatsapp_phone,
+                "🎉 Поздравляем! Вы назначены администратором ЖильеGO.\n"
+                "Теперь вы можете добавлять квартиры и управлять бронированиями."
+            )
+
+    except UserProfile.DoesNotExist:
+        send_whatsapp_message(
+            phone_number,
+            f"❌ Пользователь с номером {admin_phone} не найден в системе.\n"
+            "Пользователь должен сначала зарегистрироваться в боте."
+        )
+    except UserProfile.MultipleObjectsReturned:
+        send_whatsapp_message(
+            phone_number,
+            f"❌ Найдено несколько пользователей с похожим номером. "
+            "Уточните номер телефона."
+        )

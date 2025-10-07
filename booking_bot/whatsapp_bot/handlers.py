@@ -4,8 +4,24 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 
-from .constants import log_handler
+from .constants import (
+    log_handler,
+    start_command_handler,
+    _get_profile,
+    _get_or_create_local_profile,
+    STATE_MAIN_MENU,
+    STATE_AWAITING_CHECK_IN,
+    STATE_AWAITING_CHECK_OUT,
+    STATE_CONFIRM_BOOKING,
+    STATE_SELECT_CITY,
+    STATE_SELECT_DISTRICT,
+    STATE_SELECT_CLASS,
+    STATE_SELECT_ROOMS,
+    STATE_SHOWING_RESULTS,
+)
 from booking_bot import settings
+from booking_bot.listings.models import Property, PropertyPhoto, Review, City, District
+from booking_bot.payments import KaspiPaymentError, initiate_payment as kaspi_initiate_payment
 from booking_bot.services.booking_service import (
     BookingError,
     BookingRequest,
@@ -16,6 +32,23 @@ from booking_bot.notifications.delivery import (
     log_codes_delivery,
 )
 from booking_bot.bookings.tasks import cancel_expired_booking
+from .utils import (
+    send_whatsapp_message,
+    send_whatsapp_button_message,
+    send_whatsapp_list_message,
+    send_whatsapp_image,
+)
+from .admin_handlers import (
+    show_admin_panel,
+    show_super_admin_menu,
+    show_detailed_statistics,
+    show_extended_statistics,
+    export_statistics_csv,
+    show_admin_properties,
+    show_admins_list,
+    show_city_statistics,
+    handle_add_admin,
+)
 
 User = get_user_model()
 
@@ -51,6 +84,14 @@ def message_handler(phone_number, text, message_data=None):
     # Команды отмены
     if text in ("Отмена", "Отменить", "Главное меню", "Новый поиск", "/start", "Старт"):
         start_command_handler(phone_number)
+        return
+
+    # Обработка добавления админа (супер-админ)
+    if state == "awaiting_admin_phone":
+        handle_add_admin(phone_number, text)
+        profile.whatsapp_state = {}
+        profile.save()
+        show_super_admin_menu(phone_number)
         return
 
     # Обработка состояний бронирования
@@ -224,24 +265,30 @@ def handle_button_click(phone_number, button_id, profile):
     elif button_id == "skip_photos":
         handle_add_property_start(phone_number, "Пропустить")
     
-    # Super admin menu buttons
+    # Super admin menu buttons (Согласно ТЗ п.10: супер-админский контур)
     elif button_id == "list_admins":
-        # TODO: implement list_admins functionality
-        send_whatsapp_message(phone_number, "📋 Функционал 'Список админов' в разработке")
+        show_admins_list(phone_number)
     elif button_id == "add_admin":
-        # TODO: implement add_admin functionality
-        send_whatsapp_message(phone_number, "➕ Функционал 'Добавить админа' в разработке")
+        # Запрашиваем номер телефона для добавления админа
+        send_whatsapp_message(
+            phone_number,
+            "➕ *Добавление администратора*\n\n"
+            "Введите номер телефона нового администратора в формате:\n"
+            "+7XXXXXXXXXX или 8XXXXXXXXXX"
+        )
+        profile.whatsapp_state = profile.whatsapp_state or {}
+        profile.whatsapp_state["state"] = "awaiting_admin_phone"
+        profile.save()
     elif button_id == "city_stats":
-        # TODO: implement city_stats functionality
-        send_whatsapp_message(phone_number, "🏙️ Функционал 'Статистика по городам' в разработке")
+        show_city_statistics(phone_number)
     elif button_id == "general_stats":
         show_extended_statistics(phone_number)
     elif button_id == "revenue_report":
-        # TODO: implement revenue_report functionality
-        send_whatsapp_message(phone_number, "💰 Функционал 'Отчет о доходах' в разработке")
+        # Отчет о доходах - расширенная статистика с доходами
+        show_extended_statistics(phone_number)
     elif button_id == "export_all":
-        # TODO: implement export_all functionality
-        send_whatsapp_message(phone_number, "📥 Функционал 'Экспорт всех данных' в разработке")
+        # Экспорт данных через CSV
+        export_statistics_csv(phone_number)
     
     # Navigation menu buttons
     elif button_id == "new_search":
@@ -1247,443 +1294,3 @@ def help_command_handler(phone_number):
     )
 
 
-import logging
-from datetime import datetime, date, timedelta, timezone
-from django.db.models import Count, Avg
-
-from .constants import (
-    STATE_MAIN_MENU,
-    STATE_AWAITING_CHECK_IN,
-    STATE_AWAITING_CHECK_OUT,
-    STATE_CONFIRM_BOOKING,
-    STATE_SELECT_CITY,
-    STATE_SELECT_DISTRICT,
-    STATE_SELECT_CLASS,
-    STATE_SELECT_ROOMS,
-    STATE_SHOWING_RESULTS,
-    log_handler,
-    _get_or_create_local_profile,
-    _get_profile,
-    start_command_handler,
-)
-from .. import settings
-from booking_bot.listings.models import City, District, Property, PropertyPhoto, Review
-from booking_bot.bookings.models import Booking
-from booking_bot.payments import (
-    initiate_payment as kaspi_initiate_payment,
-    KaspiPaymentError,
-)
-from .utils import (
-    send_whatsapp_message,
-    send_whatsapp_button_message,
-    send_whatsapp_list_message,
-    send_whatsapp_media_group,
-    send_whatsapp_image,
-    escape_markdown,
-)
-from .admin_handlers import (
-    show_admin_panel,
-    handle_add_property_start,
-    handle_photo_upload,
-    show_detailed_statistics,
-    show_extended_statistics,
-    export_statistics_csv,
-    show_admin_properties,
-    show_super_admin_menu,
-)
-
-logger = logging.getLogger(__name__)
-
-
-def _normalize_phone(phone_number: str) -> str:
-    return "".join(ch for ch in phone_number if ch.isdigit())
-
-
-@log_handler
-def handle_unknown_user(phone_number: str, text: str, response):
-    """Простейшая регистрация пользователя из WhatsApp-команды."""
-    profile = _get_or_create_local_profile(phone_number)
-
-    if not profile.user:
-        profile.ensure_user_exists()
-
-    user = profile.user
-    normalized = _normalize_phone(phone_number)
-    desired_username = f"user_{normalized}" if normalized else user.get_username()
-
-    if user and desired_username and user.username != desired_username:
-        if not User.objects.filter(username=desired_username).exclude(pk=user.pk).exists():
-            user.username = desired_username
-            user.save(update_fields=["username"])
-
-    updates = {}
-    if profile.phone_number != phone_number:
-        updates["phone_number"] = phone_number
-    if profile.whatsapp_phone != phone_number:
-        updates["whatsapp_phone"] = phone_number
-    if not profile.role:
-        updates["role"] = "user"
-    if updates:
-        for field, value in updates.items():
-            setattr(profile, field, value)
-        profile.save(update_fields=list(updates.keys()))
-
-    if hasattr(response, "message"):
-        response.message(
-            f"Welcome! Registered as {user.get_username()}. "
-            "Use /book property_id:<id> from:<YYYY-MM-DD> to:<YYYY-MM-DD> to make a booking."
-        )
-
-    return profile
-
-
-@log_handler
-def handle_known_user(profile, command_text: str, response):
-    """Минимальная обработка команды /book для совместимости со старыми тестами."""
-    if not profile:
-        if hasattr(response, "message"):
-            response.message("Profile is required to process commands.")
-        return None
-
-    if not profile.user:
-        profile.ensure_user_exists()
-
-    command = (command_text or "").strip()
-    if not command.startswith("/book"):
-        if hasattr(response, "message"):
-            response.message(
-                "Unsupported command. Use /book property_id:<id> from:<YYYY-MM-DD> to:<YYYY-MM-DD>."
-            )
-        return None
-
-    payload = command[len("/book"):].strip()
-    parts = [part for part in payload.split() if ":" in part]
-    tokens = {}
-    for part in parts:
-        key, value = part.split(":", 1)
-        tokens[key.strip().lower()] = value.strip()
-
-    try:
-        property_id = int(tokens["property_id"])
-        start_date = datetime.strptime(tokens["from"], "%Y-%m-%d").date()
-        end_date = datetime.strptime(tokens["to"], "%Y-%m-%d").date()
-    except (KeyError, ValueError):
-        if hasattr(response, "message"):
-            response.message(
-                "Invalid booking command. Use /book property_id:<id> from:<YYYY-MM-DD> to:<YYYY-MM-DD>."
-            )
-        return None
-
-    if end_date <= start_date:
-        if hasattr(response, "message"):
-            response.message("End date must be after start date.")
-        return None
-
-    if start_date < date.today():
-        if hasattr(response, "message"):
-            response.message("Start date must not be in the past.")
-        return None
-
-    try:
-        property_obj = Property.objects.get(pk=property_id)
-    except Property.DoesNotExist:
-        if hasattr(response, "message"):
-            response.message(f"Property with ID {property_id} not found.")
-        return None
-
-    overlap_exists = Booking.objects.filter(
-        property=property_obj,
-        start_date__lt=end_date,
-        end_date__gt=start_date,
-        status__in=["pending", "pending_payment", "confirmed"],
-    ).exists()
-
-    if overlap_exists:
-        if hasattr(response, "message"):
-            response.message(
-                f"Sorry, {property_obj.name} is not available for the selected dates."
-            )
-        return None
-
-    nights = (end_date - start_date).days
-    total_price = property_obj.price_per_day * Decimal(nights)
-
-    booking = Booking.objects.create(
-        user=profile.user,
-        property=property_obj,
-        start_date=start_date,
-        end_date=end_date,
-        total_price=total_price,
-        status="pending",
-    )
-
-    if hasattr(response, "message"):
-        response.message(
-            "Booking successful! We'll confirm your reservation shortly."
-        )
-
-    return booking
-
-
-@log_handler
-def message_handler(phone_number, text, message_data=None):
-    """Основной обработчик сообщений WhatsApp"""
-    profile = _get_or_create_local_profile(phone_number)
-    state_data = profile.whatsapp_state or {}
-    state = state_data.get("state", STATE_MAIN_MENU)
-
-    # Обработка фотографий (если есть)
-    if message_data and message_data.get("type") == "image":
-        if handle_photo_upload(phone_number, message_data):
-            return
-
-    # Обработка добавления квартиры (админ)
-    if handle_add_property_start(phone_number, text):
-        return
-
-    # Обработка кнопок быстрого ответа (interactive replies)
-    if message_data and message_data.get("type") == "interactive":
-        interactive = message_data.get("interactive", {})
-        reply = interactive.get("button_reply") or interactive.get("list_reply")
-        if reply:
-            button_id = reply.get("id")
-            return handle_button_click(phone_number, button_id, profile)
-
-    # Команды отмены
-    if text in ("Отмена", "Отменить", "Главное меню", "Новый поиск", "/start", "Старт"):
-        start_command_handler(phone_number)
-        return
-
-    # Обработка состояний бронирования
-    if state == STATE_AWAITING_CHECK_IN:
-        handle_checkin_input(phone_number, text)
-        return
-    if state == STATE_AWAITING_CHECK_OUT:
-        handle_checkout_input(phone_number, text)
-        return
-    if state == STATE_CONFIRM_BOOKING:
-        if text == "Оплатить Kaspi":
-            handle_payment_confirmation(phone_number)
-        elif text in ("Счёт на оплату", "Оплата по счёту", "🧾 Счёт на оплату"):
-            handle_manual_payment(phone_number)
-        else:
-            send_whatsapp_message(
-                phone_number, "Пожалуйста, используйте кнопки для выбора действия."
-            )
-        return
-
-    # Обработка главного меню
-    if state == STATE_MAIN_MENU:
-        if text == "Поиск квартир":
-            prompt_city(phone_number, profile)
-            return
-        elif text == "Мои бронирования":
-            show_user_bookings(phone_number, "completed")
-            return
-        elif text == "Статус текущей брони":
-            show_user_bookings(phone_number, "active")
-            return
-        elif text == "Помощь":
-            help_command_handler(phone_number)
-            return
-        elif text == "Панель администратора" and profile.role in (
-            "admin",
-            "super_admin",
-        ):
-            show_admin_panel(phone_number)
-            return
-
-    # Выбор города
-    if state == STATE_SELECT_CITY:
-        select_city(phone_number, profile, text)
-        return
-
-    # Выбор района
-    if state == STATE_SELECT_DISTRICT:
-        select_district(phone_number, profile, text)
-        return
-
-    # Выбор класса
-    if state == STATE_SELECT_CLASS:
-        select_class(phone_number, profile, text)
-        return
-
-    # Выбор комнат
-    if state == STATE_SELECT_ROOMS:
-        select_rooms(phone_number, profile, text)
-        return
-
-    # Навигация по результатам
-    if state == STATE_SHOWING_RESULTS:
-        navigate_results(phone_number, profile, text)
-        return
-
-    # Fallback
-    send_whatsapp_message(
-        phone_number,
-        "Используйте кнопки для навигации или отправьте 'Старт' для начала.",
-    )
-
-
-@log_handler
-def handle_button_click(phone_number, button_id, profile):
-    """Обработчик нажатий на кнопки WhatsApp"""
-    if button_id == "search_apartments":
-        prompt_city(phone_number, profile)
-    elif button_id == "my_bookings":
-        show_user_bookings(phone_number, "completed")
-    elif button_id == "current_status":
-        show_user_bookings(phone_number, "active")
-    elif button_id == "help":
-        help_command_handler(phone_number)
-    elif button_id == "admin_panel":
-        show_admin_panel(phone_number)
-    elif button_id.startswith("city_"):
-        city_id = button_id.replace("city_", "")
-        select_city_by_id(phone_number, profile, city_id)
-    elif button_id.startswith("district_"):
-        district_id = button_id.replace("district_", "")
-        select_district_by_id(phone_number, profile, district_id)
-    elif button_id.startswith("class_"):
-        property_class = button_id.replace("class_", "")
-        select_class_by_id(phone_number, profile, property_class)
-    elif button_id.startswith("rooms_"):
-        rooms = button_id.replace("rooms_", "")
-        select_rooms_by_id(phone_number, profile, rooms)
-    elif button_id.startswith("book_"):
-        property_id = int(button_id.replace("book_", ""))
-        handle_booking_start(phone_number, property_id)
-    elif button_id.startswith("reviews_"):
-        property_id = int(button_id.replace("reviews_", ""))
-        show_property_reviews(phone_number, property_id)
-    elif button_id == "next_property":
-        show_next_property(phone_number, profile)
-    elif button_id == "prev_property":
-        show_prev_property(phone_number, profile)
-    elif button_id == "confirm_payment":
-        handle_payment_confirmation(phone_number)
-    elif button_id == "manual_payment":
-        handle_manual_payment(phone_number)
-    elif button_id == "cancel_booking":
-        start_command_handler(phone_number)
-    
-    # Admin panel buttons
-    elif button_id == "add_property":
-        handle_add_property_start(phone_number, "Добавить квартиру")
-    elif button_id == "my_properties":
-        show_admin_properties(phone_number)
-    elif button_id == "statistics":
-        show_detailed_statistics(phone_number)
-    elif button_id == "manage_admins":
-        show_super_admin_menu(phone_number)
-    elif button_id == "all_statistics":
-        show_extended_statistics(phone_number)
-    elif button_id == "main_menu":
-        start_command_handler(phone_number)
-    
-    # Statistics period buttons
-    elif button_id == "stat_week":
-        show_detailed_statistics(phone_number, "week")
-    elif button_id == "stat_month":
-        show_detailed_statistics(phone_number, "month")
-    elif button_id == "stat_quarter":
-        show_detailed_statistics(phone_number, "quarter")
-    elif button_id == "stat_csv":
-        export_statistics_csv(phone_number)
-    
-    # Admin add property workflow buttons
-    elif button_id.startswith("admin_city_"):
-        city_id = button_id.replace("admin_city_", "")
-        try:
-            city = City.objects.get(id=city_id)
-            handle_add_property_start(phone_number, city.name)
-        except City.DoesNotExist:
-            logger.warning(f"City with id {city_id} not found")
-    elif button_id.startswith("admin_district_"):
-        district_id = button_id.replace("admin_district_", "")
-        try:
-            district = District.objects.get(id=district_id)
-            handle_add_property_start(phone_number, district.name)
-        except District.DoesNotExist:
-            logger.warning(f"District with id {district_id} not found")
-    elif button_id.startswith("admin_class_"):
-        property_class = button_id.replace("admin_class_", "")
-        class_names = {"economy": "Комфорт", "business": "Бизнес", "luxury": "Премиум"}
-        class_display = class_names.get(property_class, property_class)
-        handle_add_property_start(phone_number, class_display)
-    elif button_id.startswith("admin_rooms_"):
-        rooms = button_id.replace("admin_rooms_", "")
-        room_display = "4+" if rooms == "4" else rooms
-        handle_add_property_start(phone_number, room_display)
-    
-    # Photo upload buttons
-    elif button_id == "photo_url":
-        handle_add_property_start(phone_number, "URL фото")
-    elif button_id == "photo_upload":
-        handle_add_property_start(phone_number, "Загрузить")
-    elif button_id == "skip_photos":
-        handle_add_property_start(phone_number, "Пропустить")
-    
-    # Super admin menu buttons
-    elif button_id == "list_admins":
-        # TODO: implement list_admins functionality
-        send_whatsapp_message(phone_number, "📋 Функционал 'Список админов' в разработке")
-    elif button_id == "add_admin":
-        # TODO: implement add_admin functionality
-        send_whatsapp_message(phone_number, "➕ Функционал 'Добавить админа' в разработке")
-    elif button_id == "city_stats":
-        # TODO: implement city_stats functionality
-        send_whatsapp_message(phone_number, "🏙️ Функционал 'Статистика по городам' в разработке")
-    elif button_id == "general_stats":
-        show_extended_statistics(phone_number)
-    elif button_id == "revenue_report":
-        # TODO: implement revenue_report functionality
-        send_whatsapp_message(phone_number, "💰 Функционал 'Отчет о доходах' в разработке")
-    elif button_id == "export_all":
-        # TODO: implement export_all functionality
-        send_whatsapp_message(phone_number, "📥 Функционал 'Экспорт всех данных' в разработке")
-    
-    # Navigation menu buttons
-    elif button_id == "new_search":
-        start_command_handler(phone_number)
-        prompt_city(phone_number, profile)
-    elif button_id == "cancel":
-        start_command_handler(phone_number)
-    
-    else:
-        logger.warning(f"Unknown button_id: {button_id}")
-
-
-@log_handler
-def prompt_city(phone_number, profile):
-    """Показать выбор города"""
-    if profile.whatsapp_state is None:
-        profile.whatsapp_state = {}
-
-    profile.whatsapp_state.update({"state": STATE_SELECT_CITY})
-    profile.save()
-
-    cities = City.objects.all().order_by("name")
-
-    # Если городов мало (до 10), используем список кнопок
-    if cities.count() <= 10:
-        sections = [
-            {
-                "title": "Города",
-                "rows": [
-                    {
-                        "id": f"city_{city.id}",
-                        "title": city.name[:24],  # Максимум 24 символа для списка
-                    }
-                    for city in cities
-                ],
-            }
-        ]
-
-        send_whatsapp_list_message(
-            phone_number,
-            "Выберите город для поиска квартир:",
-            "Выбрать город",
-            sections,
-            header="🏙️ Выбор города",
-        )

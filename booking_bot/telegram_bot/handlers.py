@@ -142,6 +142,7 @@ from .user_review_handlers import (
     handle_user_review_photos,
     handle_user_review_uploading,
     handle_user_review_photo_upload,
+    handle_reviews_navigation,
 )
 
 
@@ -398,6 +399,10 @@ def message_handler(chat_id, text, update=None, context=None):
             handle_edit_review_command(chat_id, booking_id)
         except ValueError:
             send_telegram_message(chat_id, "Неверный формат команды редактирования отзыва.")
+        return
+
+    # Навигация по отзывам (согласно ТЗ п.8: просмотр отзывов постранично)
+    if handle_reviews_navigation(chat_id, text):
         return
 
     # Booking start handlers

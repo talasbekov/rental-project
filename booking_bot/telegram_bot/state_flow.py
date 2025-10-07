@@ -144,6 +144,19 @@ def navigate_results(chat_id, profile, text):
         show_search_results(chat_id, profile, max(offset - 1, 0))
         return
 
+    # Согласно ТЗ п.5: К началу возвращает к первой карточке
+    if normalized in {"🔄 К началу", "К началу"}:
+        show_search_results(chat_id, profile, 0)
+        return
+
+    # Согласно ТЗ п.5: Новый поиск начинает поиск заново
+    if normalized in {"🆕 Новый поиск", "Новый поиск"}:
+        from .constants import start_command_handler
+        start_command_handler(chat_id)
+        from .handlers import prompt_city_selection
+        prompt_city_selection(chat_id)
+        return
+
     if normalized.startswith("📄") or normalized.startswith("Страница"):
         match = re.search(r"(\d+)", normalized)
         if match:
@@ -203,7 +216,7 @@ def navigate_results(chat_id, profile, text):
                 show_favorite_property_detail(chat_id, favorites[index].property.id)
                 return
 
-    send_telegram_message(chat_id, "Пожалуйста, воспользуйтесь кнопками для управления поиском.")
+    send_telegram_message(chat_id, "К сожалению, подходящих вам квартир мы не смогли найти, попробуйте изменить свои критерии для поиска.")
 
 @log_handler
 def navigate_refined_search(chat_id, profile, text):
@@ -404,9 +417,8 @@ def show_search_results(chat_id, profile, offset=0):
     if total == 0:
         _send_with_keyboard(
             chat_id,
-            "К сожалению, подходящих вам квартир мы не смогли найти.\n"
-            "Попробуйте изменить свои критерии для поиска.",
-            [[KeyboardButton("🔄 Новый поиск")], [KeyboardButton("🧭 Главное меню")]],
+            "К сожалению, подходящих вам квартир мы не смогли найти, попробуйте изменить свои критерии для поиска.",
+            [[KeyboardButton("🆕 Новый поиск")], [KeyboardButton("🧭 Главное меню")]],
         )
         return
 
@@ -478,7 +490,11 @@ def show_search_results(chat_id, profile, offset=0):
     if nav_buttons:
         keyboard.append(nav_buttons)
 
-    keyboard.append([KeyboardButton("🔍 Поиск квартир"), KeyboardButton("🧭 Главное меню")])
+    # Согласно ТЗ п.5: последняя карточка → К началу / Новый поиск
+    if offset == total - 1 and total > 1:
+        keyboard.append([KeyboardButton("🔄 К началу"), KeyboardButton("🆕 Новый поиск")])
+    else:
+        keyboard.append([KeyboardButton("🔍 Поиск квартир"), KeyboardButton("🧭 Главное меню")])
 
     _send_with_keyboard(chat_id, text, keyboard)
 

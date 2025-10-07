@@ -178,8 +178,25 @@ PAYMENT_SUCCESS_URL = f"{SITE_URL}/payments/success/"
 PAYMENT_FAIL_URL = f"{SITE_URL}/payments/fail/"
 PAYMENT_TIMEOUT_MINUTES = 15
 
-# Для разработки - автоматическое подтверждение платежей
-AUTO_CONFIRM_PAYMENTS = DEBUG  # True только в DEBUG режиме
+# Управление авто-подтверждением платежей (эмуляция Kaspi)
+AUTO_CONFIRM_PAYMENTS = (
+    get_env("AUTO_CONFIRM_PAYMENTS", "true").lower() == "true"
+)
+
+# БЕЗОПАСНОСТЬ: Запретить AUTO_CONFIRM_PAYMENTS в production (Claude Code Этап 31)
+if not DEBUG and AUTO_CONFIRM_PAYMENTS:
+    raise ImproperlyConfigured(
+        "CRITICAL SECURITY: AUTO_CONFIRM_PAYMENTS must be disabled in production mode. "
+        "Set AUTO_CONFIRM_PAYMENTS=false in .env or enable DEBUG mode for testing."
+    )
+
+# Альтернативные способы оплаты
+MANUAL_PAYMENT_ENABLED = get_env("MANUAL_PAYMENT_ENABLED", "true").lower() == "true"
+MANUAL_PAYMENT_INSTRUCTIONS = get_env(
+    "MANUAL_PAYMENT_INSTRUCTIONS",
+    "Наш оператор свяжется с вами для выставления счёта и подтверждения оплаты.",
+)
+MANUAL_PAYMENT_HOLD_MINUTES = int(get_env("MANUAL_PAYMENT_HOLD_MINUTES", "180"))
 
 # CSRF settings
 raw_csrf = get_env("CSRF_TRUSTED_ORIGINS", default="")

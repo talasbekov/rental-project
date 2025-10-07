@@ -1,10 +1,11 @@
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 
 from .constants import log_handler
+from booking_bot import settings
 from booking_bot.services.booking_service import (
     BookingError,
     BookingRequest,
@@ -62,6 +63,8 @@ def message_handler(phone_number, text, message_data=None):
     if state == STATE_CONFIRM_BOOKING:
         if text == "Оплатить Kaspi":
             handle_payment_confirmation(phone_number)
+        elif text in ("Счёт на оплату", "Оплата по счёту", "🧾 Счёт на оплату"):
+            handle_manual_payment(phone_number)
         else:
             send_whatsapp_message(
                 phone_number, "Пожалуйста, используйте кнопки для выбора действия."
@@ -159,6 +162,8 @@ def handle_button_click(phone_number, button_id, profile):
         show_prev_property(phone_number, profile)
     elif button_id == "confirm_payment":
         handle_payment_confirmation(phone_number)
+    elif button_id == "manual_payment":
+        handle_manual_payment(phone_number)
     elif button_id == "cancel_booking":
         start_command_handler(phone_number)
     
@@ -897,7 +902,8 @@ def handle_checkout_input(phone_number, text):
 
     # Отправляем подтверждение
     buttons = [
-        {"id": "confirm_payment", "title": "💳 Оплатить"},
+        {"id": "confirm_payment", "title": "💳 Оплатить Kaspi"},
+        {"id": "manual_payment", "title": "🧾 Счёт на оплату"},
         {"id": "cancel_booking", "title": "❌ Отменить"},
     ]
 
@@ -977,14 +983,11 @@ def handle_payment_confirmation(phone_number):
 
                 checkout_url = payment_info["checkout_url"]
 
-                # В режиме разработки автоматически подтверждаем
-                if settings.DEBUG:
-                    import time
-
-                    time.sleep(2)
-
+                # В режиме эмуляции Kaspi автоматически подтверждаем
+                if settings.AUTO_CONFIRM_PAYMENTS:
                     booking.status = "confirmed"
                     booking.save(update_fields=["status", "updated_at"])
+                    booking.property.update_status_from_bookings()
 
                     send_booking_confirmation(phone_number, booking)
 
@@ -1025,6 +1028,96 @@ def handle_payment_confirmation(phone_number):
         send_whatsapp_message(
             phone_number,
             "❌ Произошла ошибка при создании бронирования.\n" "Попробуйте позже.",
+        )
+
+
+@log_handler
+def handle_manual_payment(phone_number):
+    """Оформление бронирования с альтернативным способом оплаты."""
+    if not getattr(settings, "MANUAL_PAYMENT_ENABLED", True):
+        send_whatsapp_message(
+            phone_number,
+            "Сейчас доступна только оплата Kaspi. Попробуйте выбрать Kaspi-платёж.",
+        )
+        return
+
+    profile = _get_profile(phone_number)
+    sd = profile.whatsapp_state or {}
+
+    property_id = sd.get("booking_property_id")
+    check_in_str = sd.get("check_in_date")
+    check_out_str = sd.get("check_out_date")
+
+    if not all([property_id, check_in_str, check_out_str]):
+        send_whatsapp_message(
+            phone_number, "❌ Недостаточно данных для оформления бронирования."
+        )
+        return
+
+    try:
+        prop = Property.objects.get(id=property_id)
+        check_in = date.fromisoformat(check_in_str)
+        check_out = date.fromisoformat(check_out_str)
+
+        request = BookingRequest(
+            user=profile.user,
+            property=prop,
+            start_date=check_in,
+            end_date=check_out,
+            check_in_time=sd.get("check_in_time", "14:00"),
+            check_out_time=sd.get("check_out_time", "12:00"),
+            status="pending_payment",
+            hold_calendar=True,
+            expires_in=timedelta(
+                minutes=getattr(settings, "MANUAL_PAYMENT_HOLD_MINUTES", 180)
+            ),
+        )
+
+        try:
+            booking = create_booking(request)
+        except BookingError as exc:
+            logger.info("Manual booking failed for %s: %s", phone_number, exc)
+            send_whatsapp_message(
+                phone_number, f"❌ Невозможно создать бронирование: {exc}"
+            )
+            return
+
+        if booking.expires_at:
+            cancel_expired_booking.apply_async(args=[booking.id], eta=booking.expires_at)
+
+        instructions = getattr(
+            settings,
+            "MANUAL_PAYMENT_INSTRUCTIONS",
+            "Наш оператор свяжется с вами для выставления счёта.",
+        )
+
+        message = (
+            f"✅ Бронирование #{booking.id} создано!\n"
+            f"🏠 {prop.name}\n"
+            f"📅 {check_in.strftime('%d.%m.%Y')} — {check_out.strftime('%d.%m.%Y')}\n"
+            f"💰 Сумма: {booking.total_price:,.0f} ₸\n\n"
+            f"{instructions}\n\n"
+            "Мы удержим квартиру за вами на ограниченное время."
+        )
+
+        send_whatsapp_message(phone_number, message)
+
+        profile.whatsapp_state = {}
+        profile.save()
+
+        logger.info(
+            "Manual payment initiated for WhatsApp user %s (booking %s)",
+            phone_number,
+            booking.id,
+        )
+
+    except Property.DoesNotExist:
+        send_whatsapp_message(phone_number, "❌ Квартира не найдена.")
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Manual payment flow error: %s", exc, exc_info=True)
+        send_whatsapp_message(
+            phone_number,
+            "❌ Не удалось запустить альтернативный способ оплаты. Попробуйте позже.",
         )
 
 
@@ -1371,6 +1464,8 @@ def message_handler(phone_number, text, message_data=None):
     if state == STATE_CONFIRM_BOOKING:
         if text == "Оплатить Kaspi":
             handle_payment_confirmation(phone_number)
+        elif text in ("Счёт на оплату", "Оплата по счёту", "🧾 Счёт на оплату"):
+            handle_manual_payment(phone_number)
         else:
             send_whatsapp_message(
                 phone_number, "Пожалуйста, используйте кнопки для выбора действия."
@@ -1467,6 +1562,8 @@ def handle_button_click(phone_number, button_id, profile):
         show_prev_property(phone_number, profile)
     elif button_id == "confirm_payment":
         handle_payment_confirmation(phone_number)
+    elif button_id == "manual_payment":
+        handle_manual_payment(phone_number)
     elif button_id == "cancel_booking":
         start_command_handler(phone_number)
     

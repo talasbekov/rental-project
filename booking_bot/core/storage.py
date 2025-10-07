@@ -83,6 +83,15 @@ class S3PhotoStorage(Storage):
     def _create_thumbnail(self, img):
         """Создание миниатюры (JPEG)"""
         thumb = img.copy()
+        # ИСПРАВЛЕНИЕ: конвертируем RGBA -> RGB перед сохранением в JPEG (Claude Code)
+        if thumb.mode == "RGBA":
+            # Создаём белый фон для прозрачных областей
+            background = Image.new("RGB", thumb.size, (255, 255, 255))
+            background.paste(thumb, mask=thumb.split()[3])  # alpha channel as mask
+            thumb = background
+        elif thumb.mode not in ("RGB", "L"):
+            thumb = thumb.convert("RGB")
+
         thumb.thumbnail(self.thumbnail_size, Image.Resampling.LANCZOS)
         out = BytesIO()
         thumb.save(out, format="JPEG", quality=80, optimize=True)

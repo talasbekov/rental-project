@@ -1,15 +1,20 @@
-from django.test import TestCase, Client
+import hashlib
+import hmac
+import json
+from datetime import date, timedelta
+
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from unittest.mock import MagicMock, patch
+
 from booking_bot.users.models import UserProfile
-from booking_bot.listings.models import Property
+from booking_bot.listings.models import City, District, Property
 from booking_bot.bookings.models import Booking
+from booking_bot.payments import kaspi_service
 
 User = get_user_model()
-from unittest.mock import patch, MagicMock
-import json
-from datetime import date, timedelta
 
 # Ensure this path is correct based on your project structure
 # It's used to mock functions within your payments.views module
@@ -19,6 +24,14 @@ VIEWS_MODULE_PATH = "booking_bot.payments.views"
 class PaymentsWebhookTest(TestCase):
     def setUp(self):
         self.client = Client()
+        self.secret = "test_webhook_secret"
+        self._override = override_settings(KASPI_SECRET_KEY=self.secret)
+        self._override.enable()
+        self.addCleanup(self._override.disable)
+        original_secret = kaspi_service.KASPI_SECRET_KEY
+        kaspi_service.KASPI_SECRET_KEY = self.secret
+        self.addCleanup(lambda: setattr(kaspi_service, "KASPI_SECRET_KEY", original_secret))
+
         self.super_user = User.objects.create_superuser(
             username="superadmin", password="password"
         )  # For property owner
@@ -30,15 +43,19 @@ class PaymentsWebhookTest(TestCase):
         )
 
         # Create a property - ensure all required fields are provided
+        self.city = City.objects.create(name="Testopolis")
+        self.district = District.objects.create(name="Central", city=self.city)
         self.property = Property.objects.create(
             name="Test Prop Webhook",
-            number_of_rooms=1,
-            price_per_day=100,
-            owner=self.super_user,  # Assuming owner must be an admin or superuser
-            region="Yesil District",  # Ensure this is a valid choice if choices are enforced
-            status="available",  # Ensure this is a valid choice
+            description="Demo property",
             address="123 Test St",
-            area=50,  # Assuming area is required
+            district=self.district,
+            number_of_rooms=1,
+            area=50,
+            property_class="comfort",
+            status="Свободна",
+            owner=self.super_user,
+            price_per_day=100,
         )
 
         # Create a booking that is pending payment
@@ -57,6 +74,28 @@ class PaymentsWebhookTest(TestCase):
         # If it's namespaced, it would be 'payments:kaspi_payment_webhook'
         self.webhook_url = reverse("kaspi_payment_webhook")
 
+    def _signature_headers(self, body: bytes, *, timestamp: int | None = None):
+        digest = hmac.new(self.secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+        headers = {"HTTP_X_KASPI_SIGNATURE": f"sha256={digest}"}
+        if timestamp is not None:
+            headers["HTTP_X_KASPI_TIMESTAMP"] = str(timestamp)
+        return headers
+
+    def _post_with_signature(self, payload, *, timestamp: int | None = None):
+        if isinstance(payload, (bytes, bytearray)):
+            body = bytes(payload)
+        else:
+            body = json.dumps(payload).encode("utf-8")
+
+        headers = self._signature_headers(body, timestamp=timestamp)
+
+        return self.client.post(
+            self.webhook_url,
+            data=body,
+            content_type="application/json",
+            **headers,
+        )
+
     @patch(
         f"{VIEWS_MODULE_PATH}.send_whatsapp_message"
     )  # Patch the send_whatsapp_message in views.py
@@ -72,9 +111,7 @@ class PaymentsWebhookTest(TestCase):
             # Add any other fields Kaspi might send that your webhook expects or logs
         }
 
-        response = self.client.post(
-            self.webhook_url, data=json.dumps(payload), content_type="application/json"
-        )
+        response = self._post_with_signature(payload)
 
         self.assertEqual(response.status_code, 200)
         json_response = response.json()
@@ -99,9 +136,7 @@ class PaymentsWebhookTest(TestCase):
         self, mock_clear_user_state, mock_send_whatsapp_message
     ):
         payload = {"transactionId": "kaspi_test_123", "status": "FAILED"}
-        response = self.client.post(
-            self.webhook_url, data=json.dumps(payload), content_type="application/json"
-        )
+        response = self._post_with_signature(payload)
         self.assertEqual(response.status_code, 200)  # Webhook should still acknowledge
         json_response = response.json()
         self.assertEqual(
@@ -115,9 +150,7 @@ class PaymentsWebhookTest(TestCase):
         mock_clear_user_state.assert_not_called()  # State not cleared on failure typically
 
     def test_kaspi_webhook_invalid_json(self):
-        response = self.client.post(
-            self.webhook_url, data="not json", content_type="application/json"
-        )
+        response = self._post_with_signature(b"not json")
         self.assertEqual(response.status_code, 400)
         json_response = response.json()
         self.assertEqual(json_response.get("status"), "error")
@@ -125,24 +158,44 @@ class PaymentsWebhookTest(TestCase):
 
     def test_kaspi_webhook_missing_transaction_id(self):
         payload = {"status": "SUCCESS"}
-        response = self.client.post(
-            self.webhook_url, data=json.dumps(payload), content_type="application/json"
-        )
+        response = self._post_with_signature(payload)
         self.assertEqual(response.status_code, 400)
         json_response = response.json()
         self.assertEqual(json_response.get("message"), "'transactionId' is required")
 
     def test_kaspi_webhook_booking_not_found(self):
         payload = {"transactionId": "non_existent_kaspi_id", "status": "SUCCESS"}
-        response = self.client.post(
-            self.webhook_url, data=json.dumps(payload), content_type="application/json"
-        )
+        response = self._post_with_signature(payload)
         self.assertEqual(response.status_code, 404)
         json_response = response.json()
         self.assertEqual(
             json_response.get("message"),
             "Booking not found with provided kaspi_payment_id",
         )
+
+    def test_kaspi_webhook_invalid_signature(self):
+        payload = {"transactionId": "kaspi_test_123", "status": "SUCCESS"}
+        body = json.dumps(payload).encode("utf-8")
+        headers = self._signature_headers(body)
+        headers["HTTP_X_KASPI_SIGNATURE"] = "sha256=" + "0" * 64
+
+        response = self.client.post(
+            self.webhook_url,
+            data=body,
+            content_type="application/json",
+            **headers,
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json().get("message"), "Invalid signature")
+
+    def test_kaspi_webhook_stale_timestamp(self):
+        payload = {"transactionId": "kaspi_test_123", "status": "SUCCESS"}
+        stale_timestamp = 0  # явно вне допустимого окна
+        response = self._post_with_signature(payload, timestamp=stale_timestamp)
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json().get("message"), "Invalid signature")
 
     def test_kaspi_webhook_method_not_allowed(self):
         response = self.client.get(self.webhook_url)  # Use GET instead of POST
@@ -159,9 +212,7 @@ class PaymentsWebhookTest(TestCase):
         self.booking.save()
 
         payload = {"transactionId": "kaspi_test_123", "status": "SUCCESS"}
-        response = self.client.post(
-            self.webhook_url, data=json.dumps(payload), content_type="application/json"
-        )
+        response = self._post_with_signature(payload)
         self.assertEqual(response.status_code, 200)
 
         # Ensure WhatsApp message and clear_state were not called again

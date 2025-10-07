@@ -12,6 +12,7 @@ from django.http import (
 )
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
+from django_ratelimit.decorators import ratelimit
 
 from booking_bot.bookings.models import Booking
 from booking_bot.telegram_bot.handlers import (
@@ -38,10 +39,16 @@ def verify_webhook_signature(request):
 
 
 @csrf_exempt
+@ratelimit(key='ip', rate='100/m', method='POST')
 def telegram_webhook(request):
+    """Handle incoming updates from Telegram (ReplyKeyboardMarkup only)."""
+    # Check rate limit
+    if getattr(request, 'limited', False):
+        logger.warning(f"Rate limit exceeded for IP: {request.META.get('REMOTE_ADDR')}")
+        return JsonResponse({"error": "Rate limit exceeded"}, status=429)
+
     if not verify_webhook_signature(request):
         return HttpResponseForbidden()
-    """Handle incoming updates from Telegram (ReplyKeyboardMarkup only)."""
     if request.method == "GET":
         return HttpResponse("Telegram webhook is running")
     if request.method != "POST":

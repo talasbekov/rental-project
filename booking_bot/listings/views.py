@@ -109,7 +109,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
         """Use admin serializer for admin users"""
         if self.request.user.is_authenticated:
             profile = getattr(self.request.user, 'profile', None)
-            if profile and profile.role in ('admin', 'super_admin'):
+            if profile and profile.role in ('admin', 'super_admin', 'super_user'):
                 return PropertyAdminSerializer
         return PropertySerializer
 
@@ -122,7 +122,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
             if profile and profile.role == 'admin':
                 # Regular admins see only their own properties
                 queryset = queryset.filter(owner=self.request.user)
-            elif profile and profile.role == 'super_admin':
+            elif profile and profile.role in ('super_admin', 'super_user'):
                 # Super admins see all properties
                 pass
             else:
@@ -140,8 +140,8 @@ class PropertyViewSet(viewsets.ModelViewSet):
         if request.user.is_authenticated:
             profile = getattr(request.user, 'profile', None)
             if profile and (
-                profile.role in ('admin', 'super_admin') and 
-                (instance.owner == request.user or profile.role == 'super_admin')
+                profile.role in ('admin', 'super_admin', 'super_user') and 
+                (instance.owner == request.user or profile.role in ('super_admin', 'super_user'))
             ):
                 can_view_codes = True
                 # Log access to codes
@@ -166,7 +166,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
     def my_properties(self, request):
         """Get properties owned by current user"""
         profile = getattr(request.user, 'profile', None)
-        if not profile or profile.role not in ('admin', 'super_admin'):
+        if not profile or profile.role not in ('admin', 'super_admin', 'super_user'):
             return Response(
                 {"error": "Недостаточно прав"}, 
                 status=status.HTTP_403_FORBIDDEN
@@ -183,7 +183,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
         
         # Check permissions
         profile = getattr(request.user, 'profile', None)
-        if not profile or profile.role not in ('admin', 'super_admin'):
+        if not profile or profile.role not in ('admin', 'super_admin', 'super_user'):
             return Response(
                 {"error": "Недостаточно прав"}, 
                 status=status.HTTP_403_FORBIDDEN
@@ -212,7 +212,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
         
         # Check permissions
         profile = getattr(request.user, 'profile', None)
-        if not profile or profile.role not in ('admin', 'super_admin'):
+        if not profile or profile.role not in ('admin', 'super_admin', 'super_user'):
             return Response(
                 {"error": "Недостаточно прав"}, 
                 status=status.HTTP_403_FORBIDDEN
@@ -232,13 +232,13 @@ class PropertyViewSet(viewsets.ModelViewSet):
     def dashboard(self, request):
         """Admin dashboard with statistics"""
         profile = getattr(request.user, 'profile', None)
-        if not profile or profile.role not in ('admin', 'super_admin'):
+        if not profile or profile.role not in ('admin', 'super_admin', 'super_user'):
             return Response(
                 {"error": "Недостаточно прав"}, 
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        if profile.role == 'super_admin':
+        if profile.role in ('super_admin', 'super_user'):
             properties = Property.objects.all()
         else:
             properties = Property.objects.filter(owner=request.user)

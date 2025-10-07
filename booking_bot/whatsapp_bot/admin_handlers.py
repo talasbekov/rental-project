@@ -61,7 +61,7 @@ def handle_add_property_start(phone_number: str, text: str) -> Optional[bool]:
 
     # Триггер на первый шаг
     if text == "Добавить квартиру" and state not in admin_states:
-        if profile.role not in ("admin", "super_admin"):
+        if profile.role not in ("admin", "super_admin", "super_user"):
             send_whatsapp_message(phone_number, "❌ У вас нет доступа к этой функции.")
             return True
 
@@ -469,7 +469,7 @@ def show_admin_menu(phone_number):
         }
     ]
 
-    if profile.role == "super_admin":
+    if profile.role in ("super_admin", "super_user"):
         sections.append(
             {
                 "title": "Супер админ",
@@ -500,7 +500,7 @@ def show_admin_menu(phone_number):
 def show_admin_panel(phone_number):
     """Отобразить панель администратора"""
     profile = _get_profile(phone_number)
-    if profile.role not in ("admin", "super_admin"):
+    if profile.role not in ("admin", "super_admin", "super_user"):
         send_whatsapp_message(phone_number, "❌ У вас нет доступа к админ-панели.")
         return
 
@@ -511,7 +511,7 @@ def show_admin_panel(phone_number):
 def show_admin_properties(phone_number):
     """Показать список квартир админа"""
     profile = _get_profile(phone_number)
-    if profile.role not in ("admin", "super_admin"):
+    if profile.role not in ("admin", "super_admin", "super_user"):
         send_whatsapp_message(phone_number, "❌ У вас нет доступа к этой функции.")
         return
 
@@ -549,7 +549,7 @@ def show_admin_properties(phone_number):
 def show_detailed_statistics(phone_number, period="month"):
     """Показать детальную статистику"""
     profile = _get_profile(phone_number)
-    if profile.role not in ("admin", "super_admin"):
+    if profile.role not in ("admin", "super_admin", "super_user"):
         send_whatsapp_message(phone_number, "❌ У вас нет доступа к этой функции.")
         return
 
@@ -600,19 +600,18 @@ def show_detailed_statistics(phone_number, period="month"):
 def show_extended_statistics(phone_number, period="month"):
     """Показать расширенную статистику"""
     profile = _get_profile(phone_number)
-    if profile.role not in ("admin", "super_admin"):
+    if profile.role not in ("admin", "super_admin", "super_user"):
         send_whatsapp_message(phone_number, "❌ У вас нет доступа к этой функции.")
         return
 
     today = date.today()
-    if period == "week":
-        start = today - timedelta(days=7)
-    elif period == "month":
-        start = today - timedelta(days=30)
-    elif period == "quarter":
-        start = today - timedelta(days=90)
-    else:
-        start = today - timedelta(days=365)
+    period_map = {
+        "week": (today - timedelta(days=7), "неделю"),
+        "month": (today - timedelta(days=30), "месяц"),
+        "quarter": (today - timedelta(days=90), "квартал"),
+        "year": (today - timedelta(days=365), "год"),
+    }
+    start, period_label = period_map.get(period, period_map["month"])
 
     props = (
         Property.objects.filter(owner=profile.user)
@@ -620,81 +619,159 @@ def show_extended_statistics(phone_number, period="month"):
         else Property.objects.all()
     )
 
+    if not props.exists():
+        send_whatsapp_message(phone_number, "Нет данных для выбранного периода.")
+        return
+
+    base_filter = {
+        "property__in": props,
+        "created_at__gte": start,
+    }
+
     bookings = Booking.objects.filter(
-        property__in=props, created_at__gte=start, status__in=["confirmed", "completed"]
+        status__in=["confirmed", "completed"], **base_filter
     )
 
-    total_revenue = bookings.aggregate(Sum("total_price"))["total_price__sum"] or 0
+    total_revenue = bookings.aggregate(total=Sum("total_price"))["total"] or 0
     total_bookings = bookings.count()
-    canceled = Booking.objects.filter(
-        property__in=props, created_at__gte=start, status="cancelled"
-    ).count()
+    canceled_qs = Booking.objects.filter(status="cancelled", **base_filter)
+    canceled_count = canceled_qs.count()
     avg_check = total_revenue / total_bookings if total_bookings else 0
 
-    # Расчеты длительности и времени бронирования
     duration_expr = ExpressionWrapper(
         F("end_date") - F("start_date"), output_field=DurationField()
     )
     lead_expr = ExpressionWrapper(
         F("start_date") - F("created_at"), output_field=DurationField()
     )
-    bookings = bookings.annotate(duration_days=duration_expr, lead_days=lead_expr)
+    annotated = bookings.annotate(duration_days=duration_expr, lead_days=lead_expr)
 
-    total_nights = bookings.aggregate(Sum("duration_days"))["duration_days__sum"]
-    avg_stay = bookings.aggregate(Avg("duration_days"))["duration_days__avg"]
-    avg_lead = bookings.aggregate(Avg("lead_days"))["lead_days__avg"]
+    total_nights_delta = annotated.aggregate(total=Sum("duration_days"))["total"]
+    avg_stay_delta = annotated.aggregate(avg=Avg("duration_days"))["avg"]
+    avg_lead_delta = annotated.aggregate(avg=Avg("lead_days"))["avg"]
 
-    total_nights = total_nights.days if total_nights else 0
-    avg_stay = avg_stay.days if avg_stay else 0
-    avg_lead = avg_lead.days if avg_lead else 0
+    total_nights = total_nights_delta.days if total_nights_delta else 0
+    avg_stay = avg_stay_delta.days if avg_stay_delta else 0
+    avg_lead = avg_lead_delta.days if avg_lead_delta else 0
 
-    period_days = (today - start).days or 1
-    total_available = period_days * props.count()
-    occupancy_rate = (total_nights / total_available * 100) if total_available else 0
+    total_days = max((today - start).days, 1)
+    inventory = props.count() * total_days
+    occupancy_rate = (total_nights / inventory * 100) if inventory else 0
 
-    # Доход по классам жилья
-    class_revenue_qs = bookings.values("property__property_class").annotate(
-        total=Sum("total_price")
-    )
-    class_names = {"economy": "Комфорт", "business": "Бизнес", "luxury": "Премиум"}
-    class_revenue_text = ""
-    for entry in class_revenue_qs:
-        cls = class_names.get(
-            entry["property__property_class"], entry["property__property_class"]
-        )
-        class_revenue_text += f"{cls}: {entry['total']:,.0f} ₸\n"
+    class_labels = {
+        "comfort": "Комфорт",
+        "business": "Бизнес",
+        "premium": "Премиум",
+    }
+    class_lines = [
+        f"{class_labels.get(row['property__property_class'], row['property__property_class'])}: {row['total']:,.0f} ₸"
+        for row in bookings.values("property__property_class").annotate(total=Sum("total_price"))
+    ]
 
-    # Топ-3 квартиры по доходу
-    top_props = (
+    top_props_revenue = (
         bookings.values("property__name")
         .annotate(total=Sum("total_price"))
-        .order_by("-total")[:3]
+        .order_by("-total")[:5]
     )
-    top_text = ""
-    for idx, item in enumerate(top_props, start=1):
-        top_text += f"{idx}. {item['property__name']}: {item['total']:,.0f} ₸\n"
+    top_props_count = (
+        bookings.values("property__name")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
+    )
+    top_users_count = (
+        bookings.values("user__username")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
+    )
+    top_users_spend = (
+        bookings.values("user__username")
+        .annotate(total=Sum("total_price"))
+        .order_by("-total")[:5]
+    )
+    top_agents_revenue = (
+        bookings.values("property__owner__username")
+        .annotate(total=Sum("total_price"))
+        .order_by("-total")[:5]
+    )
+    top_agents_count = (
+        bookings.values("property__owner__username")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
+    )
 
-    # Формируем текст сообщения (разбиваем на части для WhatsApp)
-    text1 = (
-        f"📈 *Расширенная статистика за {period}:*\n\n"
+    reason_labels = dict(Booking.CANCEL_REASON_CHOICES)
+    cancel_lines = [
+        f"{reason_labels.get(row['cancel_reason'], row['cancel_reason'] or 'без причины')}: {row['total']}"
+        for row in canceled_qs.values("cancel_reason").annotate(total=Count("id"))
+        if row["total"]
+    ]
+
+    summary_text = (
+        f"📈 *Аналитика за {period_label}:*\n\n"
         f"💰 Доход: {total_revenue:,.0f} ₸\n"
-        f"📦 Брони: {total_bookings}, отмены: {canceled}\n"
-        f"💳 Средний чек: {avg_check:,.0f} ₸\n\n"
+        f"📦 Брони: {total_bookings}, отмены: {canceled_count}\n"
+        f"💳 Средний чек: {avg_check:,.0f} ₸\n"
         f"🏨 Занятость: {occupancy_rate:.1f}%\n"
-        f"🛏️ Средняя длительность: {avg_stay} ноч.\n"
-        f"⏳ Среднее время до заезда: {avg_lead} дн."
+        f"🛏️ Средняя длительность проживания: {avg_stay} ноч.\n"
+        f"⏳ Средний срок до заезда: {avg_lead} дн."
     )
+    send_whatsapp_message(phone_number, summary_text)
 
-    send_whatsapp_message(phone_number, text1)
+    if class_lines:
+        class_text = "🏷️ *Доход по классам:*\n" + "\n".join(class_lines)
+        send_whatsapp_message(phone_number, class_text)
 
-    if class_revenue_text or top_text:
-        text2 = ""
-        if class_revenue_text:
-            text2 += f"🏷️ *Доход по классам:*\n{class_revenue_text}\n"
-        if top_text:
-            text2 += f"🏆 *Топ-квартиры по доходу:*\n{top_text}"
+    props_income_lines = [
+        f"{idx}. {row['property__name']}: {row['total']:,.0f} ₸"
+        for idx, row in enumerate(top_props_revenue, start=1)
+    ] or ["нет данных"]
+    props_count_lines = [
+        f"{idx}. {row['property__name']}: {row['count']}"
+        for idx, row in enumerate(top_props_count, start=1)
+    ] or ["нет данных"]
+    props_text = (
+        "🏠 *Топ-5 квартир по доходу:*\n"
+        + "\n".join(props_income_lines)
+        + "\n\n📊 *Топ-5 по количеству броней:*\n"
+        + "\n".join(props_count_lines)
+    )
+    send_whatsapp_message(phone_number, props_text)
 
-        send_whatsapp_message(phone_number, text2)
+    users_count_lines = [
+        f"{idx}. {row['user__username']}: {row['count']}"
+        for idx, row in enumerate(top_users_count, start=1)
+    ] or ["нет данных"]
+    users_spend_lines = [
+        f"{idx}. {row['user__username']}: {row['total']:,.0f} ₸"
+        for idx, row in enumerate(top_users_spend, start=1)
+    ] or ["нет данных"]
+    users_text = (
+        "👥 *Топ-5 гостей по заселениям:*\n"
+        + "\n".join(users_count_lines)
+        + "\n\n💸 *Топ-5 гостей по тратам:*\n"
+        + "\n".join(users_spend_lines)
+    )
+    send_whatsapp_message(phone_number, users_text)
+
+    agents_revenue_lines = [
+        f"{idx}. {row['property__owner__username']}: {row['total']:,.0f} ₸"
+        for idx, row in enumerate(top_agents_revenue, start=1)
+    ] or ["нет данных"]
+    agents_count_lines = [
+        f"{idx}. {row['property__owner__username']}: {row['count']}"
+        for idx, row in enumerate(top_agents_count, start=1)
+    ] or ["нет данных"]
+    agents_text = (
+        "🏢 *Топ-5 риелторов по доходу:*\n"
+        + "\n".join(agents_revenue_lines)
+        + "\n\n📈 *Топ-5 риелторов по бронированиям:*\n"
+        + "\n".join(agents_count_lines)
+    )
+    send_whatsapp_message(phone_number, agents_text)
+
+    if cancel_lines:
+        cancel_text = "🚫 *Отмены по причинам:*\n" + "\n".join(cancel_lines)
+        send_whatsapp_message(phone_number, cancel_text)
 
     # Кнопки выбора периода
     buttons = [
@@ -712,7 +789,7 @@ def show_extended_statistics(phone_number, period="month"):
 def export_statistics_csv(phone_number, period="month"):
     """Сгенерировать и отправить CSV с статистикой"""
     profile = _get_profile(phone_number)
-    if profile.role not in ("admin", "super_admin"):
+    if profile.role not in ("admin", "super_admin", "super_user"):
         send_whatsapp_message(phone_number, "❌ У вас нет доступа.")
         return
 
@@ -836,7 +913,7 @@ def show_property_management(phone_number, property_id):
 def show_super_admin_menu(phone_number):
     """Показать меню супер-админа"""
     profile = _get_profile(phone_number)
-    if profile.role != "super_admin":
+    if profile.role not in ("super_admin", "super_user"):
         send_whatsapp_message(phone_number, "❌ У вас нет доступа к этой функции.")
         return
 

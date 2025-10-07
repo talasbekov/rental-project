@@ -62,20 +62,26 @@ def kaspi_payment_webhook(request):
     Kaspi отправляет POST запрос с информацией о платеже
     """
     if request.method == "POST":
+        raw_body = request.body
+        signature = request.headers.get("X-Kaspi-Signature")
+        timestamp = request.headers.get("X-Kaspi-Timestamp")
+
+        if not kaspi_service.verify_webhook_signature(
+            raw_body, signature, timestamp=timestamp
+        ):
+            logger.error("Kaspi webhook rejected due to invalid signature")
+            return JsonResponse(
+                {"status": "error", "message": "Invalid signature"}, status=403
+            )
+
         try:
-            # Парсим JSON из тела запроса
-            data = json.loads(request.body)
+            data = json.loads(raw_body.decode("utf-8"))
             logger.info(f"Kaspi webhook получен: {data}")
-
-            # Проверяем подпись (если Kaspi её отправляет)
-            signature = request.headers.get("X-Kaspi-Signature")
-            if signature and hasattr(kaspi_service, "verify_webhook_signature"):
-                if not kaspi_service.verify_webhook_signature(data, signature):
-                    logger.error("Неверная подпись webhook от Kaspi")
-                    return JsonResponse(
-                        {"status": "error", "message": "Invalid signature"}, status=403
-                    )
-
+        except UnicodeDecodeError:
+            logger.error("Kaspi webhook: тело запроса не в UTF-8")
+            return JsonResponse(
+                {"status": "error", "message": "Invalid encoding"}, status=400
+            )
         except json.JSONDecodeError:
             logger.error("Kaspi webhook: Неверный JSON")
             return JsonResponse(
@@ -163,6 +169,7 @@ def kaspi_payment_webhook(request):
                 old_status = booking.status
                 booking.status = new_status
                 booking.save()
+                booking.property.update_status_from_bookings()
 
                 logger.info(
                     f"Статус бронирования {booking.id} изменен: {old_status} -> {new_status}"

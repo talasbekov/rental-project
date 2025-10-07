@@ -14,6 +14,9 @@ from .constants import (
     STATE_AWAITING_CHECK_IN_TIME,
     STATE_AWAITING_CHECK_OUT_TIME,
     STATE_CONFIRM_BOOKING,
+    BUTTON_PAY_KASPI,
+    BUTTON_PAY_MANUAL,
+    BUTTON_CANCEL_BOOKING,
 )
 from .utils import send_telegram_message
 from booking_bot.listings.models import Property
@@ -223,7 +226,11 @@ def handle_checkout_time(chat_id: int, text: str) -> None:
         f"🌙 Ночей: {days}\n"
         f"💰 Итого: *{total_price:,.0f} ₸*"
     )
-    kb = [[KeyboardButton("💳 Оплатить Kaspi")], [KeyboardButton("❌ Отменить")]]
+    kb = [
+        [KeyboardButton(BUTTON_PAY_KASPI)],
+        [KeyboardButton(BUTTON_PAY_MANUAL)],
+        [KeyboardButton(BUTTON_CANCEL_BOOKING)],
+    ]
     send_telegram_message(
         chat_id,
         text_msg,

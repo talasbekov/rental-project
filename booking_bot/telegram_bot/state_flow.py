@@ -3,14 +3,8 @@
 import logging
 import re
 from datetime import date, timedelta
-from typing import List
 
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
-)
+from telegram import KeyboardButton, ReplyKeyboardMarkup
 
 from django.conf import settings
 from django.db import connection
@@ -61,13 +55,81 @@ USER_CANCEL_REASON_CODES = [
 ]
 
 
+
+
+def _normalize(text: str) -> str:
+    return (text or "").strip()
+
+
+def _reply_keyboard(rows, placeholder: str | None = None):
+    return ReplyKeyboardMarkup(
+        rows, resize_keyboard=True, input_field_placeholder=placeholder
+    ).to_dict()
+
+
+def _send_with_keyboard(chat_id: int, text: str, rows=None, placeholder: str | None = None):
+    reply_markup = _reply_keyboard(rows, placeholder) if rows is not None else None
+    send_telegram_message(chat_id, text, reply_markup=reply_markup)
+
+
+def _get_state(profile):
+    return profile.telegram_state or {}
+
+
+def _save_state(profile, state):
+    profile.telegram_state = state
+    profile.save()
+
+
+def _update_state(profile, **changes):
+    state = _get_state(profile)
+    state.update(changes)
+    _save_state(profile, state)
+    return state
+
+
+def _extract_trailing_int(text: str) -> int | None:
+    match = re.search(r"(\d+)(?!.*\d)", text or "")
+    return int(match.group(1)) if match else None
+
+
+def _resolve_first(*values):
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _has_review_approval_column() -> bool:
+    if not hasattr(_has_review_approval_column, "cached"):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name='listings_review' AND column_name='is_approved'"
+            )
+            _has_review_approval_column.cached = cursor.fetchone() is not None
+    return _has_review_approval_column.cached
+
+
+def _favorite_exists(user, prop) -> bool:
+    return Favorite.objects.filter(user=user, property=prop).exists()
+
+
+PROPERTY_CLASS_LABELS = {
+    "Комфорт": "comfort",
+    "Бизнес": "business",
+    "Премиум": "premium",
+}
+ROOM_OPTIONS = ["1", "2", "3", "4+"]
+
+
 @log_handler
 def navigate_results(chat_id, profile, text):
     """Handle navigation commands while showing property search results."""
-    sd = profile.telegram_state or {}
-    offset = sd.get("search_offset", 0)
-    total = sd.get("total_results") or 0
-    normalized = (text or "").strip()
+    state = _get_state(profile)
+    offset = state.get("search_offset", 0)
+    total = state.get("total_results") or 0
+    normalized = _normalize(text)
 
     if not normalized:
         send_telegram_message(chat_id, "Используйте кнопки для управления поиском.")
@@ -82,16 +144,7 @@ def navigate_results(chat_id, profile, text):
         show_search_results(chat_id, profile, max(offset - 1, 0))
         return
 
-    if normalized.startswith("📄"):
-        match = re.search(r"(\d+)/(\d+)", normalized)
-        if match:
-            page = int(match.group(1))
-            show_search_results(chat_id, profile, max(0, min(page - 1, max_index)))
-        else:
-            send_telegram_message(chat_id, "Используйте стрелки для смены варианта.")
-        return
-
-    if normalized.startswith("Страница"):
+    if normalized.startswith("📄") or normalized.startswith("Страница"):
         match = re.search(r"(\d+)", normalized)
         if match:
             page = int(match.group(1))
@@ -101,38 +154,35 @@ def navigate_results(chat_id, profile, text):
         return
 
     if normalized.startswith("📅 Забронировать"):
-        parts = normalized.split()
-        if parts and parts[-1].isdigit():
-            property_id = int(parts[-1])
-            from .booking_flow import handle_booking_start
-
-            handle_booking_start(chat_id, property_id)
-        else:
+        property_id = _extract_trailing_int(normalized)
+        if property_id is None:
             send_telegram_message(chat_id, "Не удалось распознать номер квартиры для бронирования.")
+            return
+        from .booking_flow import handle_booking_start
+
+        handle_booking_start(chat_id, property_id)
         return
 
     if normalized.startswith("⭐ В избранное") or normalized.startswith("❌ Из избранного"):
-        parts = normalized.split()
-        if parts and parts[-1].isdigit():
-            property_id = int(parts[-1])
-            toggle_favorite(chat_id, property_id)
-            show_search_results(chat_id, profile, offset)
-        else:
+        property_id = _extract_trailing_int(normalized)
+        if property_id is None:
             send_telegram_message(chat_id, "Не удалось определить квартиру из сообщения.")
+            return
+        toggle_favorite(chat_id, property_id)
+        show_search_results(chat_id, profile, offset)
         return
 
     if normalized.startswith("💬 Отзывы"):
-        parts = normalized.split()
-        if parts and parts[-1].isdigit():
-            property_id = int(parts[-1])
-            from .user_review_handlers import handle_show_property_reviews
-
-            handle_show_property_reviews(chat_id, property_id, page=1)
-        else:
+        property_id = _extract_trailing_int(normalized)
+        if property_id is None:
             send_telegram_message(chat_id, "Не удалось открыть отзывы для выбранной квартиры.")
+            return
+        from .user_review_handlers import handle_show_property_reviews
+
+        handle_show_property_reviews(chat_id, property_id, page=1)
         return
 
-    if normalized in {"🔍 Поиск квартир", "🧭 Главное меню"}:
+    if normalized in {"🔍 Поиск квартир", "🔄 Новый поиск", "🧭 Главное меню"}:
         navigate_refined_search(chat_id, profile, normalized)
         return
 
@@ -145,7 +195,7 @@ def navigate_results(chat_id, profile, text):
         return
 
     if normalized.startswith("⭐") and "." in normalized:
-        match = re.match(r"⭐(\d+)\.", normalized)
+        match = re.match(r"⭐(\d+)\.\s?", normalized)
         if match:
             index = int(match.group(1)) - 1
             favorites = Favorite.objects.filter(user=profile.user).select_related("property")
@@ -155,48 +205,38 @@ def navigate_results(chat_id, profile, text):
 
     send_telegram_message(chat_id, "Пожалуйста, воспользуйтесь кнопками для управления поиском.")
 
-
 @log_handler
 def navigate_refined_search(chat_id, profile, text):
     """Handle transitions from results view to refined search or main menu."""
-    sd = profile.telegram_state or {}
-    old_state = sd.get("state", STATE_MAIN_MENU)
+    state = _get_state(profile)
+    old_state = state.get("state", STATE_MAIN_MENU)
 
     if text == "🔍 Поиск квартир":
         base_filters = {
-            "city_id": sd.get("city_id"),
-            "district_id": sd.get("district_id"),
-            "property_class": sd.get("property_class"),
-            "rooms": sd.get("rooms"),
+            "city_id": state.get("city_id"),
+            "district_id": state.get("district_id"),
+            "property_class": state.get("property_class"),
+            "rooms": state.get("rooms"),
         }
-
-        sd.update(
-            {
-                "state": STATE_SELECT_CITY,
-                "base_filters": base_filters,
-                "refined_filters": {},
-                "search_offset": 0,
-            }
+        _update_state(
+            profile,
+            state=STATE_SELECT_CITY,
+            base_filters=base_filters,
+            refined_filters={},
+            search_offset=0,
         )
-        profile.telegram_state = sd
-        profile.save()
-
         log_state_transition(chat_id, old_state, STATE_SELECT_CITY, "refined_search_start")
         prompt_city(chat_id, profile)
         return
 
     if text == "🧭 Главное меню":
-        sd.update(
-            {
-                "state": STATE_MAIN_MENU,
-                "base_filters": {},
-                "refined_filters": {},
-                "search_offset": 0,
-            }
+        _update_state(
+            profile,
+            state=STATE_MAIN_MENU,
+            base_filters={},
+            refined_filters={},
+            search_offset=0,
         )
-        profile.telegram_state = sd
-        profile.save()
-
         log_state_transition(chat_id, old_state, STATE_MAIN_MENU, "return_to_main_from_results")
         start_command_handler(chat_id)
         return
@@ -206,20 +246,9 @@ def navigate_refined_search(chat_id, profile, text):
 @log_handler
 def prompt_city(chat_id, profile):
     """Request a city from the user."""
-    if profile.telegram_state is None:
-        profile.telegram_state = {}
-
-    profile.telegram_state.update({"state": STATE_SELECT_CITY})
-    profile.save()
-
-    cities = City.objects.all().order_by("name")
-    kb = [[KeyboardButton(c.name)] for c in cities]
-    markup = ReplyKeyboardMarkup(
-        keyboard=kb,
-        resize_keyboard=True,
-        input_field_placeholder="Выберите город",
-    ).to_dict()
-    send_telegram_message(chat_id, "Выберите город:", reply_markup=markup)
+    _update_state(profile, state=STATE_SELECT_CITY)
+    rows = [[KeyboardButton(city.name)] for city in City.objects.all().order_by("name")]
+    _send_with_keyboard(chat_id, "Выберите город:", rows, "Выберите город")
 
 
 @log_handler
@@ -230,41 +259,36 @@ def select_city(chat_id, profile, text):
         send_telegram_message(chat_id, "Неверный город. Попробуйте ещё раз.")
         return
 
-    sd = profile.telegram_state or {}
-    old_state = sd.get("state", STATE_MAIN_MENU)
+    state = _get_state(profile)
+    old_state = state.get("state", STATE_MAIN_MENU)
 
-    if sd.get("base_filters"):
-        refined_filters = sd.get("refined_filters", {})
+    if state.get("base_filters"):
+        refined_filters = state.get("refined_filters", {})
         refined_filters["city_id"] = city.id
-        sd["refined_filters"] = refined_filters
-        sd["state"] = STATE_SELECT_DISTRICT
+        state["refined_filters"] = refined_filters
     else:
-        sd.update({"city_id": city.id, "state": STATE_SELECT_DISTRICT})
+        state["city_id"] = city.id
 
-    profile.telegram_state = sd
-    profile.save()
+    state["state"] = STATE_SELECT_DISTRICT
+    _save_state(profile, state)
 
     log_state_transition(chat_id, old_state, STATE_SELECT_DISTRICT, f"selected_city_{city.name}")
 
-    districts = District.objects.filter(city=city).order_by("name")
-    if not districts.exists():
-        send_telegram_message(
+    districts = list(District.objects.filter(city=city).order_by("name"))
+    if not districts:
+        _send_with_keyboard(
             chat_id,
             f"Город «{city.name}» пока не содержит районов.",
-            reply_markup=ReplyKeyboardMarkup(
-                [[KeyboardButton("🧭 Главное меню")]], resize_keyboard=True
-            ).to_dict(),
+            [[KeyboardButton("🧭 Главное меню")]],
         )
         return
 
-    kb = [[KeyboardButton(d.name)] for d in districts]
-    markup = ReplyKeyboardMarkup(
-        keyboard=kb,
-        resize_keyboard=True,
-        input_field_placeholder="Выберите район",
-    ).to_dict()
-    send_telegram_message(
-        chat_id, f"Город: {city.name}\nВыберите район:", reply_markup=markup
+    rows = [[KeyboardButton(district.name)] for district in districts]
+    _send_with_keyboard(
+        chat_id,
+        f"Город: {city.name}\nВыберите район:",
+        rows,
+        "Выберите район",
     )
 
 
@@ -276,73 +300,58 @@ def select_district(chat_id, profile, text):
         send_telegram_message(chat_id, "Неверный район. Попробуйте ещё раз.")
         return
 
-    sd = profile.telegram_state or {}
-    old_state = sd.get("state", STATE_MAIN_MENU)
+    state = _get_state(profile)
+    old_state = state.get("state", STATE_MAIN_MENU)
 
-    if sd.get("base_filters"):
-        refined_filters = sd.get("refined_filters", {})
+    if state.get("base_filters"):
+        refined_filters = state.get("refined_filters", {})
         refined_filters["district_id"] = district.id
-        sd["refined_filters"] = refined_filters
-        sd["state"] = STATE_SELECT_CLASS
+        state["refined_filters"] = refined_filters
     else:
-        sd.update({"district_id": district.id, "state": STATE_SELECT_CLASS})
+        state["district_id"] = district.id
 
-    profile.telegram_state = sd
-    profile.save()
+    state["state"] = STATE_SELECT_CLASS
+    _save_state(profile, state)
 
     log_state_transition(chat_id, old_state, STATE_SELECT_CLASS, f"selected_district_{district.name}")
 
-    classes = [
-        ("comfort", "Комфорт"),
-        ("business", "Бизнес"),
-        ("premium", "Премиум"),
-    ]
-    kb = [[KeyboardButton(label)] for _, label in classes]
-    markup = ReplyKeyboardMarkup(
-        keyboard=kb,
-        resize_keyboard=True,
-        input_field_placeholder="Выберите класс",
-    ).to_dict()
-    send_telegram_message(
+    rows = [[KeyboardButton(label)] for label in PROPERTY_CLASS_LABELS]
+    _send_with_keyboard(
         chat_id,
         f"Район: {district.name}\nВыберите класс жилья:",
-        reply_markup=markup,
+        rows,
+        "Выберите класс",
     )
 
 
 @log_handler
 def select_class(chat_id, profile, text):
-    mapping = {"Комфорт": "comfort", "Бизнес": "business", "Премиум": "premium"}
-    if text not in mapping:
+    property_class = PROPERTY_CLASS_LABELS.get(text)
+    if property_class is None:
         send_telegram_message(chat_id, "Неверный класс. Попробуйте ещё раз.")
         return
 
-    profile.telegram_state.update({"property_class": mapping[text], "state": STATE_SELECT_ROOMS})
-    profile.save()
-
-    kb = [[KeyboardButton(str(i))] for i in [1, 2, 3, "4+"]]
-    markup = ReplyKeyboardMarkup(
-        keyboard=kb,
-        resize_keyboard=True,
-        input_field_placeholder="Сколько комнат?",
-    ).to_dict()
-    send_telegram_message(
-        chat_id, f"Класс: {text}\nКоличество комнат:", reply_markup=markup
+    _update_state(profile, property_class=property_class, state=STATE_SELECT_ROOMS)
+    rows = [[KeyboardButton(option)] for option in ROOM_OPTIONS]
+    _send_with_keyboard(
+        chat_id,
+        f"Класс: {text}\nКоличество комнат:",
+        rows,
+        "Сколько комнат?",
     )
 
 
 @log_handler
 def select_rooms(chat_id, profile, text):
-    if text not in ["1", "2", "3", "4+"]:
+    if text not in ROOM_OPTIONS:
         send_telegram_message(
             chat_id,
             "Пожалуйста, выберите количество комнат из предложенных кнопок.",
         )
         return
 
-    rooms = 4 if text == "4+" else int(text)
-    profile.telegram_state.update({"rooms": rooms, "state": STATE_SHOWING_RESULTS})
-    profile.save()
+    rooms_value = 4 if text == "4+" else int(text)
+    _update_state(profile, rooms=rooms_value, state=STATE_SHOWING_RESULTS)
 
     send_telegram_message(chat_id, f"Количество комнат: {text}\nИщу варианты...")
     show_search_results(chat_id, profile, offset=0)
@@ -351,51 +360,58 @@ def select_rooms(chat_id, profile, text):
 @log_handler
 def show_search_results(chat_id, profile, offset=0):
     """Display search results and update pagination state."""
-    sd = profile.telegram_state or {}
+    state = _get_state(profile)
+    base_filters = state.get("base_filters", {})
+    refined_filters = state.get("refined_filters", {})
 
-    base_filters = sd.get("base_filters", {})
-    refined_filters = sd.get("refined_filters", {})
+    city_id = _resolve_first(
+        refined_filters.get("city_id"), state.get("city_id"), base_filters.get("city_id")
+    )
+    district_id = _resolve_first(
+        refined_filters.get("district_id"), state.get("district_id"), base_filters.get("district_id")
+    )
+    property_class = _resolve_first(
+        refined_filters.get("property_class"),
+        state.get("property_class"),
+        base_filters.get("property_class"),
+    )
+    rooms = _resolve_first(
+        refined_filters.get("rooms"), state.get("rooms"), base_filters.get("rooms")
+    )
 
-    city_id = refined_filters.get("city_id") or sd.get("city_id") or base_filters.get("city_id")
-    district_id = refined_filters.get("district_id") or sd.get("district_id") or base_filters.get("district_id")
-    property_class = refined_filters.get("property_class") or sd.get("property_class") or base_filters.get("property_class")
-    rooms = refined_filters.get("rooms") or sd.get("rooms") or base_filters.get("rooms")
-
-    property_filters = {
+    cached_filters = {
         "district__city_id": city_id,
         "district_id": district_id,
         "property_class": property_class,
         "number_of_rooms": rooms,
         "status": "Свободна",
     }
+    query_filters = {key: value for key, value in cached_filters.items() if value is not None}
 
-    base_queryset = Property.objects.filter(**property_filters).order_by("price_per_day")
+    queryset = Property.objects.filter(**query_filters).order_by("price_per_day")
 
     def _fetch_ids() -> List[int]:
-        return list(base_queryset.values_list("id", flat=True))
+        return list(queryset.values_list("id", flat=True))
 
-    filters_ready = all(value is not None for value in property_filters.values())
+    filters_ready = len(query_filters) == len(cached_filters)
     property_ids = (
-        get_cached_property_ids(property_filters, _fetch_ids)
+        get_cached_property_ids(cached_filters, _fetch_ids)
         if filters_ready
         else _fetch_ids()
     )
 
     total = len(property_ids)
     if total == 0:
-        kb = [[KeyboardButton("🔍 Поиск квартир")], [KeyboardButton("🧭 Главное меню")]]
-        send_telegram_message(
+        _send_with_keyboard(
             chat_id,
-            "По заданным параметрам ничего не нашлось.",
-            reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True).to_dict(),
+            "К сожалению, подходящих вам квартир мы не смогли найти.\n"
+            "Попробуйте изменить свои критерии для поиска.",
+            [[KeyboardButton("🔄 Новый поиск")], [KeyboardButton("🧭 Главное меню")]],
         )
         return
 
     offset = max(0, min(offset, total - 1))
-    sd["search_offset"] = offset
-    sd["total_results"] = total
-    profile.telegram_state = sd
-    profile.save()
+    _update_state(profile, search_offset=offset, total_results=total)
 
     prop_id = property_ids[offset]
     try:
@@ -409,42 +425,17 @@ def show_search_results(chat_id, profile, offset=0):
         show_search_results(chat_id, profile, offset=0)
         return
 
-    photos = PropertyPhoto.objects.filter(property=prop)[:6]
-    photo_urls = []
-
-    for photo in photos:
-        url = None
-        if photo.image_url:
-            url = photo.image_url
-        elif photo.image:
-            try:
-                if hasattr(photo.image, "url"):
-                    url = photo.image.url
-                    if url and not url.startswith("http"):
-                        site_url = getattr(settings, "SITE_URL", "")
-                        domain = getattr(settings, "DOMAIN", "http://localhost:8000")
-                        base_url = site_url or domain
-                        url = f"{base_url.rstrip('/')}{url}"
-            except Exception as exc:  # noqa: BLE001
-                logger.error("Error getting image URL: %s", exc)
-
-        if url:
-            photo_urls.append(url)
-
+    photo_urls = _collect_photo_urls(prop)
     if photo_urls:
         try:
             send_photo_group(chat_id, photo_urls)
         except Exception as exc:  # noqa: BLE001
             logger.error("Error sending photos: %s", exc)
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT column_name FROM information_schema.columns WHERE table_name='listings_review' AND column_name='is_approved'"
+    if _has_review_approval_column():
+        stats = Review.objects.filter(property=prop, is_approved=True).aggregate(
+            avg=Avg("rating"), cnt=Count("id")
         )
-        has_is_approved = cursor.fetchone() is not None
-
-    if has_is_approved:
-        stats = Review.objects.filter(property=prop, is_approved=True).aggregate(avg=Avg("rating"), cnt=Count("id"))
     else:
         stats = Review.objects.filter(property=prop).aggregate(avg=Avg("rating"), cnt=Count("id"))
 
@@ -470,8 +461,7 @@ def show_search_results(chat_id, profile, offset=0):
     else:
         text += f"\n🚫 Статус: {prop.status}"
 
-    is_favorite = Favorite.objects.filter(user=profile.user, property=prop).exists()
-    if is_favorite:
+    if _favorite_exists(profile.user, prop):
         keyboard.append([KeyboardButton(f"❌ Из избранного {prop.id}")])
     else:
         keyboard.append([KeyboardButton(f"⭐ В избранное {prop.id}")])
@@ -490,63 +480,11 @@ def show_search_results(chat_id, profile, offset=0):
 
     keyboard.append([KeyboardButton("🔍 Поиск квартир"), KeyboardButton("🧭 Главное меню")])
 
-    inline_keyboard = []
-    actions_row = []
-    if prop.status == "Свободна":
-        actions_row.append(InlineKeyboardButton("📅 Забронировать", callback_data=f"booking_create_{prop.id}"))
-
-    if is_favorite:
-        actions_row.append(InlineKeyboardButton("💔 Убрать из избранного", callback_data=f"favorite_remove_{prop.id}"))
-    else:
-        actions_row.append(InlineKeyboardButton("⭐ В избранное", callback_data=f"favorite_add_{prop.id}"))
-
-    if actions_row:
-        inline_keyboard.append(actions_row)
-
-    nav_row = []
-    if offset > 0:
-        nav_row.append(InlineKeyboardButton("⬅️", callback_data="nav_prev"))
-    nav_row.append(InlineKeyboardButton(f"{offset + 1}/{total}", callback_data=f"nav_page_{offset + 1}"))
-    if offset < total - 1:
-        nav_row.append(InlineKeyboardButton("➡️", callback_data="nav_next"))
-    if nav_row:
-        inline_keyboard.append(nav_row)
-
-    inline_keyboard.append(
-        [
-            InlineKeyboardButton("🔍 Новый поиск", callback_data="search_apartments"),
-            InlineKeyboardButton("🧭 Главное меню", callback_data="main_menu"),
-        ]
-    )
-
-    inline_markup = (
-        InlineKeyboardMarkup(inline_keyboard).to_dict() if inline_keyboard else None
-    )
-
-    send_telegram_message(
-        chat_id,
-        text,
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
-        inline_markup=inline_markup,
-    )
+    _send_with_keyboard(chat_id, text, keyboard)
 
 @log_handler
 def show_property_card(chat_id, property_obj):
-    photos = PropertyPhoto.objects.filter(property=property_obj)[:6]
-    photo_urls = []
-    for photo in photos:
-        url = photo.image_url
-        if not url and photo.image:
-            try:
-                url = photo.image.url
-                if url and not url.startswith("http"):
-                    base_url = getattr(settings, "SITE_URL", "") or getattr(settings, "DOMAIN", "http://localhost:8000")
-                    url = f"{base_url.rstrip('/')}{url}"
-            except Exception:  # noqa: BLE001
-                url = None
-        if url:
-            photo_urls.append(url)
-
+    photo_urls = _collect_photo_urls(property_obj)
     if photo_urls:
         send_photo_group(chat_id, photo_urls)
 
@@ -574,13 +512,7 @@ def show_property_card(chat_id, property_obj):
     buttons.append([KeyboardButton(f"💬 Отзывы {property_obj.id}")])
     buttons.append([KeyboardButton("🧭 Главное меню")])
 
-    send_telegram_message(
-        chat_id,
-        text,
-        reply_markup=ReplyKeyboardMarkup(
-            buttons, resize_keyboard=True, input_field_placeholder="Действие"
-        ).to_dict(),
-    )
+    _send_with_keyboard(chat_id, text, buttons, "Действие")
 
 
 @log_handler
@@ -1037,6 +969,39 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
             f"   💰 {booking.total_price:,.0f} ₸\n"
             f"   🏠 Номер брони: #{booking.id}\n"
         )
+
+        if booking.status in {"confirmed", "completed"}:
+            instructions = booking.property.entry_instructions
+            if instructions:
+                formatted_instructions = "\n".join(
+                    f"      {line.strip()}" for line in instructions.splitlines() if line.strip()
+                ) or f"      {instructions.strip()}"
+                text += "   📝 Инструкции:\n" + formatted_instructions + "\n"
+
+            try:
+                codes = booking.property.get_access_codes(profile.user)
+            except Exception as exc:  # noqa: BLE001 - показываем пользователю текстовую ошибку
+                logger.error(
+                    "Failed to fetch access codes for booking %s: %s",
+                    booking.id,
+                    exc,
+                )
+                codes = {}
+
+            access_lines = []
+            if codes.get("entry_floor"):
+                access_lines.append(f"      🏢 Этаж: {codes['entry_floor']}")
+            if codes.get("entry_code"):
+                access_lines.append(f"      🚪 Код домофона: {codes['entry_code']}")
+            if codes.get("digital_lock_code"):
+                access_lines.append(f"      🔐 Код замка: {codes['digital_lock_code']}")
+            if codes.get("key_safe_code"):
+                access_lines.append(f"      🔑 Код сейфа: {codes['key_safe_code']}")
+            if codes.get("owner_phone"):
+                access_lines.append(f"      📞 Контакт владельца: {codes['owner_phone']}")
+
+            if access_lines:
+                text += "   🔐 Доступ:\n" + "\n".join(access_lines) + "\n"
 
         if booking.status == "confirmed" and booking.is_cancellable():
             days_to_checkin = (booking.start_date - date.today()).days

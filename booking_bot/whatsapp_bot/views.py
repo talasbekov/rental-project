@@ -4,6 +4,7 @@ import re
 from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
+from django_ratelimit.decorators import ratelimit
 
 from booking_bot.whatsapp_bot.handlers import (
     start_command_handler,
@@ -47,7 +48,12 @@ def whatsapp_verify_webhook(request):
 
 
 @csrf_exempt
+@ratelimit(key='ip', rate='100/m', method='POST')
 def whatsapp_webhook(request):
+    # Check rate limit
+    if getattr(request, 'limited', False):
+        logger.warning(f"Rate limit exceeded for IP: {request.META.get('REMOTE_ADDR')}")
+        return JsonResponse({"error": "Rate limit exceeded"}, status=429)
     """Обработка входящих сообщений от WhatsApp Business API"""
     if request.method == "GET":
         return HttpResponse("WhatsApp webhook is running")
@@ -132,7 +138,7 @@ def process_whatsapp_message(message, value):
 
             # Проверяем админские команды
             profile = UserProfile.objects.filter(whatsapp_phone=phone_number).first()
-            if profile and profile.role in ("admin", "super_admin"):
+            if profile and profile.role in ("admin", "super_admin", "super_user"):
                 if text.lower() in ["админ", "admin", "панель"]:
                     show_admin_panel(phone_number)
                     return

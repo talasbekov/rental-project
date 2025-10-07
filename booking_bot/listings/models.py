@@ -84,12 +84,7 @@ class Property(models.Model):
     entry_code = models.CharField(
         max_length=50, null=True, blank=True, verbose_name="Код домофона"
     )
-    key_safe_code = models.CharField(
-        max_length=50, null=True, blank=True, verbose_name="Код сейфа"
-    )
-    digital_lock_code = models.CharField(
-        max_length=50, null=True, blank=True, verbose_name="Код замка"
-    )
+    # УДАЛЕНЫ: key_safe_code и digital_lock_code (используются зашифрованные версии через @property)
     entry_instructions = models.TextField(
         null=True, blank=True, verbose_name="Инструкции по заселению"
     )
@@ -308,7 +303,7 @@ class Property(models.Model):
                 send_whatsapp_message(user.profile.whatsapp_phone, message)
 
         return True
-    
+
     def update_average_rating(self):
         """Обновляет средний рейтинг и количество отзывов"""
         from django.db.models import Avg, Count
@@ -347,6 +342,32 @@ class Property(models.Model):
 
     def __str__(self):
         return f"{self.name} - {self.district}"
+
+    def update_status_from_bookings(self):
+        """Пересчитывает статус квартиры на основе активных бронирований."""
+        from django.utils import timezone
+        from booking_bot.bookings.models import Booking
+
+        # Не изменяем статус, если объект выведен из оборота вручную.
+        if self.status == "На обслуживании":
+            return
+
+        bookings = Booking.objects.filter(property=self)
+
+        has_confirmed = bookings.filter(status__in=["confirmed"]).exists()
+        has_pending = bookings.filter(status__in=["pending", "pending_payment"]).exists()
+
+        desired_status = "Свободна"
+        if has_confirmed:
+            desired_status = "Занята"
+        elif has_pending:
+            desired_status = "Забронирована"
+
+        if desired_status != self.status:
+            self.status = desired_status
+            Property.objects.filter(pk=self.pk).update(
+                status=desired_status, updated_at=timezone.now()
+            )
 
 
 from django.db import models
@@ -436,6 +457,27 @@ class PropertyPhoto(models.Model):
 
     def __str__(self):
         return f"Photo {self.id} for {self.property.name}"
+
+
+# --- Price history ---------------------------------------------------------
+
+
+class PropertyPriceHistory(models.Model):
+    """История изменений цены для аналитики в админке."""
+
+    property = models.ForeignKey(
+        Property, on_delete=models.CASCADE, related_name="price_history"
+    )
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-changed_at"]
+        verbose_name = "История цены"
+        verbose_name_plural = "История цен"
+
+    def __str__(self):
+        return f"{self.property.name} — {self.price} ₸ ({self.changed_at:%d.%m.%Y})"
 
 
 # Reviews Section

@@ -162,7 +162,7 @@ def setup_application():
 def handle_admin_command(chat_id):
     """Обработчик команды /admin"""
     profile = _get_profile(chat_id)
-    if profile.role in ("admin", "super_admin"):
+    if profile.role in ("admin", "super_admin", "super_user"):
         show_admin_panel(chat_id)
     else:
         send_telegram_message(

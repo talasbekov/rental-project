@@ -132,6 +132,21 @@ class Booking(models.Model):
             if (self.end_date - self.start_date).days > 30:
                 raise ValidationError("Максимальный срок бронирования - 30 дней")
 
+        # БЕЗОПАСНОСТЬ: Проверка пересечений с существующими бронированиями (Claude Code Этап 31)
+        if self.property and self.start_date and self.end_date:
+            conflicts = Booking.objects.filter(
+                property=self.property,
+                status__in=['pending_payment', 'confirmed'],
+                start_date__lt=self.end_date,
+                end_date__gt=self.start_date
+            ).exclude(pk=self.pk if self.pk else None)
+
+            if conflicts.exists():
+                raise ValidationError(
+                    f"Выбранные даты пересекаются с существующим бронированием. "
+                    f"Пожалуйста, выберите другие даты."
+                )
+
     def save(self, *args, **kwargs):
         """Переопределение сохранения для автоматических действий"""
         # Автоматически рассчитываем цену если не задана
@@ -171,6 +186,8 @@ class Booking(models.Model):
             self.start_date,
             self.end_date
         )
+
+        self.property.update_status_from_bookings()
 
         # Возврат платежа через Kaspi если была оплата
         if self.kaspi_payment_id:

@@ -93,6 +93,8 @@ def create_booking(request: BookingRequest) -> Booking:
             status="booked",
         )
 
+    locked_property.update_status_from_bookings()
+
     logger.info("Booking %s created via service", booking.id)
     return booking
 
@@ -113,6 +115,8 @@ def cancel_booking(booking: Booking, reason: Optional[str] = None) -> Booking:
     PropertyCalendarManager.release_dates(
         booking.property, booking.start_date, booking.end_date
     )
+
+    booking.property.update_status_from_bookings()
 
     logger.info("Booking %s cancelled via service", booking.id)
     return booking

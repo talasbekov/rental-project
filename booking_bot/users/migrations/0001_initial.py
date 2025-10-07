@@ -29,6 +29,7 @@ class Migration(migrations.Migration):
                             ("user", "User"),
                             ("admin", "Admin"),
                             ("super_admin", "Super Admin"),
+                            ("super_user", "Super User"),
                         ],
                         default="user",
                         max_length=20,

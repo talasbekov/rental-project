@@ -123,6 +123,8 @@ def update_booking_statuses():
             hours=4
         )
 
+        booking.property.update_status_from_bookings()
+
         # Запланируем запрос отзыва на завтра
         send_review_request.apply_async(
             args=[booking.id], eta=timezone.now() + timedelta(days=1)
@@ -139,7 +141,7 @@ def send_review_request(booking_id):
     from booking_bot.bookings.models import Booking
     from booking_bot.listings.models import Review
     from booking_bot.telegram_bot.utils import send_telegram_message
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    from telegram import KeyboardButton, ReplyKeyboardMarkup
 
     try:
         booking = Booking.objects.get(id=booking_id)
@@ -151,14 +153,13 @@ def send_review_request(booking_id):
 
         # Формируем кнопки для оценки
         keyboard = [
-            [
-                InlineKeyboardButton(
-                    f"⭐ {i}", callback_data=f"review_{booking_id}_{i}"
-                )
-                for i in range(1, 6)
-            ]
+            [KeyboardButton("⭐"), KeyboardButton("⭐⭐"), KeyboardButton("⭐⭐⭐")],
+            [KeyboardButton("⭐⭐⭐⭐"), KeyboardButton("⭐⭐⭐⭐⭐")],
+            [KeyboardButton("🧭 Главное меню")],
         ]
-        markup = InlineKeyboardMarkup(keyboard)
+        reply_markup = ReplyKeyboardMarkup(
+            keyboard, resize_keyboard=True, input_field_placeholder="Выберите оценку"
+        ).to_dict()
 
         text = (
             f"🏠 Как прошло ваше проживание в *{booking.property.name}*?\n\n"
@@ -167,10 +168,23 @@ def send_review_request(booking_id):
 
         # Отправляем через Telegram
         if hasattr(booking.user, "profile") and booking.user.profile.telegram_chat_id:
+            profile = booking.user.profile
+            state_data = profile.telegram_state or {}
+            state_data.update(
+                {
+                    "state": "review_rating",
+                    "booking_id": booking_id,
+                    "review_property_id": booking.property.id,
+                    "review_mode": "create",
+                }
+            )
+            profile.telegram_state = state_data
+            profile.save()
+
             send_telegram_message(
                 booking.user.profile.telegram_chat_id,
                 text,
-                reply_markup=markup.to_dict(),
+                reply_markup=reply_markup,
             )
 
         logger.info(f"Review request sent for booking {booking_id}")
@@ -267,6 +281,7 @@ def check_low_demand_properties():
                 user=property_obj.owner,
                 context={
                     "property": property_obj,
+                    "property_name": property_obj.name,
                     "occupancy_rate": occupancy,
                     "recommendation": "Рекомендуем обновить фотографии или снизить цену",
                 },
@@ -335,7 +350,9 @@ def analyze_guest_ko_factor():
                     user=None,  # Отправляем всем админам
                     context={
                         "guest_user": user,
+                        "guest_username": getattr(user, "username", ""),
                         "ko_factor": ko_factor,
+                        "ko_factor_percent": ko_factor,
                         "total_bookings": total_bookings,
                         "cancelled_bookings": cancelled_bookings,
                     },
@@ -505,7 +522,7 @@ def generate_monthly_report():
     # Отправляем админам через Telegram
     from booking_bot.telegram_bot.utils import send_telegram_message
 
-    admins = UserProfile.objects.filter(role__in=["admin", "super_admin"])
+    admins = UserProfile.objects.filter(role__in=["admin", "super_admin", "super_user"])
 
     for admin in admins:
         if admin.telegram_chat_id:
@@ -596,6 +613,7 @@ def check_property_updates_needed():
             user=property_obj.owner,
             context={
                 "property": property_obj,
+                "property_name": property_obj.name,
                 "photo_count": property_obj.photo_count,
                 "recommendation": "Добавьте минимум 6 качественных фотографий",
             },
@@ -627,9 +645,11 @@ def check_property_updates_needed():
                         user=property_obj.owner,
                         context={
                             "property": property_obj,
-                            "current_price": property_obj.price_per_day,
-                            "avg_price": avg_price,
+                            "property_name": property_obj.name,
+                            "current_price": float(property_obj.price_per_day),
+                            "avg_price": float(avg_price),
                             "occupancy": occupancy,
+                            "recommended_price": float(avg_price),
                             "recommendation": f"Рекомендуемая цена: {avg_price:.0f} ₸",
                         },
                     )

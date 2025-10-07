@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 
 PAGE_SIZE = 3
 
+BUTTON_PAY_KASPI = "💳 Оплатить Kaspi"
+BUTTON_PAY_MANUAL = "🧾 Оплатить вручную"
+BUTTON_CANCEL_BOOKING = "❌ Отменить"
+
 STATE_MAIN_MENU = "main_menu"
 STATE_SELECT_CITY = "select_city"
 STATE_SELECT_DISTRICT = "select_district"
@@ -264,7 +268,7 @@ def start_command_handler(chat_id, first_name=None, last_name=None):
         [KeyboardButton("📊 Статус текущей брони"), KeyboardButton("⭐️ Избранное")],
         [KeyboardButton("❓ Помощь")],
     ]
-    if profile.role in ("admin", "super_admin"):
+    if profile.role in ("admin", "super_admin", "super_user"):
         keyboard.append([KeyboardButton("🛠 Панель администратора")])
 
     reply_markup = ReplyKeyboardMarkup(

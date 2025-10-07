@@ -1,10 +1,11 @@
 import html
 import logging
-from datetime import datetime, date, timedelta
-from django.utils import timezone
-from django.db.models import Count, Avg
-from telegram import ReplyKeyboardMarkup, KeyboardButton
 from collections import defaultdict
+from datetime import date, datetime, timedelta
+
+from django.db.models import Avg, Count
+from django.utils import timezone
+from telegram import KeyboardButton, ReplyKeyboardMarkup
 from .constants import (
     STATE_MAIN_MENU,
     STATE_AWAITING_CHECK_IN,
@@ -34,6 +35,9 @@ from .constants import (
     STATE_WAITING_NEW_STATUS,
     STATE_PHOTO_MANAGEMENT, STATE_PHOTO_ADD_URL, STATE_PHOTO_DELETE,
     normalize_text, text_matches, text_in_list,
+    BUTTON_PAY_KASPI,
+    BUTTON_PAY_MANUAL,
+    BUTTON_CANCEL_BOOKING,
 )
 from .edit_handlers import save_new_price, save_new_description, save_new_status, save_new_photo, \
     handle_photo_add_choice, handle_photo_url_input, handle_manage_photos_start, handle_photo_delete, \
@@ -49,7 +53,7 @@ from booking_bot.listings.models import (
 )
 from booking_bot.bookings.models import Booking
 from .utils import send_telegram_message, send_photo_group
-from .payment_flow import handle_payment_confirmation
+from .payment_flow import handle_payment_confirmation, handle_manual_payment_request
 from .booking_flow import (
     handle_booking_start,
     handle_checkin_input,
@@ -84,6 +88,10 @@ from .admin_handlers import (
     handle_add_property_start,
     handle_photo_upload,
     show_detailed_statistics,
+    show_realtor_statistics,
+    show_agency_statistics,
+    show_agency_details,
+    export_statistics_xlsx,
     export_statistics_csv,
     show_admin_properties,
     show_city_statistics,
@@ -96,7 +104,32 @@ from .admin_handlers import (
     handle_remove_admin,
     show_plan_fact,
     show_ko_factor_report,
-    handle_guest_review_text, handle_edit_property_choice, quick_photo_management,
+    handle_guest_review_text,
+    handle_edit_property_choice,
+    quick_photo_management,
+)
+from .admin_property_handlers import (
+    handle_property_list,
+    handle_property_detail,
+    handle_property_bookings,
+    handle_property_reviews,
+    handle_admin_dashboard,
+    handle_edit_property_menu,
+    handle_edit_access_codes,
+    handle_property_list_selection,
+    handle_property_detail_selection,
+    handle_property_bookings_selection,
+    handle_property_reviews_selection,
+    handle_admin_dashboard_selection,
+    handle_property_edit_selection,
+    handle_access_codes_selection,
+    STATE_ADMIN_PROPERTY_LIST,
+    STATE_ADMIN_PROPERTY_DETAIL,
+    STATE_ADMIN_BOOKINGS_LIST,
+    STATE_ADMIN_REVIEWS_LIST,
+    STATE_ADMIN_DASHBOARD,
+    STATE_ADMIN_PROPERTY_EDIT,
+    STATE_EDIT_ACCESS_CODES,
 )
 from ..core.models import AuditLog
 
@@ -116,6 +149,145 @@ logger = logging.getLogger(__name__)
 
 # Глобальный словарь для отслеживания последних действий пользователей
 user_last_actions = defaultdict(list)
+
+
+def _get_state(profile):
+    return profile.telegram_state or {}
+
+
+def _save_state(profile, state):
+    profile.telegram_state = state
+    profile.save()
+
+
+def _update_state(profile, **changes):
+    state = _get_state(profile)
+    state.update(changes)
+    _save_state(profile, state)
+    return state
+
+
+def _reset_state(profile):
+    _save_state(profile, {})
+
+
+def _reply_keyboard(rows, placeholder=None):
+    return ReplyKeyboardMarkup(
+        rows,
+        resize_keyboard=True,
+        input_field_placeholder=placeholder,
+    ).to_dict()
+
+
+def _send_with_keyboard(chat_id, text, rows=None, placeholder=None):
+    markup = _reply_keyboard(rows, placeholder) if rows is not None else None
+    send_telegram_message(chat_id, text, reply_markup=markup)
+
+
+PHOTO_MANAGEMENT_STATES = {
+    STATE_PHOTO_MANAGEMENT,
+    STATE_PHOTO_ADD_URL,
+    STATE_PHOTO_DELETE,
+    "photo_waiting_url",
+    "photo_waiting_upload",
+}
+
+
+def _handle_review_uploading_state(chat_id, text, profile):
+    if text == "✅ Готово":
+        save_review(chat_id)
+    elif text == "❌ Отмена":
+        _reset_state(profile)
+        start_command_handler(chat_id)
+    else:
+        send_telegram_message(chat_id, "Добавьте фото или завершите отзыв кнопкой")
+    return True
+
+
+def _handle_user_review_uploading_state(chat_id, text, _profile):
+    handle_user_review_uploading(chat_id, text)
+    return True
+
+
+def _handle_photo_state(state, chat_id, text, update, context):
+    if state not in PHOTO_MANAGEMENT_STATES:
+        return False
+
+    from .edit_handlers import handle_photo_management_states
+
+    if handle_photo_management_states(chat_id, text, update, context):
+        return True
+
+    if state == STATE_PHOTO_MANAGEMENT:
+        save_new_photo(chat_id, text)
+        return True
+
+    return False
+
+
+PHOTO_UPLOAD_HANDLERS = (
+    edit_handle_photo_upload,
+    handle_photo_upload,
+    # handle_review_photo_upload,  # Defined later in file, use handle_user_review_photo_upload instead
+    handle_user_review_photo_upload,
+)
+
+
+def _process_incoming_photo(chat_id, update, context):
+    if not (update and update.message and update.message.photo):
+        return False
+
+    for handler in PHOTO_UPLOAD_HANDLERS:
+        if handler(chat_id, update, context):
+            return True
+    return False
+
+
+def _handle_debug_photos_command(chat_id, profile, command):
+    if not command.startswith("/debug_photos"):
+        return False
+
+    if profile.role not in ("admin", "super_admin", "super_user"):
+        send_telegram_message(chat_id, "Команда недоступна.")
+        return True
+
+    parts = command.split()
+    if len(parts) < 2:
+        send_telegram_message(chat_id, "Использование: /debug_photos <ID>")
+        return True
+
+    try:
+        prop_id = int(parts[1])
+    except ValueError:
+        send_telegram_message(chat_id, "Неверный ID объекта")
+        return True
+
+    debug_property_photos(chat_id, prop_id)
+    return True
+
+
+# STATE_TEXT_HANDLERS moved to end of file to avoid forward reference errors
+# Will be populated after all function definitions
+STATE_TEXT_HANDLERS = {}
+
+
+SPECIAL_TEXT_STATE_HANDLERS = {
+    "review_uploading_photos": _handle_review_uploading_state,
+    "user_review_uploading": _handle_user_review_uploading_state,
+}
+
+
+def _dispatch_state_handler(state, chat_id, text, profile):
+    handler = STATE_TEXT_HANDLERS.get(state)
+    if handler:
+        handler(chat_id, text)
+        return True
+
+    special = SPECIAL_TEXT_STATE_HANDLERS.get(state)
+    if special:
+        return special(chat_id, text, profile)
+
+    return False
 
 
 def check_rate_limit(chat_id, max_actions=5, time_window=3):
@@ -139,127 +311,55 @@ def check_rate_limit(chat_id, max_actions=5, time_window=3):
     return True
 
 
-# Изменить основную функцию message_handler:
 @log_handler
 def message_handler(chat_id, text, update=None, context=None):
-    # НОВОЕ: Проверка антиспама
     if not check_rate_limit(chat_id, max_actions=3, time_window=5):
-        logger.warning(f"Rate limit exceeded for chat_id {chat_id}")
-        return  # Молча игнорируем слишком частые запросы
+        logger.warning("Rate limit exceeded for chat_id %s", chat_id)
+        return
+
     profile = _get_or_create_local_profile(chat_id)
-    state_data = profile.telegram_state or {}
-    state = state_data.get("state", STATE_MAIN_MENU)
-    
-    logger.info(f"Photo management state: '{state}', text: '{text}'")
+    message_text = text or ""
+    state_data = _get_state(profile)
+    state = state_data.get("state")
 
-    photo_states = [
-        STATE_PHOTO_MANAGEMENT,
-        STATE_PHOTO_ADD_URL,
-        STATE_PHOTO_DELETE,
-        'photo_waiting_url',
-        'photo_waiting_upload'
-    ]
+    if not state:
+        first_name = None
+        last_name = None
+        if update and getattr(update, "effective_user", None):
+            first_name = getattr(update.effective_user, "first_name", None)
+            last_name = getattr(update.effective_user, "last_name", None)
+        else:
+            first_name = getattr(profile.user, "first_name", None)
+            last_name = getattr(profile.user, "last_name", None)
 
-    if state in photo_states:
-        from .edit_handlers import handle_photo_management_states
-        if handle_photo_management_states(chat_id, text, update, context):
+        start_command_handler(chat_id, first_name, last_name)
+        profile.refresh_from_db(fields=["telegram_state"])
+        state_data = _get_state(profile)
+        state = state_data.get("state", STATE_MAIN_MENU)
+
+        if message_text and not message_text.startswith("/"):
+            # Показали главное меню автоматически — ждём дальнейшее действие пользователя.
             return
 
-    if state == STATE_EDIT_PROPERTY_MENU:
-        handle_edit_property_choice(chat_id, text)
-        return
-    elif state == STATE_WAITING_NEW_PRICE:
-        save_new_price(chat_id, text)
-        return
-    elif state == STATE_WAITING_NEW_DESCRIPTION:
-        save_new_description(chat_id, text)
-        return
-    elif state == STATE_WAITING_NEW_STATUS:
-        save_new_status(chat_id, text)
-        return
-    elif state == STATE_PHOTO_MANAGEMENT:
-        save_new_photo(chat_id, text)
+    if not state:
+        state = STATE_MAIN_MENU
+
+    logger.info("State: %s, text: %s", state, message_text)
+
+    if _handle_photo_state(state, chat_id, message_text, update, context):
         return
 
-    # ===== ОБРАБОТКА ФОТОГРАФИЙ =====
-    if update and update.message and update.message.photo:
-        # Сначала проверяем, это фото для редактирования квартиры
-        if edit_handle_photo_upload(chat_id, update, context):
-            return
-        # Потом проверяем, это фото для добавления новой квартиры
-        elif handle_photo_upload(chat_id, update, context):
-            return
-        # Потом проверяем, это фото для отзыва
-        elif handle_review_photo_upload(chat_id, update, context):
-            return
-        elif handle_user_review_photo_upload(chat_id, update, context):
-            return
-
-        # ===== ОБРАБОТКА ОТЗЫВОВ =====
-    if state == STATE_AWAITING_REVIEW_TEXT:
-        handle_review_text(chat_id, text)
-        return
-    elif state == "review_rating":
-        handle_review_rating(chat_id, text)
-        return
-    elif state == "review_text":
-        handle_review_text_input(chat_id, text)
-        return
-    elif state == "review_photos":
-        handle_review_photos_choice(chat_id, text)
-        return
-    elif state == "review_uploading_photos":
-        if text == "✅ Готово":
-            save_review(chat_id)
-        elif text == "❌ Отмена":
-            profile.telegram_state = {}
-            profile.save()
-            start_command_handler(chat_id)
+    if _process_incoming_photo(chat_id, update, context):
         return
 
-    # Обработка фотографий (если есть)
-    if update and update.message and update.message.photo:
-        if handle_photo_upload(chat_id, update, context):
-            return
-        elif handle_review_photo_upload(chat_id, update, context):
-            return
-        elif text.startswith("/debug_photos"):
-            if profile.role not in ("admin", "super_admin"):
-                send_telegram_message(chat_id, "Команда недоступна.")
-            else:
-                parts = text.split()
-                if len(parts) > 1:
-                    try:
-                        prop_id = int(parts[1])
-                        debug_property_photos(chat_id, prop_id)
-                    except ValueError:
-                        send_telegram_message(chat_id, "Неверный ID объекта")
-                else:
-                    send_telegram_message(chat_id, "Использование: /debug_photos <ID>")
-
-    # Обработка состояний отзывов пользователей
-    if state == "user_review_rating":
-        handle_user_review_rating(chat_id, text)
-        return
-    elif state == "user_review_text":
-        handle_user_review_text(chat_id, text)
-        return
-    elif state == "user_review_photos":
-        handle_user_review_photos(chat_id, text)
-        return
-    elif state == "user_review_uploading":
-        handle_user_review_uploading(chat_id, text)
+    if _dispatch_state_handler(state, chat_id, message_text, profile):
         return
 
-    elif state == STATE_CANCEL_BOOKING:
-        handle_cancel_confirmation(chat_id, text)
+    if _handle_debug_photos_command(chat_id, profile, message_text):
         return
-    elif state == STATE_CANCEL_REASON:
-        handle_cancel_reason(chat_id, text)
-        return
-    elif state == STATE_CANCEL_REASON_TEXT:
-        handle_cancel_reason_text(chat_id, text)
-        return
+
+    text = message_text
+    normalized_text = normalize_text(message_text)
 
     # Ловим варианты «Отмена», «Отменить» и «Главное меню» с нормализацией
     if text_in_list(text, ["❌ Отмена", "❌ Отменить", "🧭 Главное меню"]):
@@ -314,10 +414,16 @@ def message_handler(chat_id, text, update=None, context=None):
         handle_checkout_time(chat_id, text)
         return
     if state == STATE_CONFIRM_BOOKING:
-        if text == "💳 Оплатить Kaspi":
+        if text == BUTTON_PAY_KASPI:
             handle_payment_confirmation(chat_id)
+        elif text == BUTTON_PAY_MANUAL:
+            handle_manual_payment_request(chat_id)
+        elif text == BUTTON_CANCEL_BOOKING:
+            profile.telegram_state = {}
+            profile.save()
+            start_command_handler(chat_id)
         else:
-            send_telegram_message(chat_id, "Неверное действие.")
+            send_telegram_message(chat_id, "Пожалуйста, выберите способ оплаты из списка.")
         return
     if state == "extend_booking":
         confirm_extend_booking(chat_id, text)
@@ -383,7 +489,7 @@ def message_handler(chat_id, text, update=None, context=None):
             return
 
         if (
-            profile.role in ("admin", "super_admin")
+            profile.role in ("admin", "super_admin", "super_user")
             and text == "🛠 Панель администратора"
         ):
             # Route to new enhanced admin menu
@@ -391,7 +497,7 @@ def message_handler(chat_id, text, update=None, context=None):
             handle_admin_menu(chat_id, text)
             return
 
-        if profile.role in ("admin", "super_admin"):
+        if profile.role in ("admin", "super_admin", "super_user"):
             # ДОБАВЛЯЕМ ОБРАБОТКУ НАВИГАЦИИ ПО КВАРТИРАМ
             if text.startswith("➡️ Далее (стр.") or text.startswith("⬅️ Назад (стр."):
                 import re
@@ -426,9 +532,12 @@ def message_handler(chat_id, text, update=None, context=None):
                     return
 
             # Обработка переключения периодов в обычной статистике (точный фильтр)
-            if (state_data.get('state') == 'detailed_stats' and 
-                text in ["Неделя", "Месяц", "Квартал", "Год"]):
+            if (
+                state_data.get('state') == 'detailed_stats'
+                and text in ["День", "Неделя", "Месяц", "Квартал", "Год"]
+            ):
                 period_map = {
+                    "День": "day",
                     "Неделя": "week",
                     "Месяц": "month",
                     "Квартал": "quarter",
@@ -437,8 +546,19 @@ def message_handler(chat_id, text, update=None, context=None):
                 show_detailed_statistics(chat_id, period=period_map[text])
                 return
 
-            # Обработка кнопки "📥 Скачать CSV" в разных состояниях
-            if text == "📥 Скачать CSV":
+            # Обработка кнопки экспорта аналитики
+            if text == "📈 Экспорт XLSX":
+                sd = profile.telegram_state or {}
+                current_state = sd.get('state')
+                period = sd.get('period', 'month')
+
+                if current_state in ['detailed_stats', 'extended_stats']:
+                    export_statistics_xlsx(chat_id, context, period=period)
+                else:
+                    export_statistics_xlsx(chat_id, context, period='month')
+                return
+
+            if text == "📥 Экспорт в CSV":
                 sd = profile.telegram_state or {}
                 current_state = sd.get('state')
                 period = sd.get('period', 'month')
@@ -509,7 +629,10 @@ def message_handler(chat_id, text, update=None, context=None):
             elif text == "📊 Статистика":
                 show_detailed_statistics(chat_id, period="month")
                 return
-            elif text == "📥 Скачать CSV":
+            elif text == "📈 Экспорт XLSX":
+                export_statistics_xlsx(chat_id, context, period="month")
+                return
+            elif text == "📥 Экспорт в CSV":
                 export_statistics_csv(chat_id, context, period="month")
                 return
             elif text == "✅ Модерация отзывов":
@@ -602,7 +725,7 @@ def message_handler(chat_id, text, update=None, context=None):
                     show_city_statistics(chat_id, period=period_map[period_text])
                     return
             elif text.startswith("/debug_photos"):
-                if profile.role not in ("admin", "super_admin"):
+                if profile.role not in ("admin", "super_admin", "super_user"):
                     send_telegram_message(chat_id, "Команда недоступна.")
                 else:
                     parts = text.split()
@@ -616,7 +739,7 @@ def message_handler(chat_id, text, update=None, context=None):
                         send_telegram_message(chat_id, "Использование: /debug_photos <ID>")
                 return
             elif text.startswith("/test_photos"):
-                if profile.role in ("admin", "super_admin"):
+                if profile.role in ("admin", "super_admin", "super_user"):
                     parts = text.split()
                     if len(parts) > 1:
                         try:
@@ -629,7 +752,7 @@ def message_handler(chat_id, text, update=None, context=None):
                         send_telegram_message(chat_id, "Использование: /test_photos <ID>")
                 return
             elif text.startswith("/debug_state"):
-                if profile.role in ("admin", "super_admin"):
+                if profile.role in ("admin", "super_admin", "super_user"):
                     state_info = (
                         f"*Отладка состояния пользователя*\n\n"
                         f"Chat ID: {chat_id}\n"
@@ -641,7 +764,7 @@ def message_handler(chat_id, text, update=None, context=None):
                     send_telegram_message(chat_id, state_info)
                 return
             elif text.startswith("/reset_state"):
-                if profile.role in ("admin", "super_admin"):
+                if profile.role in ("admin", "super_admin", "super_user"):
                     profile.telegram_state = {}
                     profile.save()
                     send_telegram_message(chat_id, "✅ Состояние сброшено")
@@ -649,7 +772,7 @@ def message_handler(chat_id, text, update=None, context=None):
                 return
 
             # Обработка команд супер-админа в главном меню
-            if profile.role == "super_admin":
+            if profile.role in ("super_admin", "super_user"):
                 if text == "👥 Управление админами":
                     show_super_admin_menu(chat_id)
                     return
@@ -664,6 +787,15 @@ def message_handler(chat_id, text, update=None, context=None):
                     return
                 elif text == "📊 Статистика по городам":
                     show_city_statistics(chat_id)
+                    return
+                elif text == "📈 Общая статистика":
+                    show_extended_statistics(chat_id, period="month")
+                    return
+                elif text == "📊 Риелторы":
+                    show_realtor_statistics(chat_id, period="month", page=1)
+                    return
+                elif text == "🏢 Агентства":
+                    show_agency_statistics(chat_id, period="month", page=1)
                     return
                 elif text == "📊 KO-фактор гостей":
                     show_ko_factor_report(chat_id)
@@ -699,6 +831,127 @@ def message_handler(chat_id, text, update=None, context=None):
                 if state_data.get('state') == "set_target_revenue":
                     save_property_target(chat_id, text)
                     return
+
+                analytics_period_map = {
+                    "День": "day",
+                    "Неделя": "week",
+                    "Месяц": "month",
+                    "Квартал": "quarter",
+                    "Год": "year",
+                }
+
+                if state_data.get('state') == "super_admin_realtor_stats":
+                    if text in analytics_period_map:
+                        show_realtor_statistics(
+                            chat_id,
+                            period=analytics_period_map[text],
+                            page=1,
+                        )
+                        return
+                    if text.startswith("➡️ Далее (стр.") or text.startswith("⬅️ Назад (стр."):
+                        match = re.search(r'стр\.\s*(\d+)', text)
+                        if match:
+                            show_realtor_statistics(
+                                chat_id,
+                                period=state_data.get("period", "month"),
+                                page=int(match.group(1)),
+                            )
+                        return
+                    if text.startswith("📄 "):
+                        show_realtor_statistics(
+                            chat_id,
+                            period=state_data.get("period", "month"),
+                            page=state_data.get("page", 1),
+                        )
+                        return
+                    if text == "🏢 Агентства":
+                        show_agency_statistics(chat_id, period=state_data.get("period", "month"), page=1)
+                        return
+                    if text == "📈 Экспорт XLSX":
+                        export_statistics_xlsx(chat_id, context, period=state_data.get("period", "month"))
+                        return
+                    if text == "📥 Экспорт в CSV":
+                        export_statistics_csv(chat_id, context, period=state_data.get("period", "month"))
+                        return
+                    if text == "📥 Экспорт в CSV":
+                        export_statistics_csv(chat_id, context, period=state_data.get("period", "month"))
+                        return
+                    if text == "📥 Экспорт в CSV":
+                        export_statistics_csv(chat_id, context, period=state_data.get("period", "month"))
+                        return
+
+                if state_data.get('state') == "super_admin_agency_list":
+                    agency_lookup = state_data.get("agency_lookup", {})
+                    if text in analytics_period_map:
+                        show_agency_statistics(
+                            chat_id,
+                            period=analytics_period_map[text],
+                            page=1,
+                        )
+                        return
+                    if text in agency_lookup:
+                        show_agency_details(
+                            chat_id,
+                            agency_lookup[text],
+                            period=state_data.get("period", "month"),
+                            source_page=state_data.get("page", 1),
+                        )
+                        return
+                    if text.startswith("➡️ Далее (стр.") or text.startswith("⬅️ Назад (стр."):
+                        match = re.search(r'стр\.\s*(\d+)', text)
+                        if match:
+                            show_agency_statistics(
+                                chat_id,
+                                period=state_data.get("period", "month"),
+                                page=int(match.group(1)),
+                            )
+                        return
+                    if text.startswith("📄 "):
+                        show_agency_statistics(
+                            chat_id,
+                            period=state_data.get("period", "month"),
+                            page=state_data.get("page", 1),
+                        )
+                        return
+                    if text == "📊 Риелторы":
+                        show_realtor_statistics(chat_id, period=state_data.get("period", "month"), page=1)
+                        return
+                    if text == "📈 Экспорт XLSX":
+                        export_statistics_xlsx(chat_id, context, period=state_data.get("period", "month"))
+                        return
+                    if text == "📥 Экспорт в CSV":
+                        export_statistics_csv(chat_id, context, period=state_data.get("period", "month"))
+                        return
+
+                if state_data.get('state') == "super_admin_agency_detail":
+                    if text in analytics_period_map:
+                        show_agency_details(
+                            chat_id,
+                            state_data.get("agency_id"),
+                            period=analytics_period_map[text],
+                            source_page=state_data.get("previous_page"),
+                        )
+                        return
+                    if text == "⬅️ К списку агентств":
+                        show_agency_statistics(
+                            chat_id,
+                            period=state_data.get("period", "month"),
+                            page=state_data.get("previous_page", 1),
+                        )
+                        return
+                    if text == "📊 Риелторы":
+                        show_realtor_statistics(chat_id, period=state_data.get("period", "month"), page=1)
+                        return
+                    if text == "🏢 Агентства":
+                        show_agency_statistics(
+                            chat_id,
+                            period=state_data.get("period", "month"),
+                            page=state_data.get("previous_page", 1),
+                        )
+                        return
+                    if text == "📈 Экспорт XLSX":
+                        export_statistics_xlsx(chat_id, context, period=state_data.get("period", "month"))
+                        return
 
     if state == STATE_SELECT_CITY:
         select_city(chat_id, profile, text)
@@ -1457,7 +1710,7 @@ def help_command_handler(chat_id):
     ]
 
     # Если роль админ — добавляем кнопку панели
-    if profile.role in ("admin", "super_admin"):
+    if profile.role in ("admin", "super_admin", "super_user"):
         kb.append([KeyboardButton("🛠 Панель администратора")])
 
     send_telegram_message(
@@ -2216,6 +2469,32 @@ def handle_submit_review_with_photos(chat_id):
     except Exception as e:
         logger.error(f"Error saving review with photos: {e}")
         send_telegram_message(
-            chat_id, 
+            chat_id,
             "❌ Произошла ошибка при сохранении отзыва"
         )
+
+
+# Populate STATE_TEXT_HANDLERS after all function definitions
+STATE_TEXT_HANDLERS.update({
+    STATE_EDIT_PROPERTY_MENU: handle_edit_property_choice,
+    STATE_WAITING_NEW_PRICE: save_new_price,
+    STATE_WAITING_NEW_DESCRIPTION: save_new_description,
+    STATE_WAITING_NEW_STATUS: save_new_status,
+    STATE_AWAITING_REVIEW_TEXT: handle_review_text,
+    "review_rating": handle_review_rating,
+    "review_text": handle_review_text_input,
+    "review_photos": handle_review_photos_choice,
+    "user_review_rating": handle_user_review_rating,
+    "user_review_text": handle_user_review_text,
+    "user_review_photos": handle_user_review_photos,
+    STATE_CANCEL_BOOKING: handle_cancel_confirmation,
+    STATE_CANCEL_REASON: handle_cancel_reason,
+    STATE_CANCEL_REASON_TEXT: handle_cancel_reason_text,
+    STATE_ADMIN_PROPERTY_LIST: handle_property_list_selection,
+    STATE_ADMIN_PROPERTY_DETAIL: handle_property_detail_selection,
+    STATE_ADMIN_BOOKINGS_LIST: handle_property_bookings_selection,
+    STATE_ADMIN_REVIEWS_LIST: handle_property_reviews_selection,
+    STATE_ADMIN_DASHBOARD: handle_admin_dashboard_selection,
+    STATE_ADMIN_PROPERTY_EDIT: handle_property_edit_selection,
+    STATE_EDIT_ACCESS_CODES: handle_access_codes_selection,
+})

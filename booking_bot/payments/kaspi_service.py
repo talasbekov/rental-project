@@ -4,12 +4,15 @@ Kaspi.kz Payment Gateway Integration
 Реальная интеграция с обработкой платежей
 """
 
-import requests
+import json
 import logging
 import uuid
 import hashlib
-import json
+import hmac
+import time
 from datetime import datetime
+
+import requests
 from django.utils import timezone
 from django.conf import settings
 from django.urls import reverse
@@ -237,24 +240,89 @@ def check_payment_status(kaspi_payment_id: str) -> dict:
         raise KaspiPaymentError(f"Ошибка: {e}")
 
 
-def verify_webhook_signature(request_data: dict, signature: str) -> bool:
-    """
-    Stub verification of Kaspi webhook signature.
+def _resolve_secret_key() -> str:
+    """Return the current Kaspi webhook secret, preferring runtime settings."""
 
-    This function always returns True to allow payment scenarios to be
-    reproduced during development. To harden security in production,
-    implement HMAC‑SHA256 verification here and compare the provided
-    signature using constant‑time comparison. See the technical report
-    for details.
+    runtime_secret = getattr(settings, "KASPI_SECRET_KEY", "")
+    if runtime_secret:
+        return runtime_secret
+    return KASPI_SECRET_KEY
+
+
+def verify_webhook_signature(
+    payload,
+    signature: str | None,
+    *,
+    timestamp: str | None = None,
+    tolerance_seconds: int = 300,
+) -> bool:
+    """Validate Kaspi webhook signature using HMAC-SHA256.
 
     Args:
-        request_data: Webhook JSON payload.
-        signature: Signature header from Kaspi request.
+        payload: Raw request body (``bytes``/``bytearray``/``str``) or parsed dict
+            of the webhook payload. When a dict is provided it will be serialised
+            with sorted keys to ensure deterministic signing.
+        signature: Value from the ``X-Kaspi-Signature`` header. Both ``sha256=<hex>``
+            and plain hex digests are supported.
+        timestamp: Optional value from ``X-Kaspi-Timestamp`` header; if numeric the
+            function enforces a freshness window of ``tolerance_seconds``.
+        tolerance_seconds: Maximum allowed clock skew for timestamp validation.
 
     Returns:
-        bool: True for now; should return validity result when implemented.
+        bool: ``True`` when the signature is valid (or when running in DEBUG mode
+        without a configured secret), ``False`` otherwise.
     """
-    # TODO: implement real HMAC verification once Kaspi integration is finalised.
+
+    secret = _resolve_secret_key()
+
+    if not secret:
+        logger.warning("Kaspi webhook signature cannot be verified – secret key is missing")
+        return settings.DEBUG
+
+    if not signature:
+        logger.warning("Kaspi webhook rejected: missing X-Kaspi-Signature header")
+        return False
+
+    if isinstance(payload, (bytes, bytearray)):
+        payload_bytes = bytes(payload)
+    elif isinstance(payload, str):
+        payload_bytes = payload.encode("utf-8")
+    else:
+        try:
+            payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        except (TypeError, ValueError) as exc:
+            logger.error("Failed to serialise payload for Kaspi signature validation: %s", exc)
+            return False
+
+    parsed_signature = signature.strip()
+    if "=" in parsed_signature:
+        algo, value = parsed_signature.split("=", 1)
+        if algo.lower() == "sha256":
+            parsed_signature = value
+
+    expected = hmac.new(secret.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(expected, parsed_signature.lower()):
+        logger.warning("Kaspi webhook rejected: signature mismatch")
+        return False
+
+    if timestamp:
+        try:
+            ts_value = int(float(timestamp))
+        except ValueError:
+            logger.warning("Kaspi webhook timestamp header is not numeric; skipping tolerance check")
+        else:
+            current_ts = int(time.time())
+            if abs(current_ts - ts_value) > tolerance_seconds:
+                logger.warning(
+                    "Kaspi webhook rejected due to timestamp skew (ts=%s, now=%s)",
+                    ts_value,
+                    current_ts,
+                )
+                return False
+
     return True
 
 

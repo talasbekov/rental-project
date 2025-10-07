@@ -31,6 +31,7 @@ boto3>=1.28,<2.0
 botocore>=1.31,<2.0
 psycopg2-binary>=2.9,<3.0
 pillow>=10.3,<11.0
+openpyxl>=3.1,<4.0
 reportlab>=4.0,<5.0
 
 # Messaging & integrations
@@ -47,6 +48,10 @@ asgiref>=3.7,<4.0
 uvicorn[standard]>=0.23,<0.25
 gunicorn>=21.2,<22.0
 starlette>=0.37,<0.40
+
+# Security & Rate Limiting
+django-ratelimit>=4.1,<5.0
+sentry-sdk>=1.40,<2.0
 
 # Observability & utilities
 aiohappyeyeballs>=2.4,<3.0
@@ -72,3 +77,4 @@ pytest>=7.4,<8.0
 pytest-django>=4.7,<5.0
 pytest-cov>=4.1,<5.0
 django-upgrade>=1.15,<2.0
+openpyxl

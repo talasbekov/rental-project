@@ -1,6 +1,7 @@
 import logging
+import re
 import requests
-from telegram import KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import KeyboardButton, ReplyKeyboardMarkup
 
 from booking_bot.users.models import UserProfile
 from booking_bot.core.models import AuditLog
@@ -33,7 +34,7 @@ STATE_EDIT_DIGITAL_LOCK_CODE = "edit_digital_lock_code"
 
 def check_admin_access(profile: UserProfile) -> bool:
     """Check if user has admin access"""
-    return profile and profile.role in ('admin', 'super_admin')
+    return profile and profile.role in ('admin', 'super_admin', 'super_user')
 
 
 def get_auth_headers(profile: UserProfile) -> dict:
@@ -67,7 +68,12 @@ def handle_admin_menu(chat_id: int, text: str = None) -> bool:
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
-    role_text = "Супер-администратор" if profile.role == 'super_admin' else "Администратор"
+    if profile.role == UserProfile.ROLE_SUPER_USER:
+        role_text = "Суперпользователь"
+    elif profile.role == UserProfile.ROLE_SUPER_ADMIN:
+        role_text = "Супер-администратор"
+    else:
+        role_text = "Администратор"
     
     send_telegram_message(
         chat_id,
@@ -94,66 +100,123 @@ def handle_property_list(chat_id: int, text: str = None) -> bool:
         response = requests.get(url, headers=headers)
         
         if response.status_code == 200:
-            properties = response.json()
-            
+            properties = response.json() or []
+
+            state_data = profile.telegram_state or {}
+            state_data["state"] = STATE_ADMIN_PROPERTY_LIST
+            state_data["property_lookup"] = {}
+
+            status_emoji = {
+                "Свободна": "✅",
+                "Забронирована": "📅",
+                "Занята": "🔒",
+                "На обслуживании": "🔧",
+            }
+
             if not properties:
+                keyboard_rows = [
+                    [KeyboardButton("➕ Добавить квартиру")],
+                    [KeyboardButton("🧭 Главное меню")],
+                ]
                 send_telegram_message(
                     chat_id,
                     "📭 *У вас пока нет квартир*\n\n"
-                    "Нажмите «➕ Добавить квартиру» для создания первой квартиры."
+                    "Нажмите «➕ Добавить квартиру», чтобы создать первую запись.",
+                    reply_markup=ReplyKeyboardMarkup(
+                        keyboard_rows,
+                        resize_keyboard=True,
+                        input_field_placeholder="Выберите действие",
+                    ).to_dict(),
                 )
-                return True
-            
-            # Create inline keyboard for properties
-            keyboard = []
-            for prop in properties[:10]:  # Limit to 10 for readability
-                status_emoji = {
-                    'Свободна': '✅',
-                    'Забронирована': '📅', 
-                    'Занята': '🔒',
-                    'На обслуживании': '🔧'
-                }.get(prop['status'], '❓')
-                
-                button_text = f"{status_emoji} {prop['name'][:25]}"
-                if len(prop['name']) > 25:
-                    button_text += "..."
-                    
-                keyboard.append([
-                    InlineKeyboardButton(
-                        button_text,
-                        callback_data=f"admin_property_detail_{prop['id']}"
+            else:
+                keyboard_rows = []
+                message_lines = ["🏠 *Мои квартиры*", ""]
+
+                for index, prop in enumerate(properties[:10], start=1):
+                    emoji = status_emoji.get(prop.get("status"), "❓")
+                    button_text = f"{emoji} ID {prop['id']} • {prop['name'][:25]}"
+                    keyboard_rows.append([KeyboardButton(button_text)])
+                    state_data["property_lookup"][button_text] = prop["id"]
+
+                    message_lines.append(
+                        f"{index}. {emoji} {prop['name']} (ID {prop['id']}) — {prop['status']}"
                     )
+
+                keyboard_rows.append([
+                    KeyboardButton("🔄 Обновить список"),
+                    KeyboardButton("📊 Статистика"),
                 ])
-            
-            # Add navigation buttons
-            keyboard.append([
-                InlineKeyboardButton("🔄 Обновить", callback_data="admin_property_refresh"),
-                InlineKeyboardButton("📊 Статистика", callback_data="admin_dashboard")
-            ])
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            total_count = len(properties)
-            send_telegram_message(
-                chat_id,
-                f"🏠 *Мои квартиры* ({total_count})\n\n"
-                f"Выберите квартиру для просмотра:",
-                reply_markup=reply_markup.to_dict()
-            )
-            
-            # Update state
-            state_data = profile.telegram_state or {}
-            state_data['state'] = STATE_ADMIN_PROPERTY_LIST
+                keyboard_rows.append([
+                    KeyboardButton("➕ Добавить квартиру"),
+                    KeyboardButton("🧭 Главное меню"),
+                ])
+
+                send_telegram_message(
+                    chat_id,
+                    "\n".join(message_lines),
+                    reply_markup=ReplyKeyboardMarkup(
+                        keyboard_rows,
+                        resize_keyboard=True,
+                        input_field_placeholder="Выберите действие",
+                    ).to_dict(),
+                )
+
             profile.telegram_state = state_data
             profile.save()
-            
+
         else:
             send_telegram_message(chat_id, "❌ Ошибка получения списка квартир")
             
     except Exception as e:
         logger.error(f"Error getting property list: {e}")
         send_telegram_message(chat_id, "❌ Произошла ошибка")
-    
+
+    return True
+
+
+@log_handler
+def handle_property_list_selection(chat_id: int, text: str) -> bool:
+    """Process user selection from property list reply keyboard."""
+    profile = _get_profile(chat_id)
+    if not check_admin_access(profile):
+        return False
+
+    normalized = (text or "").strip()
+    state_data = profile.telegram_state or {}
+    lookup = state_data.get("property_lookup", {})
+
+    if not normalized:
+        send_telegram_message(chat_id, "Выберите действие с помощью кнопок ниже.")
+        return True
+
+    if normalized == "🔄 Обновить список":
+        return handle_property_list(chat_id)
+
+    if normalized == "📊 Статистика":
+        return handle_admin_dashboard(chat_id)
+
+    if normalized == "➕ Добавить квартиру":
+        from .admin_handlers import handle_add_property_start
+
+        handle_add_property_start(chat_id)
+        return True
+
+    if normalized == "🧭 Главное меню":
+        from .handlers import start_command_handler
+
+        start_command_handler(chat_id)
+        return True
+
+    property_id = lookup.get(normalized)
+    if property_id is None:
+        match = re.search(r"ID\s*(\d+)", normalized)
+        if match:
+            property_id = int(match.group(1))
+
+    if property_id is not None:
+        return handle_property_detail(chat_id, property_id)
+
+    send_telegram_message(chat_id, "Не удалось распознать действие. Пожалуйста, воспользуйтесь кнопками.")
     return True
 
 
@@ -201,30 +264,20 @@ def handle_property_detail(chat_id: int, property_id: int) -> bool:
                 if prop.get('digital_lock_code_display'):
                     details += f"🔑 Замок: `{prop['digital_lock_code_display']}`\n"
             
-            # Create action buttons
-            keyboard = [
-                [
-                    InlineKeyboardButton("✏️ Редактировать", callback_data=f"admin_edit_property_{property_id}"),
-                    InlineKeyboardButton("📋 Бронирования", callback_data=f"admin_bookings_{property_id}")
-                ],
-                [
-                    InlineKeyboardButton("⭐ Отзывы", callback_data=f"admin_reviews_{property_id}"),
-                    InlineKeyboardButton("📊 Статистика", callback_data=f"admin_stats_{property_id}")
-                ],
-                [
-                    InlineKeyboardButton("🔒 Коды доступа", callback_data=f"admin_codes_{property_id}")
-                ],
-                [
-                    InlineKeyboardButton("« Назад к списку", callback_data="admin_property_list")
-                ]
+            keyboard_rows = [
+                [KeyboardButton("✏️ Редактировать объект"), KeyboardButton("📋 Бронирования объекта")],
+                [KeyboardButton("⭐ Отзывы объекта"), KeyboardButton("🔐 Коды доступа")],
+                [KeyboardButton("🏠 Список квартир"), KeyboardButton("🧭 Главное меню")],
             ]
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
+
             send_telegram_message(
                 chat_id,
                 details,
-                reply_markup=reply_markup.to_dict()
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard_rows,
+                    resize_keyboard=True,
+                    input_field_placeholder="Выберите действие",
+                ).to_dict(),
             )
             
             # Update state
@@ -250,6 +303,45 @@ def handle_property_detail(chat_id: int, property_id: int) -> bool:
         logger.error(f"Error getting property details: {e}")
         send_telegram_message(chat_id, "❌ Произошла ошибка")
     
+    return True
+
+
+@log_handler
+def handle_property_detail_selection(chat_id: int, text: str) -> bool:
+    profile = _get_profile(chat_id)
+    if not check_admin_access(profile):
+        return False
+
+    normalized = (text or "").strip()
+    state_data = profile.telegram_state or {}
+    property_id = state_data.get("current_property_id")
+
+    if not property_id:
+        send_telegram_message(chat_id, "Квартира не выбрана. Вернитесь к списку." )
+        return handle_property_list(chat_id)
+
+    if normalized == "✏️ Редактировать объект":
+        return handle_edit_property_menu(chat_id, property_id)
+
+    if normalized == "📋 Бронирования объекта":
+        return handle_property_bookings(chat_id, property_id)
+
+    if normalized == "⭐ Отзывы объекта":
+        return handle_property_reviews(chat_id, property_id)
+
+    if normalized == "🔐 Коды доступа":
+        return handle_edit_access_codes(chat_id, property_id)
+
+    if normalized == "🏠 Список квартир":
+        return handle_property_list(chat_id)
+
+    if normalized == "🧭 Главное меню":
+        from .handlers import start_command_handler
+
+        start_command_handler(chat_id)
+        return True
+
+    send_telegram_message(chat_id, "Пожалуйста, воспользуйтесь кнопками, чтобы выбрать действие.")
     return True
 
 
@@ -302,25 +394,26 @@ def handle_property_bookings(chat_id: int, property_id: int) -> bool:
             if cancelled_bookings:
                 text += f"❌ *Отмененные:* {len(cancelled_bookings)}\n"
             
-            # Create action buttons
-            keyboard = [
-                [
-                    InlineKeyboardButton("📊 Подробная статистика", 
-                                       callback_data=f"admin_booking_stats_{property_id}"),
-                ],
-                [
-                    InlineKeyboardButton("« Назад к квартире", 
-                                       callback_data=f"admin_property_detail_{property_id}")
-                ]
+            keyboard_rows = [
+                [KeyboardButton("🔙 Назад к объекту"), KeyboardButton("🏠 Список квартир")],
+                [KeyboardButton("🧭 Главное меню")],
             ]
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
+
             send_telegram_message(
                 chat_id,
                 text,
-                reply_markup=reply_markup.to_dict()
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard_rows,
+                    resize_keyboard=True,
+                    input_field_placeholder="Выберите действие",
+                ).to_dict(),
             )
+
+            state_data = profile.telegram_state or {}
+            state_data['state'] = STATE_ADMIN_BOOKINGS_LIST
+            state_data['current_property_id'] = property_id
+            profile.telegram_state = state_data
+            profile.save()
             
         else:
             send_telegram_message(chat_id, "❌ Ошибка получения бронирований")
@@ -329,6 +422,35 @@ def handle_property_bookings(chat_id: int, property_id: int) -> bool:
         logger.error(f"Error getting property bookings: {e}")
         send_telegram_message(chat_id, "❌ Произошла ошибка")
     
+    return True
+
+
+@log_handler
+def handle_property_bookings_selection(chat_id: int, text: str) -> bool:
+    profile = _get_profile(chat_id)
+    if not check_admin_access(profile):
+        return False
+
+    normalized = (text or "").strip()
+    state_data = profile.telegram_state or {}
+    property_id = state_data.get('current_property_id')
+
+    if not property_id:
+        return handle_property_list(chat_id)
+
+    if normalized == "🔙 Назад к объекту":
+        return handle_property_detail(chat_id, property_id)
+
+    if normalized == "🏠 Список квартир":
+        return handle_property_list(chat_id)
+
+    if normalized == "🧭 Главное меню":
+        from .handlers import start_command_handler
+
+        start_command_handler(chat_id)
+        return True
+
+    send_telegram_message(chat_id, "Выберите нужную кнопку.")
     return True
 
 
@@ -377,21 +499,26 @@ def handle_property_reviews(chat_id: int, property_id: int) -> bool:
             if len(reviews) > 5:
                 text += f"... и еще {len(reviews) - 5} отзывов"
             
-            # Create action buttons
-            keyboard = [
-                [
-                    InlineKeyboardButton("« Назад к квартире", 
-                                       callback_data=f"admin_property_detail_{property_id}")
-                ]
+            keyboard_rows = [
+                [KeyboardButton("🔙 Назад к объекту"), KeyboardButton("🏠 Список квартир")],
+                [KeyboardButton("🧭 Главное меню")],
             ]
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
+
             send_telegram_message(
                 chat_id,
                 text,
-                reply_markup=reply_markup.to_dict()
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard_rows,
+                    resize_keyboard=True,
+                    input_field_placeholder="Выберите действие",
+                ).to_dict(),
             )
+
+            state_data = profile.telegram_state or {}
+            state_data['state'] = STATE_ADMIN_REVIEWS_LIST
+            state_data['current_property_id'] = property_id
+            profile.telegram_state = state_data
+            profile.save()
             
         else:
             send_telegram_message(chat_id, "❌ Ошибка получения отзывов")
@@ -400,6 +527,35 @@ def handle_property_reviews(chat_id: int, property_id: int) -> bool:
         logger.error(f"Error getting property reviews: {e}")
         send_telegram_message(chat_id, "❌ Произошла ошибка")
     
+    return True
+
+
+@log_handler
+def handle_property_reviews_selection(chat_id: int, text: str) -> bool:
+    profile = _get_profile(chat_id)
+    if not check_admin_access(profile):
+        return False
+
+    normalized = (text or "").strip()
+    state_data = profile.telegram_state or {}
+    property_id = state_data.get('current_property_id')
+
+    if not property_id:
+        return handle_property_list(chat_id)
+
+    if normalized == "🔙 Назад к объекту":
+        return handle_property_detail(chat_id, property_id)
+
+    if normalized == "🏠 Список квартир":
+        return handle_property_list(chat_id)
+
+    if normalized == "🧭 Главное меню":
+        from .handlers import start_command_handler
+
+        start_command_handler(chat_id)
+        return True
+
+    send_telegram_message(chat_id, "Выберите одну из доступных кнопок.")
     return True
 
 
@@ -428,27 +584,22 @@ def handle_admin_dashboard(chat_id: int) -> bool:
                 f"🌟 Средний рейтинг: {stats['average_rating']}\n\n"
             )
             
-            # Add quick actions
-            keyboard = [
-                [
-                    InlineKeyboardButton("🏠 Мои квартиры", callback_data="admin_property_list"),
-                    InlineKeyboardButton("➕ Добавить", callback_data="admin_add_property")
-                ],
-                [
-                    InlineKeyboardButton("📋 Все бронирования", callback_data="admin_all_bookings"),
-                    InlineKeyboardButton("⭐ Все отзывы", callback_data="admin_all_reviews")
-                ]
+            keyboard_rows = [
+                [KeyboardButton("🏠 Мои квартиры"), KeyboardButton("➕ Добавить квартиру")],
+                [KeyboardButton("📋 Все бронирования"), KeyboardButton("⭐ Все отзывы")],
+                [KeyboardButton("🧭 Главное меню")],
             ]
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
+
             send_telegram_message(
                 chat_id,
                 text,
-                reply_markup=reply_markup.to_dict()
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard_rows,
+                    resize_keyboard=True,
+                    input_field_placeholder="Выберите действие",
+                ).to_dict(),
             )
-            
-            # Update state
+
             state_data = profile.telegram_state or {}
             state_data['state'] = STATE_ADMIN_DASHBOARD
             profile.telegram_state = state_data
@@ -465,6 +616,45 @@ def handle_admin_dashboard(chat_id: int) -> bool:
 
 
 @log_handler
+def handle_admin_dashboard_selection(chat_id: int, text: str) -> bool:
+    profile = _get_profile(chat_id)
+    if not check_admin_access(profile):
+        return False
+
+    normalized = (text or "").strip()
+
+    if normalized == "🏠 Мои квартиры":
+        return handle_property_list(chat_id)
+
+    if normalized == "➕ Добавить квартиру":
+        from .admin_handlers import handle_add_property_start
+
+        handle_add_property_start(chat_id)
+        return True
+
+    if normalized == "📋 Все бронирования":
+        from .admin_handlers import show_admin_bookings
+
+        show_admin_bookings(chat_id)
+        return True
+
+    if normalized == "⭐ Все отзывы":
+        from .admin_handlers import show_admin_reviews
+
+        show_admin_reviews(chat_id)
+        return True
+
+    if normalized == "🧭 Главное меню":
+        from .handlers import start_command_handler
+
+        start_command_handler(chat_id)
+        return True
+
+    send_telegram_message(chat_id, "Пожалуйста, выберите действие из списка.")
+    return True
+
+
+@log_handler
 def handle_edit_property_menu(chat_id: int, property_id: int) -> bool:
     """Show property edit menu"""
     profile = _get_profile(chat_id)
@@ -472,39 +662,63 @@ def handle_edit_property_menu(chat_id: int, property_id: int) -> bool:
     if not check_admin_access(profile):
         return False
     
-    keyboard = [
-        [
-            InlineKeyboardButton("📝 Название", callback_data=f"admin_edit_name_{property_id}"),
-            InlineKeyboardButton("📄 Описание", callback_data=f"admin_edit_desc_{property_id}")
-        ],
-        [
-            InlineKeyboardButton("💰 Цена", callback_data=f"admin_edit_price_{property_id}"),
-            InlineKeyboardButton("📊 Статус", callback_data=f"admin_edit_status_{property_id}")
-        ],
-        [
-            InlineKeyboardButton("🔐 Коды доступа", callback_data=f"admin_edit_codes_{property_id}")
-        ],
-        [
-            InlineKeyboardButton("« Назад", callback_data=f"admin_property_detail_{property_id}")
-        ]
+    keyboard_rows = [
+        [KeyboardButton("📝 Изменить описание"), KeyboardButton("💰 Изменить цену")],
+        [KeyboardButton("📊 Изменить статус"), KeyboardButton("📷 Управление фото")],
+        [KeyboardButton("🔐 Коды доступа"), KeyboardButton("🔙 Назад к объекту")],
+        [KeyboardButton("🧭 Главное меню")],
     ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     send_telegram_message(
         chat_id,
         "✏️ *Редактирование квартиры*\n\n"
         "Выберите, что хотите изменить:",
-        reply_markup=reply_markup.to_dict()
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard_rows,
+            resize_keyboard=True,
+            input_field_placeholder="Выберите действие",
+        ).to_dict(),
     )
-    
-    # Update state
+
     state_data = profile.telegram_state or {}
     state_data['state'] = STATE_ADMIN_PROPERTY_EDIT
     state_data['current_property_id'] = property_id
+    state_data['editing_property_id'] = property_id
     profile.telegram_state = state_data
     profile.save()
-    
+
+    return True
+
+
+@log_handler
+def handle_property_edit_selection(chat_id: int, text: str) -> bool:
+    profile = _get_profile(chat_id)
+    if not check_admin_access(profile):
+        return False
+
+    normalized = (text or "").strip()
+    state_data = profile.telegram_state or {}
+    property_id = state_data.get('current_property_id')
+
+    if not property_id:
+        return handle_property_list(chat_id)
+
+    if normalized in {"📝 Изменить описание", "💰 Изменить цену", "📊 Изменить статус", "📷 Управление фото"}:
+        return handle_edit_property_choice(chat_id, normalized)
+
+    if normalized == "🔐 Коды доступа":
+        return handle_edit_access_codes(chat_id, property_id)
+
+    if normalized == "🔙 Назад к объекту":
+        return handle_property_detail(chat_id, property_id)
+
+    if normalized == "🧭 Главное меню":
+        from .handlers import start_command_handler
+
+        start_command_handler(chat_id)
+        return True
+
+    send_telegram_message(chat_id, "Выберите действие из меню редактирования.")
     return True
 
 
@@ -525,36 +739,62 @@ def handle_edit_access_codes(chat_id: int, property_id: int) -> bool:
         details={'action': 'opened_codes_edit_menu'}
     )
     
-    keyboard = [
-        [
-            InlineKeyboardButton("🏠 Код домофона", callback_data=f"edit_entry_code_{property_id}")
-        ],
-        [
-            InlineKeyboardButton("🗝️ Код сейфа", callback_data=f"edit_key_safe_code_{property_id}")
-        ],
-        [
-            InlineKeyboardButton("🔑 Код замка", callback_data=f"edit_digital_lock_code_{property_id}")
-        ],
-        [
-            InlineKeyboardButton("« Назад", callback_data=f"admin_edit_property_{property_id}")
-        ]
+    keyboard_rows = [
+        [KeyboardButton("🏠 Изменить код домофона")],
+        [KeyboardButton("🗝️ Изменить код сейфа")],
+        [KeyboardButton("🔑 Изменить код замка")],
+        [KeyboardButton("🔙 Назад к объекту"), KeyboardButton("🧭 Главное меню")],
     ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     send_telegram_message(
         chat_id,
         "🔐 *Управление кодами доступа*\n\n"
         "⚠️ *Внимание!* Все действия с кодами логируются.\n\n"
         "Выберите код для изменения:",
-        reply_markup=reply_markup.to_dict()
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard_rows,
+            resize_keyboard=True,
+            input_field_placeholder="Выберите действие",
+        ).to_dict(),
     )
-    
-    # Update state
+
     state_data = profile.telegram_state or {}
     state_data['state'] = STATE_EDIT_ACCESS_CODES
     state_data['current_property_id'] = property_id
     profile.telegram_state = state_data
     profile.save()
-    
+
+    return True
+
+
+@log_handler
+def handle_access_codes_selection(chat_id: int, text: str) -> bool:
+    profile = _get_profile(chat_id)
+    if not check_admin_access(profile):
+        return False
+
+    normalized = (text or "").strip()
+    state_data = profile.telegram_state or {}
+    property_id = state_data.get('current_property_id')
+
+    if not property_id:
+        return handle_property_list(chat_id)
+
+    if normalized == "🔙 Назад к объекту":
+        return handle_property_detail(chat_id, property_id)
+
+    if normalized == "🧭 Главное меню":
+        from .handlers import start_command_handler
+
+        start_command_handler(chat_id)
+        return True
+
+    if normalized in {"🏠 Изменить код домофона", "🗝️ Изменить код сейфа", "🔑 Изменить код замка"}:
+        send_telegram_message(
+            chat_id,
+            "⚠️ Изменение кодов через бот пока недоступно. Обратитесь к администратору или используйте веб-интерфейс.",
+        )
+        return True
+
+    send_telegram_message(chat_id, "Выберите действие с помощью кнопок ниже.")
     return True

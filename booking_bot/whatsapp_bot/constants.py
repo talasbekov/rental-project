@@ -184,7 +184,7 @@ def start_command_handler(phone_number, name=None):
     ]
 
     # Если админ - добавляем кнопку
-    if profile.role in ("admin", "super_admin"):
+    if profile.role in ("admin", "super_admin", "super_user"):
         buttons.append({"id": "admin_panel", "title": "🛠 Админ панель"})
 
     buttons.append({"id": "help", "title": "❓ Помощь"})

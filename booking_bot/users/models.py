@@ -4,13 +4,40 @@ from django.db import models
 from django.conf import settings
 
 
+class RealEstateAgency(models.Model):
+    """Группа объектов и администраторов под единым брендом."""
+
+    name = models.CharField(max_length=150, unique=True)
+    description = models.TextField(blank=True)
+    contact_phone = models.CharField(max_length=20, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "users_realestateagency"
+        verbose_name = "Real Estate Agency"
+        verbose_name_plural = "Real Estate Agencies"
+
+    def __str__(self):
+        return self.name
+
+
 class UserProfile(models.Model):
     """Профиль пользователя с дополнительными полями"""
 
+    ROLE_USER = "user"
+    ROLE_ADMIN = "admin"
+    ROLE_SUPER_ADMIN = "super_admin"
+    ROLE_SUPER_USER = "super_user"
+
+    ADMIN_ROLES = (ROLE_ADMIN, ROLE_SUPER_ADMIN, ROLE_SUPER_USER)
+    SUPERVISOR_ROLES = (ROLE_SUPER_ADMIN, ROLE_SUPER_USER)
+
     ROLE_CHOICES = [
-        ('user', 'User'),
-        ('admin', 'Admin'),
-        ('super_admin', 'Super Admin'),
+        (ROLE_USER, "User"),
+        (ROLE_ADMIN, "Admin"),
+        (ROLE_SUPER_ADMIN, "Super Admin"),
+        (ROLE_SUPER_USER, "Super User"),
     ]
 
     user = models.OneToOneField(
@@ -24,7 +51,7 @@ class UserProfile(models.Model):
     role = models.CharField(
         max_length=20,
         choices=ROLE_CHOICES,
-        default='user'
+        default=ROLE_USER
     )
 
     phone_number = models.CharField(
@@ -57,6 +84,14 @@ class UserProfile(models.Model):
         blank=True
     )
 
+    agency = models.ForeignKey(
+        RealEstateAgency,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="members",
+    )
+
     ko_factor = models.FloatField(
         default=0.0,
         help_text="Коэффициент отмен пользователя (0-1)"
@@ -78,6 +113,7 @@ class UserProfile(models.Model):
         indexes = [
             models.Index(fields=['telegram_chat_id']),
             models.Index(fields=['user']),
+            models.Index(fields=['agency']),
         ]
 
     def __str__(self):
@@ -125,3 +161,14 @@ class UserProfile(models.Model):
             self.save()
 
         return self.user
+
+    # --- Role helpers -------------------------------------------------
+
+    def has_admin_access(self) -> bool:
+        return self.role in self.ADMIN_ROLES
+
+    def has_super_admin_access(self) -> bool:
+        return self.role in self.SUPERVISOR_ROLES
+
+    def has_super_user_access(self) -> bool:
+        return self.role == self.ROLE_SUPER_USER

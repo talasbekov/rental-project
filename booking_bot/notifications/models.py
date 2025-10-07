@@ -20,6 +20,9 @@ class NotificationTemplate(models.Model):
         ("review_request", "Запрос отзыва"),
         ("property_added", "Квартира добавлена"),
         ("low_occupancy", "Низкая загрузка"),
+        ("update_photos_needed", "Нужно обновить фотографии"),
+        ("update_price_needed", "Нужно обновить цену"),
+        ("high_ko_factor", "Высокий KO-фактор гостя"),
         ("cleaning_needed", "Требуется уборка"),
         ("maintenance_alert", "Требуется обслуживание"),
     ]
@@ -32,7 +35,7 @@ class NotificationTemplate(models.Model):
         ("push", "Push уведомление"),
     ]
 
-    event = models.CharField(max_length=50, choices=EVENT_CHOICES, unique=True)
+    event = models.CharField(max_length=50, choices=EVENT_CHOICES)
     channel = models.CharField(max_length=20, choices=CHANNEL_CHOICES)
 
     # Шаблоны для разных языков

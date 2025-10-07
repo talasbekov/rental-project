@@ -1,14 +1,110 @@
 # booking_bot/notifications/service.py - Сервис уведомлений
 
 import logging
-from django.utils import timezone
-from datetime import timedelta
-from typing import Optional, Dict, List
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+from typing import Dict, List, Optional
+
 from django.contrib.auth import get_user_model
+from django.db import models
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
+
+
+DEFAULT_TEMPLATES = {
+    "low_occupancy": [
+        {
+            "channel": "telegram",
+            "template_ru": (
+                "📉 Низкая загрузка по объекту {property_name}.\n"
+                "За последние 30 дней занятость составила {occupancy_rate:.0f}%.\n"
+                "{recommendation}"
+            ),
+            "template_kz": (
+                "📉 {property_name} объектісінің жүктемесі төмен.\n"
+                "Соңғы 30 күн ішінде жүктемесі {occupancy_rate:.0f}% болды.\n"
+                "{recommendation}"
+            ),
+            "template_en": (
+                "📉 Low occupancy detected for {property_name}.\n"
+                "Occupancy in the last 30 days was {occupancy_rate:.0f}%.\n"
+                "{recommendation}"
+            ),
+            "send_to_owner": True,
+            "send_to_user": False,
+            "send_to_admins": False,
+        }
+    ],
+    "update_photos_needed": [
+        {
+            "channel": "telegram",
+            "template_ru": (
+                "📷 Обновите фотографии для {property_name}.\n"
+                "Сейчас загружено только {photo_count} шт.\n"
+                "{recommendation}"
+            ),
+            "template_kz": (
+                "📷 {property_name} үшін фотоларды жаңартыңыз.\n"
+                "Қазір {photo_count} фото бар.\n"
+                "{recommendation}"
+            ),
+            "template_en": (
+                "📷 Please refresh photos for {property_name}.\n"
+                "Only {photo_count} images uploaded.\n"
+                "{recommendation}"
+            ),
+            "send_to_owner": True,
+            "send_to_user": False,
+            "send_to_admins": False,
+        }
+    ],
+    "update_price_needed": [
+        {
+            "channel": "telegram",
+            "template_ru": (
+                "💸 Пересмотрите цену для {property_name}.\n"
+                "Текущая цена: {current_price:.0f} ₸, средняя по району: {avg_price:.0f} ₸.\n"
+                "{recommendation}"
+            ),
+            "template_kz": (
+                "💸 {property_name} үшін бағаны қайта қараңыз.\n"
+                "Ағымдағы баға: {current_price:.0f} ₸, аудан бойынша орташа: {avg_price:.0f} ₸.\n"
+                "{recommendation}"
+            ),
+            "template_en": (
+                "💸 Review the price for {property_name}.\n"
+                "Current price: {current_price:.0f} ₸, district average: {avg_price:.0f} ₸.\n"
+                "{recommendation}"
+            ),
+            "send_to_owner": True,
+            "send_to_user": False,
+            "send_to_admins": False,
+        }
+    ],
+    "high_ko_factor": [
+        {
+            "channel": "telegram",
+            "template_ru": (
+                "⚠️ Высокий KO-фактор у гостя {guest_username}: {ko_factor_percent:.0f}%\n"
+                "Всего броней: {total_bookings}, отмен: {cancelled_bookings}."
+            ),
+            "template_kz": (
+                "⚠️ Қонақ {guest_username} үшін KO коэффициенті жоғары: {ko_factor_percent:.0f}%\n"
+                "Барлық броньдар: {total_bookings}, болдырмаулар: {cancelled_bookings}."
+            ),
+            "template_en": (
+                "⚠️ Guest {guest_username} has a high KO-factor: {ko_factor_percent:.0f}%\n"
+                "Total bookings: {total_bookings}, cancellations: {cancelled_bookings}."
+            ),
+            "send_to_owner": False,
+            "send_to_user": False,
+            "send_to_admins": True,
+        }
+    ],
+}
 
 
 class NotificationService:
@@ -29,19 +125,41 @@ class NotificationService:
 
         context = context or {}
 
+        notifications = []
+
+        from .models import NotificationTemplate
+
+        cls._ensure_default_templates(event)
+
         # Определяем каналы отправки
         if not channels:
-            # Автоматически выбираем доступные каналы для пользователя
             channels = cls._get_user_channels(user)
 
-        notifications = []
+        templates_qs = NotificationTemplate.objects.filter(
+            event=event, is_active=True
+        )
+        templates_by_channel = {tpl.channel: tpl for tpl in templates_qs}
+
+        if not channels:
+            channels = list(templates_by_channel.keys())
+
+        if not channels:
+            channels = ["telegram"]
 
         for channel in channels:
             try:
-                # Ищем шаблон
-                template = NotificationTemplate.objects.get(
-                    event=event, channel=channel, is_active=True
-                )
+                template = templates_by_channel.get(channel)
+                if not template:
+                    template = cls._ensure_default_templates(event, channel)
+                    if template:
+                        templates_by_channel[channel] = template
+                    else:
+                        logger.warning(
+                            "No template available for event '%s' and channel '%s'",
+                            event,
+                            channel,
+                        )
+                        continue
 
                 # Определяем получателей
                 recipients = cls._get_recipients(template, user, context)
@@ -50,6 +168,9 @@ class NotificationService:
                     # Рендерим сообщение
                     language = recipient.get("language", "ru")
                     message = template.render(context, language)
+
+                    serialized_context = cls._prepare_payload(context)
+                    serialized_metadata = cls._prepare_payload(kwargs)
 
                     # Создаем уведомление в очереди
                     scheduled_for = timezone.now() + timedelta(
@@ -64,9 +185,9 @@ class NotificationService:
                         event=event,
                         channel=channel,
                         message=message,
-                        context=context,
+                        context=serialized_context,
                         scheduled_for=scheduled_for,
-                        metadata=kwargs,
+                        metadata=serialized_metadata,
                     )
 
                     notifications.append(notification)
@@ -155,7 +276,7 @@ class NotificationService:
             from booking_bot.users.models import UserProfile
 
             admins = UserProfile.objects.filter(
-                role__in=["admin", "super_admin"]
+                role__in=["admin", "super_admin", "super_user"]
             ).select_related("user")
 
             for admin_profile in admins:
@@ -170,6 +291,78 @@ class NotificationService:
                 )
 
         return recipients
+
+    @classmethod
+    def _prepare_payload(cls, payload):
+        if payload is None:
+            return {}
+        return cls._make_json_safe(payload)
+
+    @classmethod
+    def _ensure_default_templates(cls, event: str, channel: Optional[str] = None):
+        from .models import NotificationTemplate
+
+        defaults = DEFAULT_TEMPLATES.get(event, [])
+        created_template = None
+
+        for item in defaults:
+            if channel and item["channel"] != channel:
+                continue
+
+            template, created = NotificationTemplate.objects.get_or_create(
+                event=event,
+                channel=item["channel"],
+                defaults={
+                    "template_ru": item["template_ru"],
+                    "template_kz": item.get("template_kz", item["template_ru"]),
+                    "template_en": item.get("template_en", item["template_ru"]),
+                    "send_to_user": item.get("send_to_user", True),
+                    "send_to_owner": item.get("send_to_owner", False),
+                    "send_to_admins": item.get("send_to_admins", False),
+                    "delay_minutes": 0,
+                },
+            )
+            if created:
+                logger.info(
+                    "Default notification template created for event '%s' (channel %s)",
+                    event,
+                    item["channel"],
+                )
+            if channel:
+                created_template = template
+
+        return created_template
+
+    @classmethod
+    def _make_json_safe(cls, value):
+        if isinstance(value, dict):
+            return {str(key): cls._make_json_safe(val) for key, val in value.items()}
+
+        if isinstance(value, (list, tuple, set)):
+            return [cls._make_json_safe(item) for item in value]
+
+        if isinstance(value, models.Model):
+            return {
+                "model": value._meta.label_lower,
+                "pk": value.pk,
+            }
+
+        if isinstance(value, (datetime, date)):
+            return value.isoformat()
+
+        if isinstance(value, Decimal):
+            return float(value)
+
+        if hasattr(value, "isoformat") and callable(value.isoformat):
+            try:
+                return value.isoformat()
+            except Exception:  # noqa: BLE001 - fallback на строку
+                return str(value)
+
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+
+        return str(value)
 
     @classmethod
     def process_queue(cls):

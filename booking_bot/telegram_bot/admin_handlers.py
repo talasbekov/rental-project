@@ -1,11 +1,23 @@
+import csv
 import logging
 import re
 from datetime import date, timedelta
 from math import ceil
-from typing import Optional
-from django.db.models import Sum, F, Avg, ExpressionWrapper, DurationField
+from typing import Dict, List, Optional, Tuple
+from io import BytesIO, StringIO
+
+from django.db.models import (
+    Sum,
+    F,
+    Avg,
+    Count,
+    ExpressionWrapper,
+    DurationField,
+)
 from telegram import KeyboardButton, ReplyKeyboardMarkup
-from booking_bot.users.models import UserProfile
+from openpyxl import Workbook
+
+from booking_bot.users.models import UserProfile, RealEstateAgency
 from booking_bot.listings.models import Property, City, District, PropertyPhoto
 from booking_bot.bookings.models import Booking
 from .constants import (
@@ -30,10 +42,527 @@ from .constants import (
     STATE_WAITING_NEW_STATUS, PAGE_SIZE, STATE_PHOTO_MANAGEMENT,
 )
 
-from .utils import send_telegram_message, send_document
+from .utils import send_telegram_message
 from ..settings import TELEGRAM_BOT_TOKEN
 
 logger = logging.getLogger(__name__)
+
+ANALYTICS_PAGE_SIZE = 5
+PERIOD_PRESETS: Dict[str, Dict[str, object]] = {
+    "day": {"days": 0, "label": "день"},
+    "week": {"days": 7, "label": "неделю"},
+    "month": {"days": 30, "label": "месяц"},
+    "quarter": {"days": 90, "label": "квартал"},
+    "year": {"days": 365, "label": "год"},
+}
+PERIOD_BUTTONS = {
+    "День": "day",
+    "Неделя": "week",
+    "Месяц": "month",
+    "Квартал": "quarter",
+    "Год": "year",
+}
+ANALYTIC_STATUSES = ["confirmed", "completed"]
+
+
+def _resolve_period_bounds(period: str) -> Tuple[date, date, str]:
+    preset = PERIOD_PRESETS.get(period, PERIOD_PRESETS["month"])
+    today = date.today()
+    days = int(preset["days"])
+    start = today - timedelta(days=days) if days else today
+    return start, today, str(preset["label"])
+
+
+def _period_keyboard() -> List[List[KeyboardButton]]:
+    return [
+        [KeyboardButton("День"), KeyboardButton("Неделя"), KeyboardButton("Месяц")],
+        [KeyboardButton("Квартал"), KeyboardButton("Год")],
+    ]
+
+
+def _slice_page(items: List[dict], page: int, page_size: int = ANALYTICS_PAGE_SIZE) -> List[dict]:
+    start_index = max(page - 1, 0) * page_size
+    end_index = start_index + page_size
+    return items[start_index:end_index]
+
+
+def _collect_realtor_metrics(period: str):
+    start, end, label = _resolve_period_bounds(period)
+    admins = (
+        UserProfile.objects.filter(role=UserProfile.ROLE_ADMIN)
+        .select_related("user", "agency")
+        .order_by("user__username")
+    )
+
+    admin_ids = [profile.user_id for profile in admins if profile.user_id]
+    if not admin_ids:
+        return [], start, end, label
+
+    bookings = Booking.objects.filter(
+        status__in=ANALYTIC_STATUSES,
+        start_date__gte=start,
+        start_date__lte=end,
+        property__owner_id__in=admin_ids,
+    )
+
+    owner_metrics: Dict[int, Dict[str, float]] = {
+        row["property__owner_id"]: {
+            "revenue": row.get("total_revenue") or 0,
+            "bookings": row.get("bookings_count") or 0,
+        }
+        for row in bookings.values("property__owner_id").annotate(
+            total_revenue=Sum("total_price"),
+            bookings_count=Count("id"),
+        )
+    }
+
+    property_counts: Dict[int, int] = {
+        row["owner_id"]: row["property_count"]
+        for row in Property.objects.filter(owner_id__in=admin_ids)
+        .values("owner_id")
+        .annotate(property_count=Count("id"))
+    }
+
+    results: List[Dict[str, object]] = []
+    for profile in admins:
+        user = profile.user
+        if not user:
+            continue
+        display_name = user.get_full_name() or getattr(user, "username", "") or f"ID {user.id}"
+        metrics = owner_metrics.get(profile.user_id, {"revenue": 0, "bookings": 0})
+        results.append(
+            {
+                "profile": profile,
+                "name": display_name,
+                "agency": profile.agency.name if profile.agency else None,
+                "revenue": metrics["revenue"],
+                "bookings": metrics["bookings"],
+                "properties": property_counts.get(profile.user_id, 0),
+            }
+        )
+
+    results.sort(key=lambda item: (-float(item["revenue"]), item["name"].lower()))
+    return results, start, end, label
+
+
+def _collect_agency_metrics(period: str):
+    start, end, label = _resolve_period_bounds(period)
+    agency_members = (
+        UserProfile.objects.filter(role=UserProfile.ROLE_ADMIN, agency__isnull=False)
+        .select_related("agency", "user")
+    )
+
+    if not agency_members.exists():
+        return [], start, end, label
+
+    agency_member_counts = {
+        row["agency_id"]: row["member_count"]
+        for row in agency_members.values("agency_id").annotate(member_count=Count("id"))
+    }
+
+    agency_ids = list(agency_member_counts.keys())
+    agencies = RealEstateAgency.objects.filter(id__in=agency_ids).order_by("name")
+
+    bookings = Booking.objects.filter(
+        status__in=ANALYTIC_STATUSES,
+        start_date__gte=start,
+        start_date__lte=end,
+        property__owner__profile__agency_id__in=agency_ids,
+    )
+
+    agency_metrics: Dict[int, Dict[str, float]] = {
+        row["property__owner__profile__agency_id"]: {
+            "revenue": row.get("total_revenue") or 0,
+            "bookings": row.get("bookings_count") or 0,
+        }
+        for row in bookings.values("property__owner__profile__agency_id").annotate(
+            total_revenue=Sum("total_price"),
+            bookings_count=Count("id"),
+        )
+    }
+
+    property_counts: Dict[int, int] = {
+        row["owner__profile__agency_id"]: row["property_count"]
+        for row in Property.objects.filter(owner__profile__agency_id__in=agency_ids)
+        .values("owner__profile__agency_id")
+        .annotate(property_count=Count("id"))
+    }
+
+    results: List[Dict[str, object]] = []
+    for agency in agencies:
+        metrics = agency_metrics.get(agency.id, {"revenue": 0, "bookings": 0})
+        results.append(
+            {
+                "agency": agency,
+                "revenue": metrics["revenue"],
+                "bookings": metrics["bookings"],
+                "properties": property_counts.get(agency.id, 0),
+                "members": agency_member_counts.get(agency.id, 0),
+            }
+        )
+
+    results.sort(key=lambda item: (-float(item["revenue"]), item["agency"].name.lower()))
+    return results, start, end, label
+
+
+def _collect_agency_detail_metrics(agency: RealEstateAgency, period: str):
+    start, end, label = _resolve_period_bounds(period)
+    properties = Property.objects.filter(owner__profile__agency=agency)
+    property_ids = list(properties.values_list("id", flat=True))
+
+    bookings = Booking.objects.filter(
+        status__in=ANALYTIC_STATUSES,
+        start_date__gte=start,
+        start_date__lte=end,
+        property_id__in=property_ids,
+    )
+
+    summary = bookings.aggregate(
+        total_revenue=Sum("total_price"),
+        total_bookings=Count("id"),
+    )
+
+    cancelled = Booking.objects.filter(
+        status="cancelled",
+        start_date__gte=start,
+        start_date__lte=end,
+        property_id__in=property_ids,
+    )
+
+    duration_expr = ExpressionWrapper(
+        F("end_date") - F("start_date"), output_field=DurationField()
+    )
+    occupied_delta = bookings.annotate(duration=duration_expr).aggregate(total=Sum("duration"))["total"]
+    occupied_days = occupied_delta.days if occupied_delta else 0
+    period_days = max((end - start).days or 1, 1)
+    inventory_days = max(len(property_ids), 1) * period_days
+    occupancy_rate = (occupied_days / inventory_days * 100) if inventory_days else 0
+
+    cancel_breakdown = [
+        (
+            row["cancel_reason"] or "",
+            row["total"],
+        )
+        for row in cancelled.values("cancel_reason").annotate(total=Count("id"))
+        if row["total"]
+    ]
+
+    top_props_revenue = list(
+        bookings.values("property__name")
+        .annotate(total=Sum("total_price"))
+        .order_by("-total")[:5]
+    )
+    top_props_bookings = list(
+        bookings.values("property__name")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
+    )
+    top_users_count = list(
+        bookings.values("user__username")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
+    )
+    top_users_spend = list(
+        bookings.values("user__username")
+        .annotate(total=Sum("total_price"))
+        .order_by("-total")[:5]
+    )
+    top_realtor_revenue = list(
+        bookings.values("property__owner__username")
+        .annotate(total=Sum("total_price"))
+        .order_by("-total")[:5]
+    )
+    top_realtor_bookings = list(
+        bookings.values("property__owner__username")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
+    )
+
+    return {
+        "start": start,
+        "end": end,
+        "label": label,
+        "summary": summary,
+        "properties": len(property_ids),
+        "members": agency.members.count(),
+        "occupancy": occupancy_rate,
+        "cancel_breakdown": cancel_breakdown,
+        "top_props_revenue": top_props_revenue,
+        "top_props_bookings": top_props_bookings,
+        "top_users_count": top_users_count,
+        "top_users_spend": top_users_spend,
+        "top_realtor_revenue": top_realtor_revenue,
+        "top_realtor_bookings": top_realtor_bookings,
+        "cancelled_total": cancelled.count(),
+    }
+
+
+@log_handler
+def show_realtor_statistics(chat_id: int, period: str = "month", page: int = 1):
+    profile = _get_profile(chat_id)
+    if profile.role not in ("super_admin", "super_user"):
+        send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
+        return
+
+    data, start, end, label = _collect_realtor_metrics(period)
+
+    profile_state = {
+        "state": "super_admin_realtor_stats",
+        "period": period,
+        "page": page,
+        "analytics_scope": "realtors",
+    }
+
+    if not data:
+        keyboard = _period_keyboard()
+        keyboard.append([KeyboardButton("🏢 Агентства")])
+        keyboard.append([KeyboardButton("🧭 Главное меню")])
+        send_telegram_message(
+            chat_id,
+            "📊 *Риелторы*\n\nДанных за выбранный период пока нет.",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
+        )
+        profile.telegram_state = profile_state
+        profile.save()
+        return
+
+    total = len(data)
+    total_pages = max(1, ceil(total / ANALYTICS_PAGE_SIZE))
+    page = max(1, min(page, total_pages))
+    page_items = _slice_page(data, page)
+
+    start_idx = (page - 1) * ANALYTICS_PAGE_SIZE
+    lines = [
+        f"📊 *Риелторы — доход за {label}*",
+        f"Период: {start.strftime('%d.%m.%Y')} – {end.strftime('%d.%m.%Y')}",
+        f"Страница {page}/{total_pages}\n",
+    ]
+
+    for offset, item in enumerate(page_items, start=1):
+        idx = start_idx + offset
+        revenue = float(item["revenue"] or 0)
+        bookings_count = int(item["bookings"] or 0)
+        property_count = int(item["properties"] or 0)
+        line = (
+            f"{idx}. {item['name']} — {revenue:,.0f} ₸ | броней: {bookings_count} | объектов: {property_count}"
+        )
+        if item["agency"]:
+            line += f" | агентство: {item['agency']}"
+        lines.append(line)
+
+    lines.append("\nИспользуйте кнопки для смены периода или экспорта отчета.")
+
+    nav_row: List[KeyboardButton] = []
+    if page > 1:
+        nav_row.append(KeyboardButton(f"⬅️ Назад (стр. {page - 1})"))
+    nav_row.append(KeyboardButton(f"📄 {page}/{total_pages}"))
+    if page < total_pages:
+        nav_row.append(KeyboardButton(f"➡️ Далее (стр. {page + 1})"))
+
+    keyboard: List[List[KeyboardButton]] = []
+    if nav_row:
+        keyboard.append(nav_row)
+    keyboard.extend(_period_keyboard())
+    keyboard.append([KeyboardButton("🏢 Агентства"), KeyboardButton("📈 Экспорт XLSX")])
+    keyboard.append([KeyboardButton("🧭 Главное меню")])
+
+    send_telegram_message(
+        chat_id,
+        "\n".join(lines),
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
+    )
+
+    profile_state["page"] = page
+    profile.telegram_state = profile_state
+    profile.save()
+
+
+@log_handler
+def show_agency_statistics(chat_id: int, period: str = "month", page: int = 1):
+    profile = _get_profile(chat_id)
+    if profile.role not in ("super_admin", "super_user"):
+        send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
+        return
+
+    data, start, end, label = _collect_agency_metrics(period)
+
+    state_data = {
+        "state": "super_admin_agency_list",
+        "period": period,
+        "page": page,
+        "analytics_scope": "agency_list",
+        "agency_lookup": {},
+    }
+
+    if not data:
+        keyboard = _period_keyboard()
+        keyboard.append([KeyboardButton("📊 Риелторы")])
+        keyboard.append([KeyboardButton("🧭 Главное меню")])
+        send_telegram_message(
+            chat_id,
+            "🏢 *Агентства*\n\nДанных за выбранный период пока нет.",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
+        )
+        profile.telegram_state = state_data
+        profile.save()
+        return
+
+    total = len(data)
+    total_pages = max(1, ceil(total / ANALYTICS_PAGE_SIZE))
+    page = max(1, min(page, total_pages))
+    page_items = _slice_page(data, page)
+
+    lines = [
+        f"🏢 *Агентства — доход за {label}*",
+        f"Период: {start.strftime('%d.%m.%Y')} – {end.strftime('%d.%m.%Y')}",
+        f"Страница {page}/{total_pages}\n",
+    ]
+
+    start_idx = (page - 1) * ANALYTICS_PAGE_SIZE
+    keyboard: List[List[KeyboardButton]] = []
+    for offset, item in enumerate(page_items, start=1):
+        idx = start_idx + offset
+        agency = item["agency"]
+        revenue = float(item["revenue"] or 0)
+        bookings_count = int(item["bookings"] or 0)
+        property_count = int(item["properties"] or 0)
+        member_count = int(item["members"] or 0)
+        lines.append(
+            f"{idx}. {agency.name} — {revenue:,.0f} ₸ | броней: {bookings_count} | объектов: {property_count} | риелторов: {member_count}"
+        )
+        button_text = f"🏢 {agency.name} • {revenue:,.0f} ₸"
+        state_data["agency_lookup"][button_text] = agency.id
+        keyboard.append([KeyboardButton(button_text)])
+
+    lines.append("\nВыберите агентство для подробной аналитики или измените период.")
+
+    nav_row: List[KeyboardButton] = []
+    if page > 1:
+        nav_row.append(KeyboardButton(f"⬅️ Назад (стр. {page - 1})"))
+    nav_row.append(KeyboardButton(f"📄 {page}/{total_pages}"))
+    if page < total_pages:
+        nav_row.append(KeyboardButton(f"➡️ Далее (стр. {page + 1})"))
+
+    if nav_row:
+        keyboard.append(nav_row)
+    keyboard.extend(_period_keyboard())
+    keyboard.append([KeyboardButton("📊 Риелторы"), KeyboardButton("📈 Экспорт XLSX")])
+    keyboard.append([KeyboardButton("🧭 Главное меню")])
+
+    send_telegram_message(
+        chat_id,
+        "\n".join(lines),
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
+    )
+
+    state_data["page"] = page
+    profile.telegram_state = state_data
+    profile.save()
+
+
+@log_handler
+def show_agency_details(
+    chat_id: int,
+    agency_id: int,
+    period: str = "month",
+    source_page: Optional[int] = None,
+):
+    profile = _get_profile(chat_id)
+    if profile.role not in ("super_admin", "super_user"):
+        send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
+        return
+
+    summary_period: Optional[Tuple[date, date]] = None
+
+    try:
+        agency = RealEstateAgency.objects.get(id=agency_id)
+    except RealEstateAgency.DoesNotExist:
+        send_telegram_message(chat_id, "Агентство не найдено.")
+        return
+
+    metrics = _collect_agency_detail_metrics(agency, period)
+    summary = metrics.get("summary") or {"total_revenue": 0, "total_bookings": 0}
+    start = metrics["start"]
+    end = metrics["end"]
+    label = metrics["label"]
+
+    lines = [
+        f"🏢 *{agency.name}* — аналитика за {label}",
+        f"Период: {start.strftime('%d.%m.%Y')} – {end.strftime('%d.%m.%Y')}",
+        (
+            f"Доход: {float(summary.get('total_revenue') or 0):,.0f} ₸ | "
+            f"Брони: {int(summary.get('total_bookings') or 0)}"
+        ),
+        (
+            f"Объектов: {metrics['properties']} | Риелторов: {metrics['members']} | "
+            f"Загрузка: {metrics['occupancy']:.1f}% | Отмен: {metrics['cancelled_total']}"
+        ),
+        "",
+    ]
+
+    def _format_ranked(items: List[dict], value_key: str, label_key: str, is_currency: bool = False):
+        if not items:
+            return ["— Нет данных —"]
+        formatted = []
+        for idx, row in enumerate(items, start=1):
+            label_value = row.get(label_key) or "—"
+            metric_value = row.get(value_key) or 0
+            if is_currency:
+                metric_value = f"{float(metric_value):,.0f} ₸"
+            else:
+                metric_value = str(metric_value)
+            formatted.append(f"{idx}. {label_value}: {metric_value}")
+        return formatted
+
+    lines.append("🏠 Топ-5 квартир по доходу:")
+    lines.extend(_format_ranked(metrics["top_props_revenue"], "total", "property__name", is_currency=True))
+    lines.append("")
+    lines.append("🏠 Топ-5 квартир по бронированиям:")
+    lines.extend(_format_ranked(metrics["top_props_bookings"], "count", "property__name"))
+    lines.append("")
+    lines.append("👥 Топ-5 гостей по количеству заселений:")
+    lines.extend(_format_ranked(metrics["top_users_count"], "count", "user__username"))
+    lines.append("")
+    lines.append("💸 Топ-5 гостей по сумме трат:")
+    lines.extend(_format_ranked(metrics["top_users_spend"], "total", "user__username", is_currency=True))
+    lines.append("")
+    lines.append("🧑‍💼 Топ-5 риелторов по доходу:")
+    lines.extend(_format_ranked(metrics["top_realtor_revenue"], "total", "property__owner__username", is_currency=True))
+    lines.append("")
+    lines.append("🧑‍💼 Топ-5 риелторов по бронированиям:")
+    lines.extend(_format_ranked(metrics["top_realtor_bookings"], "count", "property__owner__username"))
+    lines.append("")
+
+    cancel_labels = dict(Booking.CANCEL_REASON_CHOICES)
+    lines.append("🚫 Отмены по причинам:")
+    if not metrics["cancel_breakdown"]:
+        lines.append("— Нет данных —")
+    else:
+        for reason_code, total in metrics["cancel_breakdown"]:
+            reason_label = cancel_labels.get(reason_code, reason_code or "Без причины")
+            lines.append(f"• {reason_label}: {total}")
+
+    keyboard = _period_keyboard()
+    keyboard.insert(0, [KeyboardButton("⬅️ К списку агентств")])
+    keyboard.append([KeyboardButton("📊 Риелторы"), KeyboardButton("🏢 Агентства")])
+    keyboard.append([KeyboardButton("📈 Экспорт XLSX")])
+    keyboard.append([KeyboardButton("🧭 Главное меню")])
+
+    send_telegram_message(
+        chat_id,
+        "\n".join(lines),
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True).to_dict(),
+    )
+
+    profile.telegram_state = {
+        "state": "super_admin_agency_detail",
+        "period": period,
+        "analytics_scope": "agency_detail",
+        "agency_id": agency.id,
+        "previous_page": source_page,
+    }
+    profile.save()
+
 
 # Новые состояния для кодов доступа
 STATE_ADMIN_ADD_ENTRY_FLOOR = "admin_add_entry_floor"
@@ -69,7 +598,7 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
 
     # Триггер на первый шаг
     if text == "➕ Добавить квартиру" and state not in admin_states:
-        if profile.role not in ("admin", "super_admin"):
+        if profile.role not in ("admin", "super_admin", "super_user"):
             send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
             return True
         jwt = (state_data or {}).get("jwt_access_token")
@@ -722,7 +1251,7 @@ def show_admin_menu(chat_id):
         [KeyboardButton("🏠 Мои квартиры")],
         [KeyboardButton("📈 Расширенная аналитика")],
     ]
-    if profile.role == "super_admin":
+    if profile.role in ("super_admin", "super_user"):
         keyboard.append([KeyboardButton("👥 Управление админами")])
         keyboard.append([KeyboardButton("📊 KO-фактор гостей")])
     keyboard.append([KeyboardButton("🧭 Главное меню")])
@@ -739,7 +1268,7 @@ def show_admin_menu(chat_id):
 def show_admin_panel(chat_id):
     """Отобразить меню администратора."""
     profile = _get_profile(chat_id)
-    if profile.role not in ("admin", "super_admin"):
+    if profile.role not in ("admin", "super_admin", "super_user"):
         send_telegram_message(chat_id, "У вас нет доступа к админ‑панели.")
         return
 
@@ -748,7 +1277,7 @@ def show_admin_panel(chat_id):
         [KeyboardButton("➕ Добавить квартиру"), KeyboardButton("🏠 Мои квартиры")],
         [KeyboardButton("📊 Статистика"), KeyboardButton("📝 Отзывы о гостях")],
         [
-            KeyboardButton("📥 Скачать CSV"),
+            KeyboardButton("📈 Экспорт XLSX"),
             KeyboardButton("🧭 Главное меню"),
         ]
     ]
@@ -767,7 +1296,7 @@ NAV_PAGE_RE = re.compile(r"\(стр\.?\s*(\d+)\)")
 def show_admin_properties(chat_id, page: int = 1):
     """Показать список квартир админа с возможностью просмотра доступности (Reply + пагинация по 3)"""
     profile = _get_profile(chat_id)
-    if profile.role not in ("admin", "super_admin"):
+    if profile.role not in ("admin", "super_admin", "super_user"):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
 
@@ -879,7 +1408,7 @@ def show_property_availability(chat_id, property_id):
     """Показать информацию о доступности квартиры (замена календаря)"""
     profile = _get_profile(chat_id)
 
-    if profile.role not in ('admin', 'super_admin'):
+    if profile.role not in ('admin', 'super_admin', 'super_user'):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
 
@@ -1056,18 +1585,10 @@ def handle_edit_property_choice(chat_id, text):
 def show_detailed_statistics(chat_id, period="month"):
     """Показать детальную статистику и кнопки выбора периода."""
     profile = _get_profile(chat_id)
-    if profile.role not in ("admin", "super_admin"):
+    if profile.role not in ("admin", "super_admin", "super_user"):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
-    today = date.today()
-    if period == "week":
-        start = today - timedelta(days=7)
-    elif period == "month":
-        start = today - timedelta(days=30)
-    elif period == "quarter":
-        start = today - timedelta(days=90)
-    else:
-        start = today - timedelta(days=365)
+    start, today, label = _resolve_period_bounds(period)
     if profile.role == "admin":
         props = Property.objects.filter(owner=profile.user)
     else:
@@ -1083,7 +1604,7 @@ def show_detailed_statistics(chat_id, period="month"):
     avg_value = total_revenue / total_bookings if total_bookings else 0
     # Текст
     text = (
-        f"📊 *Статистика за {period}:*\n"
+        f"📊 *Статистика за {label}:*\n"
         f"Доход: {total_revenue:,.0f} ₸\n"
         f"Брони: {total_bookings}, Отменено: {canceled}\n"
         f"Средний чек: {avg_value:,.0f} ₸"
@@ -1092,12 +1613,9 @@ def show_detailed_statistics(chat_id, period="month"):
     profile.telegram_state = {"state": "detailed_stats", "period": period}
     profile.save()
 
-    buttons = [
-        [KeyboardButton("Неделя"), KeyboardButton("Месяц")],
-        [KeyboardButton("Квартал"), KeyboardButton("Год")],
-        [KeyboardButton("📥 Скачать CSV")],
-        [KeyboardButton("🧭 Главное меню")],
-    ]
+    buttons = _period_keyboard()
+    buttons.append([KeyboardButton("📈 Экспорт XLSX")])
+    buttons.append([KeyboardButton("🧭 Главное меню")])
     send_telegram_message(
         chat_id,
         text,
@@ -1111,109 +1629,182 @@ def show_detailed_statistics(chat_id, period="month"):
 def show_extended_statistics(chat_id, period="month"):
     """Показать расширенную статистику для администратора."""
     profile = _get_profile(chat_id)
-    # Доступ только для админа или супер‑админа
-    if profile.role not in ("admin", "super_admin"):
+    if profile.role not in ("admin", "super_admin", "super_user"):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
 
-    today = date.today()
-    if period == "week":
-        start = today - timedelta(days=7)
-    elif period == "month":
-        start = today - timedelta(days=30)
-    elif period == "quarter":
-        start = today - timedelta(days=90)
+    start, today, period_label = _resolve_period_bounds(period)
+
+    if profile.role == "admin":
+        props = Property.objects.filter(owner=profile.user)
     else:
-        start = today - timedelta(days=365)
+        props = Property.objects.all()
 
-    # Фильтр по объектам владельца (админа) или все объекты (супер‑админ)
-    props = (
-        Property.objects.filter(owner=profile.user)
-        if profile.role == "admin"
-        else Property.objects.all()
-    )
+    if not props.exists():
+        send_telegram_message(chat_id, "Для выбранного периода отсутствуют данные.")
+        return
 
-    # Подтверждённые и завершённые брони за период
+    base_filter = {
+        "property__in": props,
+        "created_at__gte": start,
+    }
+
     bookings = Booking.objects.filter(
-        property__in=props, created_at__gte=start, status__in=["confirmed", "completed"]
+        status__in=["confirmed", "completed"], **base_filter
     )
 
-    total_revenue = bookings.aggregate(Sum("total_price"))["total_price__sum"] or 0
+    total_revenue = bookings.aggregate(total=Sum("total_price"))["total"] or 0
     total_bookings = bookings.count()
-    canceled = Booking.objects.filter(
-        property__in=props, created_at__gte=start, status="cancelled"
-    ).count()
+    canceled_qs = Booking.objects.filter(status="cancelled", **base_filter)
+    canceled_count = canceled_qs.count()
     avg_check = total_revenue / total_bookings if total_bookings else 0
 
-    # Рассчитываем длительность каждого бронирования и время между бронированием и заездом
     duration_expr = ExpressionWrapper(
         F("end_date") - F("start_date"), output_field=DurationField()
     )
     lead_expr = ExpressionWrapper(
         F("start_date") - F("created_at"), output_field=DurationField()
     )
-    bookings = bookings.annotate(duration_days=duration_expr, lead_days=lead_expr)
+    annotated_bookings = bookings.annotate(
+        duration_days=duration_expr, lead_days=lead_expr
+    )
 
-    total_nights = bookings.aggregate(Sum("duration_days"))["duration_days__sum"]
-    avg_stay = bookings.aggregate(Avg("duration_days"))["duration_days__avg"]
-    avg_lead = bookings.aggregate(Avg("lead_days"))["lead_days__avg"]
+    total_nights_delta = annotated_bookings.aggregate(
+        total=Sum("duration_days")
+    )["total"]
+    avg_stay_delta = annotated_bookings.aggregate(
+        avg=Avg("duration_days")
+    )["avg"]
+    avg_lead_delta = annotated_bookings.aggregate(avg=Avg("lead_days"))["avg"]
 
-    # Конвертируем результаты в дни
-    total_nights = total_nights.days if total_nights else 0
-    avg_stay = avg_stay.days if avg_stay else 0
-    avg_lead = avg_lead.days if avg_lead else 0
+    total_nights = total_nights_delta.days if total_nights_delta else 0
+    avg_stay = avg_stay_delta.days if avg_stay_delta else 0
+    avg_lead = avg_lead_delta.days if avg_lead_delta else 0
 
-    # Коэффициент занятости (в процентах)
-    period_days = (today - start).days or 1
-    total_available = (
-        period_days * props.count()
-    )  # сколько ночей было доступно суммарно
-    occupancy_rate = (total_nights / total_available * 100) if total_available else 0
+    period_days = max((today - start).days, 1)
+    inventory = props.count() * period_days
+    occupancy_rate = (total_nights / inventory * 100) if inventory else 0
 
-    # Доход по классам жилья
-    class_revenue_qs = bookings.values("property__property_class").annotate(
+    class_labels = {
+        "comfort": "Комфорт",
+        "business": "Бизнес",
+        "premium": "Премиум",
+    }
+    class_revenue = bookings.values("property__property_class").annotate(
         total=Sum("total_price")
     )
-    class_names = {"economy": "Комфорт", "business": "Бизнес", "luxury": "Премиум"}
-    class_revenue_text = ""
-    for entry in class_revenue_qs:
-        cls = class_names.get(
-            entry["property__property_class"], entry["property__property_class"]
-        )
-        class_revenue_text += f"{cls}: {entry['total']:,.0f} ₸\n"
+    class_lines = [
+        f"{class_labels.get(row['property__property_class'], row['property__property_class'])}: {row['total']:,.0f} ₸"
+        for row in class_revenue
+    ]
 
-    # Топ‑3 квартиры по доходу
-    top_props = (
+    top_props_revenue = (
         bookings.values("property__name")
         .annotate(total=Sum("total_price"))
-        .order_by("-total")[:3]
+        .order_by("-total")[:5]
     )
-    top_text = ""
-    for idx, item in enumerate(top_props, start=1):
-        top_text += f"{idx}. {item['property__name']}: {item['total']:,.0f} ₸\n"
+    top_props_count = (
+        bookings.values("property__name")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
+    )
 
-    # Формируем текст сообщения
-    text = (
-        f"📈 *Расширенная статистика за {period}:*\n\n"
-        f"💰 Доход: {total_revenue:,.0f} ₸\n"
-        f"📦 Брони: {total_bookings}, отмены: {canceled}\n"
-        f"💳 Средний чек: {avg_check:,.0f} ₸\n\n"
-        f"🏨 Занятость: {occupancy_rate:.1f}%\n"
-        f"🛏️ Средняя длительность проживания: {avg_stay} ноч.\n"
-        f"⏳ Средний срок бронирования до заезда: {avg_lead} дн.\n\n"
-        f"🏷️ Доход по классам:\n{class_revenue_text or 'нет данных'}\n"
-        f"🏆 Топ‑квартиры по доходу:\n{top_text or 'нет данных'}"
+    top_users_count = (
+        bookings.values("user__username")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
     )
+    top_users_spend = (
+        bookings.values("user__username")
+        .annotate(total=Sum("total_price"))
+        .order_by("-total")[:5]
+    )
+
+    top_agents_revenue = (
+        bookings.values("property__owner__username")
+        .annotate(total=Sum("total_price"))
+        .order_by("-total")[:5]
+    )
+    top_agents_count = (
+        bookings.values("property__owner__username")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
+    )
+
+    reason_labels = dict(Booking.CANCEL_REASON_CHOICES)
+    cancel_lines = [
+        f"{reason_labels.get(row['cancel_reason'], row['cancel_reason'] or 'без причины')}: {row['total']}"
+        for row in canceled_qs.values("cancel_reason").annotate(total=Count("id"))
+        if row["total"]
+    ]
+
+    top_props_revenue_lines = [
+        f"{idx}. {row['property__name']}: {row['total']:,.0f} ₸"
+        for idx, row in enumerate(top_props_revenue, start=1)
+    ]
+    top_props_count_lines = [
+        f"{idx}. {row['property__name']}: {row['count']}"
+        for idx, row in enumerate(top_props_count, start=1)
+    ]
+    top_users_count_lines = [
+        f"{idx}. {row['user__username']}: {row['count']}"
+        for idx, row in enumerate(top_users_count, start=1)
+    ]
+    top_users_spend_lines = [
+        f"{idx}. {row['user__username']}: {row['total']:,.0f} ₸"
+        for idx, row in enumerate(top_users_spend, start=1)
+    ]
+    top_agents_revenue_lines = [
+        f"{idx}. {row['property__owner__username']}: {row['total']:,.0f} ₸"
+        for idx, row in enumerate(top_agents_revenue, start=1)
+    ]
+    top_agents_count_lines = [
+        f"{idx}. {row['property__owner__username']}: {row['count']}"
+        for idx, row in enumerate(top_agents_count, start=1)
+    ]
+
+    text_parts = [
+        f"📈 *Расширенная аналитика за {period_label}:*",
+        f"💰 Доход: {total_revenue:,.0f} ₸",
+        f"📦 Брони: {total_bookings}, отмены: {canceled_count}",
+        f"💳 Средний чек: {avg_check:,.0f} ₸",
+        f"🏨 Занятость: {occupancy_rate:.1f}%",
+        f"🛏️ Средняя длительность проживания: {avg_stay} ноч.",
+        f"⏳ Средний срок бронирования до заезда: {avg_lead} дн.",
+        "",
+        "🏷️ Доход по классам:",
+        *(class_lines or ["нет данных"]),
+        "",
+        "🏠 Топ-5 квартир по доходу:",
+        *(top_props_revenue_lines or ["нет данных"]),
+        "",
+        "📊 Топ-5 квартир по количеству броней:",
+        *(top_props_count_lines or ["нет данных"]),
+        "",
+        "👥 Топ-5 гостей по количеству заселений:",
+        *(top_users_count_lines or ["нет данных"]),
+        "",
+        "💸 Топ-5 гостей по сумме трат:",
+        *(top_users_spend_lines or ["нет данных"]),
+        "",
+        "🏢 Топ-5 риелторов по доходу:",
+        *(top_agents_revenue_lines or ["нет данных"]),
+        "",
+        "📈 Топ-5 риелторов по количеству броней:",
+        *(top_agents_count_lines or ["нет данных"]),
+    ]
+
+    if cancel_lines:
+        text_parts.extend(["", "🚫 Отмены по причинам:", *cancel_lines])
+
+    text = "\n".join(text_parts)
 
     profile.telegram_state = {"state": "extended_stats", "period": period}
     profile.save()
 
-    buttons = [
-        [KeyboardButton("Неделя"), KeyboardButton("Месяц")],
-        [KeyboardButton("Квартал"), KeyboardButton("Год")],
-        [KeyboardButton("📥 Скачать CSV")],
-        [KeyboardButton("🧭 Главное меню")],
-    ]
+    buttons = _period_keyboard()
+    buttons.append([KeyboardButton("📈 Экспорт XLSX")])
+    buttons.append([KeyboardButton("🧭 Главное меню")])
     send_telegram_message(
         chat_id,
         text,
@@ -1227,7 +1818,7 @@ def show_extended_statistics(chat_id, period="month"):
 def show_pending_guest_reviews(chat_id):
     """Показать список гостей, ожидающих отзыв"""
     profile = _get_profile(chat_id)
-    if profile.role not in ("admin", "super_admin"):
+    if profile.role not in ("admin", "super_admin", "super_user"):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
 
@@ -1431,7 +2022,7 @@ def update_guest_ko_factor(user):
 def show_top_users_statistics(chat_id):
     """Показать ТОП пользователей"""
     profile = _get_profile(chat_id)
-    if profile.role != "super_admin":
+    if profile.role not in ("super_admin", "super_user"):
         send_telegram_message(chat_id, "❌ Нет доступа")
         return
 
@@ -1467,77 +2058,454 @@ def show_top_users_statistics(chat_id):
 
 
 @log_handler
-def export_statistics_csv(chat_id: int, context=None, period: str = "month"):
-    """Генерация и отправка CSV со статистикой"""
+def export_statistics_xlsx(chat_id: int, context=None, period: str = "month"):
+    """Генерация и отправка XLSX отчета согласно текущему контексту аналитики."""
+
     profile = _get_profile(chat_id)
-    if profile.role not in ("admin", "super_admin"):
+    if profile.role not in ("admin", "super_admin", "super_user"):
         send_telegram_message(chat_id, "У вас нет доступа.")
         return
 
-    from datetime import date, timedelta
-    from django.db.models import Sum, Count
-    import csv
-    from io import StringIO, BytesIO
+    state_data = profile.telegram_state or {}
+    scope = state_data.get("analytics_scope", "global")
+    period = state_data.get("period", period)
 
-    # Определяем период
-    today = date.today()
-    if period == "week":
-        start = today - timedelta(days=7)
-    elif period == "month":
-        start = today - timedelta(days=30)
-    elif period == "quarter":
-        start = today - timedelta(days=90)
-    else:
-        start = today - timedelta(days=365)
+    try:
+        workbook = Workbook()
+        worksheet = workbook.active
 
-    # Получаем данные
-    if profile.role == "admin":
-        props = Property.objects.filter(owner=profile.user)
-    else:
-        props = Property.objects.all()
+        if scope == "realtors":
+            data, start, end, label = _collect_realtor_metrics(period)
+            worksheet.title = "Realtors"
+            worksheet.append(["#", "Риелтор", "Агентство", "Объектов", "Броней", "Доход, ₸"])
+            for idx, item in enumerate(data, start=1):
+                worksheet.append(
+                    [
+                        idx,
+                        item["name"],
+                        item["agency"] or "",
+                        int(item["properties"] or 0),
+                        int(item["bookings"] or 0),
+                        float(item["revenue"] or 0),
+                    ]
+                )
+        elif scope == "agency_list":
+            data, start, end, label = _collect_agency_metrics(period)
+            worksheet.title = "Agencies"
+            worksheet.append(["#", "Агентство", "Риелторов", "Объектов", "Броней", "Доход, ₸"])
+            for idx, item in enumerate(data, start=1):
+                agency = item["agency"]
+                worksheet.append(
+                    [
+                        idx,
+                        agency.name,
+                        int(item["members"] or 0),
+                        int(item["properties"] or 0),
+                        int(item["bookings"] or 0),
+                        float(item["revenue"] or 0),
+                    ]
+                )
+        elif scope == "agency_detail":
+            agency_id = state_data.get("agency_id")
+            if not agency_id:
+                send_telegram_message(chat_id, "Выберите агентство перед экспортом.")
+                return
+            agency = RealEstateAgency.objects.filter(id=agency_id).first()
+            if not agency:
+                send_telegram_message(chat_id, "Агентство не найдено для экспорта.")
+                return
 
-    bookings = Booking.objects.filter(
-        property__in=props, created_at__gte=start, status__in=["confirmed", "completed"]
-    )
+            metrics = _collect_agency_detail_metrics(agency, period)
+            summary = metrics.get("summary") or {"total_revenue": 0, "total_bookings": 0}
 
-    # Создаем CSV
-    output = StringIO()
-    writer = csv.writer(output)
+            worksheet.title = "Summary"
+            worksheet.append(["Агентство", agency.name])
+            worksheet.append(["Период", f"{metrics['start'].strftime('%d.%m.%Y')} – {metrics['end'].strftime('%d.%m.%Y')}"])
+            worksheet.append(["Доход, ₸", float(summary.get("total_revenue") or 0)])
+            worksheet.append(["Брони", int(summary.get("total_bookings") or 0)])
+            worksheet.append(["Объектов", metrics["properties"]])
+            worksheet.append(["Риелторов", metrics["members"]])
+            worksheet.append(["Загрузка, %", metrics["occupancy"]])
+            worksheet.append(["Отмен", metrics["cancelled_total"]])
 
-    # Заголовки
-    writer.writerow(["ID", "Квартира", "Гость", "Заезд", "Выезд", "Сумма", "Статус"])
+            top_properties = workbook.create_sheet("Top Properties")
+            top_properties.append(["#", "Квартира", "Доход, ₸", "Бронирований"])
+            for idx, row in enumerate(metrics["top_props_revenue"], start=1):
+                bookings_match = next((r for r in metrics["top_props_bookings"] if r["property__name"] == row["property__name"]), None)
+                top_properties.append(
+                    [
+                        idx,
+                        row["property__name"],
+                        float(row.get("total") or 0),
+                        int((bookings_match or {}).get("count") or 0),
+                    ]
+                )
 
-    # Данные
-    for booking in bookings:
-        writer.writerow(
-            [
-                booking.id,
-                booking.property.name,
-                booking.user.username,
-                booking.start_date.strftime("%d.%m.%Y"),
-                booking.end_date.strftime("%d.%m.%Y"),
-                float(booking.total_price),
-                booking.get_status_display(),
-            ]
+            top_guests = workbook.create_sheet("Top Guests")
+            top_guests.append(["#", "Гость", "Заселений", "Сумма, ₸"])
+            for idx, row in enumerate(metrics["top_users_count"], start=1):
+                spend_match = next((r for r in metrics["top_users_spend"] if r["user__username"] == row["user__username"]), None)
+                top_guests.append(
+                    [
+                        idx,
+                        row["user__username"],
+                        int(row.get("count") or 0),
+                        float((spend_match or {}).get("total") or 0),
+                    ]
+                )
+
+            top_agents = workbook.create_sheet("Top Realtors")
+            top_agents.append(["#", "Риелтор", "Бронирований", "Доход, ₸"])
+            for idx, row in enumerate(metrics["top_realtor_bookings"], start=1):
+                revenue_match = next(
+                    (r for r in metrics["top_realtor_revenue"] if r["property__owner__username"] == row["property__owner__username"]),
+                    None,
+                )
+                top_agents.append(
+                    [
+                        idx,
+                        row["property__owner__username"],
+                        int(row.get("count") or 0),
+                        float((revenue_match or {}).get("total") or 0),
+                    ]
+                )
+
+            cancellations = workbook.create_sheet("Cancellations")
+            cancellations.append(["Причина", "Количество"])
+            reason_labels = dict(Booking.CANCEL_REASON_CHOICES)
+            for code, total in metrics["cancel_breakdown"]:
+                cancellations.append([reason_labels.get(code, code or "Без причины"), total])
+        else:
+            start, end, label = _resolve_period_bounds(period)
+            if profile.role == "admin":
+                props = Property.objects.filter(owner=profile.user)
+            else:
+                props = Property.objects.all()
+
+            bookings = Booking.objects.filter(
+                property__in=props,
+                created_at__gte=start,
+                status__in=ANALYTIC_STATUSES,
+            )
+
+            worksheet.title = "Bookings"
+            worksheet.append(["#", "Квартира", "Гость", "Заезд", "Выезд", "Сумма, ₸", "Статус"])
+            for idx, booking in enumerate(bookings, start=1):
+                worksheet.append(
+                    [
+                        idx,
+                        booking.property.name,
+                        booking.user.username if booking.user else "",
+                        booking.start_date.strftime("%d.%m.%Y"),
+                        booking.end_date.strftime("%d.%m.%Y"),
+                        float(booking.total_price or 0),
+                        booking.get_status_display(),
+                    ]
+                )
+
+            summary_sheet = workbook.create_sheet("Summary")
+            totals = bookings.aggregate(total=Sum("total_price"), count=Count("id"))
+            summary_sheet.append(["Период", f"{start.strftime('%d.%m.%Y')} – {end.strftime('%d.%m.%Y')}"])
+            summary_sheet.append(["Доход, ₸", float(totals.get("total") or 0)])
+            summary_sheet.append(["Брони", int(totals.get("count") or 0)])
+
+        for sheet in workbook.worksheets:
+            for column in sheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    value = cell.value
+                    cell.number_format = "#,##0" if isinstance(value, (int, float)) else cell.number_format
+                    if value is not None:
+                        max_length = max(max_length, len(str(value)))
+                sheet.column_dimensions[column_letter].width = min(max_length + 2, 40)
+
+        buffer = BytesIO()
+        workbook.save(buffer)
+        buffer.seek(0)
+
+        filename = f"analytics_{scope}_{period}.xlsx"
+        caption = f"📈 Отчет за {period}"
+
+        import requests
+
+        bot_token = TELEGRAM_BOT_TOKEN
+        url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
+        files = {
+            "document": (
+                filename,
+                buffer.getvalue(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        }
+        data = {"chat_id": chat_id, "caption": caption}
+
+        response = requests.post(url, data=data, files=files, timeout=30)
+        if response.status_code != 200:
+            send_telegram_message(chat_id, "Ошибка при отправке отчета")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Failed to build analytics XLSX: %s", exc)
+        send_telegram_message(chat_id, "Не удалось сформировать отчет. Попробуйте позже.")
+
+
+@log_handler
+def export_statistics_csv(chat_id: int, context=None, period: str = "month"):
+    """Экспорт аналитики в CSV-файл согласно текущему выбранному скоупу."""
+
+    profile = _get_profile(chat_id)
+    if profile.role not in ("admin", "super_admin", "super_user"):
+        send_telegram_message(chat_id, "У вас нет доступа.")
+        return
+
+    state_data = profile.telegram_state or {}
+    scope = state_data.get("analytics_scope", "global")
+    period = state_data.get("period", period)
+
+    csv_buffer = StringIO()
+    writer = csv.writer(csv_buffer)
+    rows_written = 0
+
+    def _write_section(title: str):
+        nonlocal rows_written
+        if rows_written:
+            writer.writerow([])
+            rows_written += 1
+        writer.writerow([title])
+        rows_written += 1
+
+    def _write_table(headers, rows):
+        nonlocal rows_written
+        if headers:
+            writer.writerow(headers)
+            rows_written += 1
+        for row in rows:
+            writer.writerow(row)
+            rows_written += 1
+
+    try:
+        if scope == "realtors":
+            data, start, end, label = _collect_realtor_metrics(period)
+            if not data:
+                send_telegram_message(chat_id, "Нет данных для экспорта за выбранный период.")
+                return
+
+            _write_section(f"Риелторы — доход за {label}")
+            _write_table(
+                ["#", "Риелтор", "Агентство", "Объектов", "Броней", "Доход, ₸"],
+                [
+                    [
+                        idx,
+                        item["name"],
+                        item["agency"] or "",
+                        int(item["properties"] or 0),
+                        int(item["bookings"] or 0),
+                        float(item["revenue"] or 0),
+                    ]
+                    for idx, item in enumerate(data, start=1)
+                ],
+            )
+            summary_period = start, end
+
+        elif scope == "agency_list":
+            data, start, end, label = _collect_agency_metrics(period)
+            if not data:
+                send_telegram_message(chat_id, "Нет данных по агентствам за выбранный период.")
+                return
+
+            _write_section(f"Агентства — результаты за {label}")
+            _write_table(
+                ["#", "Агентство", "Риелторов", "Объектов", "Броней", "Доход, ₸"],
+                [
+                    [
+                        idx,
+                        item["agency"].name,
+                        int(item["members"] or 0),
+                        int(item["properties"] or 0),
+                        int(item["bookings"] or 0),
+                        float(item["revenue"] or 0),
+                    ]
+                    for idx, item in enumerate(data, start=1)
+                ],
+            )
+            summary_period = start, end
+
+        elif scope == "agency_detail":
+            agency_id = state_data.get("agency_id")
+            if not agency_id:
+                send_telegram_message(chat_id, "Сначала выберите агентство.")
+                return
+
+            agency = RealEstateAgency.objects.filter(id=agency_id).first()
+            if not agency:
+                send_telegram_message(chat_id, "Агентство не найдено.")
+                return
+
+            metrics = _collect_agency_detail_metrics(agency, period)
+            summary = metrics.get("summary") or {}
+
+            _write_section(f"Сводка по агентству {agency.name}")
+            _write_table(
+                ["Метрика", "Значение"],
+                [
+                    ("Период", f"{metrics['start'].strftime('%d.%m.%Y')} – {metrics['end'].strftime('%d.%m.%Y')}") ,
+                    ("Доход, ₸", float(summary.get("total_revenue") or 0)),
+                    ("Бронирований", int(summary.get("total_bookings") or 0)),
+                    ("Объектов", metrics["properties"]),
+                    ("Риелторов", metrics["members"]),
+                    ("Загрузка, %", round(metrics["occupancy"], 2)),
+                    ("Отмен", metrics["cancelled_total"]),
+                ],
+            )
+
+            if metrics["cancel_breakdown"]:
+                _write_section("Отмены по причинам")
+                _write_table(["Причина", "Количество"], metrics["cancel_breakdown"])
+
+            if metrics["top_props_revenue"]:
+                _write_section("ТОП-5 квартир по доходу")
+                _write_table(
+                    ["#", "Квартира", "Доход, ₸"],
+                    [
+                        [idx, row["property__name"], float(row.get("total") or 0)]
+                        for idx, row in enumerate(metrics["top_props_revenue"], start=1)
+                    ],
+                )
+
+            if metrics["top_props_bookings"]:
+                _write_section("ТОП-5 квартир по бронированиям")
+                _write_table(
+                    ["#", "Квартира", "Брони"],
+                    [
+                        [idx, row["property__name"], int(row.get("count") or 0)]
+                        for idx, row in enumerate(metrics["top_props_bookings"], start=1)
+                    ],
+                )
+
+            if metrics["top_users_count"]:
+                _write_section("ТОП-5 гостей по количеству заселений")
+                _write_table(
+                    ["#", "Гость", "Заселений"],
+                    [
+                        [idx, row["user__username"], int(row.get("count") or 0)]
+                        for idx, row in enumerate(metrics["top_users_count"], start=1)
+                    ],
+                )
+
+            if metrics["top_users_spend"]:
+                _write_section("ТОП-5 гостей по сумме трат")
+                _write_table(
+                    ["#", "Гость", "Сумма, ₸"],
+                    [
+                        [idx, row["user__username"], float(row.get("total") or 0)]
+                        for idx, row in enumerate(metrics["top_users_spend"], start=1)
+                    ],
+                )
+
+            if metrics["top_realtor_revenue"]:
+                _write_section("ТОП-5 риелторов по доходу")
+                _write_table(
+                    ["#", "Риелтор", "Доход, ₸"],
+                    [
+                        [idx, row["property__owner__username"], float(row.get("total") or 0)]
+                        for idx, row in enumerate(metrics["top_realtor_revenue"], start=1)
+                    ],
+                )
+
+            if metrics["top_realtor_bookings"]:
+                _write_section("ТОП-5 риелторов по бронированиям")
+                _write_table(
+                    ["#", "Риелтор", "Бронирований"],
+                    [
+                        [idx, row["property__owner__username"], int(row.get("count") or 0)]
+                        for idx, row in enumerate(metrics["top_realtor_bookings"], start=1)
+                    ],
+                )
+
+            summary_period = (metrics["start"], metrics["end"])
+
+        else:
+            start, end, label = _resolve_period_bounds(period)
+            if profile.role == UserProfile.ROLE_ADMIN:
+                properties_qs = Property.objects.filter(owner=profile.user)
+            else:
+                properties_qs = Property.objects.all()
+
+            bookings = (
+                Booking.objects.filter(
+                    property__in=properties_qs,
+                    created_at__gte=start,
+                    created_at__lte=end,
+                )
+                .select_related("property", "user")
+                .order_by("-created_at")
+            )
+
+            if not bookings.exists():
+                send_telegram_message(chat_id, "За выбранный период бронирований не найдено.")
+                return
+
+            _write_section(f"Бронирования за {label}")
+            _write_table(
+                [
+                    "ID",
+                    "Квартира",
+                    "Гость",
+                    "Заезд",
+                    "Выезд",
+                    "Сумма, ₸",
+                    "Статус",
+                    "Создано",
+                ],
+                [
+                    [
+                        booking.id,
+                        booking.property.name,
+                        booking.user.get_full_name() or booking.user.username,
+                        booking.start_date.strftime("%d.%m.%Y"),
+                        booking.end_date.strftime("%d.%m.%Y"),
+                        float(booking.total_price),
+                        booking.get_status_display(),
+                        booking.created_at.strftime("%d.%m.%Y %H:%M"),
+                    ]
+                    for booking in bookings
+                ],
+            )
+
+            summary_period = (start, end)
+
+        if rows_written == 0:
+            send_telegram_message(chat_id, "Нет данных для экспорта.")
+            return
+
+        csv_content = csv_buffer.getvalue().encode("utf-8-sig")
+        filename = f"analytics_{scope}_{period}.csv"
+        caption_period = ""
+        if summary_period:
+            start_dt, end_dt = summary_period
+            caption_period = f" {start_dt.strftime('%d.%m.%Y')} – {end_dt.strftime('%d.%m.%Y')}"
+        caption = f"📈 CSV-отчет{caption_period}"
+
+        import requests
+
+        response = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendDocument",
+            data={"chat_id": chat_id, "caption": caption},
+            files={
+                "document": (
+                    filename,
+                    csv_content,
+                    "text/csv",
+                )
+            },
+            timeout=30,
         )
 
-    # Конвертируем в bytes
-    output.seek(0)
-    file_data = output.getvalue().encode("utf-8-sig")  # UTF-8 с BOM для Excel
+        if response.status_code != 200:
+            send_telegram_message(chat_id, "Ошибка при отправке CSV-отчета")
 
-    # Отправляем файл через Telegram API
-    import requests
-
-    bot_token = TELEGRAM_BOT_TOKEN
-    url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
-
-    files = {"document": (f"statistics_{period}.csv", file_data, "text/csv")}
-    data = {"chat_id": chat_id, "caption": f"📊 Статистика за {period}"}
-
-    response = requests.post(url, data=data, files=files)
-
-    if response.status_code != 200:
-        send_telegram_message(chat_id, "Ошибка при отправке файла")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Failed to export analytics CSV: %s", exc)
+        send_telegram_message(chat_id, "Не удалось сформировать CSV. Попробуйте позже.")
 
 
 @log_handler
@@ -1583,7 +2551,7 @@ def show_property_management(chat_id, property_id):
 def show_super_admin_menu(chat_id):
     """Показать меню супер-админа"""
     profile = _get_profile(chat_id)
-    if profile.role != "super_admin":
+    if profile.role not in ("super_admin", "super_user"):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
 
@@ -1594,6 +2562,7 @@ def show_super_admin_menu(chat_id):
         [KeyboardButton("📋 Список админов")],
         [KeyboardButton("❌ Удалить админа")],
         [KeyboardButton("📊 Статистика по городам")],
+        [KeyboardButton("📊 Риелторы"), KeyboardButton("🏢 Агентства")],
         [KeyboardButton("📈 Общая статистика")],
         [KeyboardButton("🎯 План-факт")],
         [KeyboardButton("📊 KO-фактор гостей")],
@@ -1611,7 +2580,7 @@ def show_super_admin_menu(chat_id):
 def handle_add_admin(chat_id):
     """Начать процесс добавления админа"""
     profile = _get_profile(chat_id)
-    if profile.role != "super_admin":
+    if profile.role not in ("super_admin", "super_user"):
         return
 
     profile.telegram_state = {"state": "add_admin_username"}
@@ -1700,7 +2669,7 @@ def show_admins_list(chat_id):
 def show_city_statistics(chat_id, period="month"):
     """Показать статистику по городам для супер-админа"""
     profile = _get_profile(chat_id)
-    if profile.role != "super_admin":
+    if profile.role not in ("super_admin", "super_user"):
         send_telegram_message(chat_id, "❌ Нет доступа")
         return
 
@@ -1819,7 +2788,7 @@ def show_city_statistics(chat_id, period="month"):
 def show_plan_fact(chat_id):
     """Показать план-факт анализ"""
     profile = _get_profile(chat_id)
-    if profile.role not in ("admin", "super_admin"):
+    if profile.role not in ("admin", "super_admin", "super_user"):
         send_telegram_message(chat_id, "❌ Нет доступа")
         return
 
@@ -2026,7 +2995,7 @@ def save_property_target(chat_id, revenue_text):
 def handle_remove_admin(chat_id):
     """Начать процесс удаления админа"""
     profile = _get_profile(chat_id)
-    if profile.role != "super_admin":
+    if profile.role not in ("super_admin", "super_user"):
         return
 
     admins = UserProfile.objects.filter(role="admin")
@@ -2085,14 +3054,14 @@ def process_remove_admin(chat_id, text):
 def prompt_guest_review(chat_id, booking_id):
     """Запрос отзыва об госте от админа"""
     profile = _get_profile(chat_id)
-    if profile.role not in ("admin", "super_admin"):
+    if profile.role not in ("admin", "super_admin", "super_user"):
         return
 
     try:
         booking = Booking.objects.get(id=booking_id)
 
         # Проверяем, что это квартира админа
-        if booking.property.owner != profile.user and profile.role != "super_admin":
+        if booking.property.owner != profile.user and profile.role not in ("super_admin", "super_user"):
             return
 
         # Проверяем, что нет отзыва
@@ -2209,7 +3178,7 @@ def save_guest_review(chat_id, text):
 def show_ko_factor_report(chat_id):
     """Показать отчет по KO-фактору гостей"""
     profile = _get_profile(chat_id)
-    if profile.role != "super_admin":
+    if profile.role not in ("super_admin", "super_user"):
         send_telegram_message(chat_id, "❌ Нет доступа")
         return
 
@@ -2521,7 +3490,7 @@ STATE_MODERATE_REVIEW_ACTION = 'moderate_review_action'
 def show_pending_reviews(chat_id):
     """Показать список неодобренных отзывов для модерации"""
     profile = _get_profile(chat_id)
-    if profile.role not in ('admin', 'super_admin'):
+    if profile.role not in ('admin', 'super_admin', 'super_user'):
         send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
         return
 
@@ -2685,14 +3654,14 @@ def handle_moderate_review_action(chat_id, text):
 def show_admin_panel_with_moderation(chat_id):
     """Отобразить меню администратора с модерацией отзывов."""
     profile = _get_profile(chat_id)
-    if profile.role not in ('admin', 'super_admin'):
+    if profile.role not in ('admin', 'super_admin', 'super_user'):
         send_telegram_message(chat_id, "У вас нет доступа к админ‑панели.")
         return
 
     text = "🛠 *Панель администратора*.\nВыберите действие:"
     buttons = [
         [KeyboardButton("➕ Добавить квартиру"), KeyboardButton("🏠 Мои квартиры")],
-        [KeyboardButton("📊 Статистика"), KeyboardButton("📥 Скачать CSV")],
+        [KeyboardButton("📊 Статистика"), KeyboardButton("📈 Экспорт XLSX")],
         [KeyboardButton("📝 Отзывы о гостях"), KeyboardButton("✅ Модерация отзывов")],
         [KeyboardButton("🧭 Главное меню")]
     ]
@@ -2704,6 +3673,3 @@ def show_admin_panel_with_moderation(chat_id):
             input_field_placeholder="Выберите действие"
         ).to_dict()
     )
-
-
-

@@ -116,6 +116,35 @@ def _favorite_exists(user, prop) -> bool:
     return Favorite.objects.filter(user=user, property=prop).exists()
 
 
+def _collect_photo_urls(property_obj) -> List[str]:
+    """Возвращает до 6 URL фотографий квартиры."""
+    photos = (
+        PropertyPhoto.objects.filter(property=property_obj)
+        .order_by("id")
+        [:6]
+    )
+    photo_urls: List[str] = []
+
+    for photo in photos:
+        url = photo.image_url
+        if not url and photo.image:
+            try:
+                url = photo.image.url
+                if url and not url.startswith("http"):
+                    base_url = getattr(settings, "SITE_URL", "") or getattr(
+                        settings,
+                        "DOMAIN",
+                        "http://localhost:8000",
+                    )
+                    url = f"{base_url.rstrip('/')}{url}"
+            except Exception:  # pragma: no cover - fallback на отсутствие URL
+                url = None
+        if url:
+            photo_urls.append(url)
+
+    return photo_urls
+
+
 PROPERTY_CLASS_LABELS = {
     "Комфорт": "comfort",
     "Бизнес": "business",

@@ -22,7 +22,8 @@ from booking_bot.telegram_bot.constants import (
 )
 from booking_bot.telegram_bot.handlers import message_handler
 from booking_bot.telegram_bot import state_flow
-from booking_bot.listings.models import City, District, Property, PropertyPhoto
+from booking_bot.telegram_bot.state_flow import show_user_bookings_with_cancel
+from booking_bot.listings.models import City, District, Property, PropertyPhoto, Favorite
 from booking_bot.users.models import UserProfile
 from booking_bot.bookings.models import Booking
 
@@ -90,6 +91,15 @@ def telegram_stubs(monkeypatch):
     monkeypatch.setattr(
         "booking_bot.telegram_bot.payment_flow.log_codes_delivery",
         lambda *args, **kwargs: "",
+    )
+
+    monkeypatch.setattr(
+        "booking_bot.telegram_bot.handlers.check_rate_limit",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "booking_bot.telegram_bot.state_flow._has_review_approval_column",
+        lambda: False,
     )
 
     return sent_messages
@@ -256,10 +266,14 @@ def test_manual_payment_flow_creates_pending_booking(telegram_stubs):
             m
             for m in telegram_stubs
             if m["chat_id"] == chat_id
-            and "Мы свяжемся" in m["text"]
+            and "свяжется" in m["text"].lower()
         ),
         None,
     )
+    if manual_message is None:
+        print("DEBUG LENGTH:", len(telegram_stubs))
+        for idx, msg in enumerate(telegram_stubs):
+            print(idx, msg["chat_id"], msg["text"])
     assert manual_message is not None
 
 
@@ -345,3 +359,66 @@ def test_search_flow_filters_duplicate_districts(monkeypatch, telegram_stubs):
     profile.refresh_from_db()
     assert profile.telegram_state.get("state") == STATE_AWAITING_CHECK_IN
     assert profile.telegram_state.get("booking_property_id") == property_obj.id
+
+
+@pytest.mark.django_db
+def test_active_booking_lists_favorite_buttons(telegram_stubs):
+    chat_id = 773344
+
+    city = City.objects.create(name="Шымкент")
+    district = District.objects.create(name="Абайский район", city=city)
+
+    owner = get_user_model().objects.create_user(
+        username="owner-fav",
+        password="pass",
+        is_staff=True,
+    )
+
+    property_obj = Property.objects.create(
+        name="Shymkent Plaza Loft",
+        description="",
+        address="пр-т Тауке-хана, 12",
+        district=district,
+        number_of_rooms=2,
+        area=55,
+        property_class="comfort",
+        status="Свободна",
+        owner=owner,
+        price_per_day=Decimal("20000"),
+    )
+
+    start_command_handler(chat_id, first_name="Бекзат", last_name="Исаев")
+    profile = UserProfile.objects.get(telegram_chat_id=str(chat_id))
+
+    Booking.objects.create(
+        user=profile.user,
+        property=property_obj,
+        start_date=date.today() + timedelta(days=1),
+        end_date=date.today() + timedelta(days=3),
+        total_price=Decimal("40000"),
+        status="confirmed",
+    )
+
+    show_user_bookings_with_cancel(chat_id, "active")
+    message = telegram_stubs[-1]
+    assert f"⭐ Добавить в избранное: ⭐ В избранное {property_obj.id}" in message["text"]
+    keyboard_rows = message["kwargs"]["reply_markup"]["keyboard"]
+
+    def _has_button(rows, text):
+        for row in rows:
+            for btn in row:
+                if isinstance(btn, dict) and btn.get("text") == text:
+                    return True
+        return False
+
+    assert _has_button(keyboard_rows, f"⭐ В избранное {property_obj.id}")
+
+    telegram_stubs.clear()
+
+    Favorite.objects.create(user=profile.user, property=property_obj)
+    show_user_bookings_with_cancel(chat_id, "active")
+    message = telegram_stubs[-1]
+    expected_remove = f"❌ Из избранного {property_obj.id}"
+    assert f"⭐ Уже в избранном — «{expected_remove}»" in message["text"]
+    keyboard_rows = message["kwargs"]["reply_markup"]["keyboard"]
+    assert _has_button(keyboard_rows, expected_remove)

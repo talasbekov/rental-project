@@ -345,7 +345,7 @@ def submit_review_with_photos(chat_id, profile):
 
         # Create review
         review = Review.objects.create(
-            property=booking.property, user=profile.user, rating=rating, text=text
+            property=booking.property, user=profile.user, rating=rating, comment=text
         )
 
         # Add photos

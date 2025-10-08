@@ -3523,7 +3523,7 @@ def show_pending_reviews(chat_id):
                 f"  Гость: {guest_name}\n"
                 f"  Квартира: {review.property.name}\n"
                 f"  Оценка: {'⭐' * review.rating}\n"
-                f"  Текст: {review.text[:100]}...\n"
+                f"  Текст: {review.comment[:100]}...\n"
                 f"  /moderate_{review.id}\n\n"
             )
 
@@ -3570,7 +3570,7 @@ def handle_moderate_review_start(chat_id, review_id):
             f"Квартира: {review.property.name}\n"
             f"Оценка: {'⭐' * review.rating}\n"
             f"Дата: {review.created_at.strftime('%d.%m.%Y')}\n\n"
-            f"*Текст отзыва:*\n{review.text}\n\n"
+            f"*Текст отзыва:*\n{review.comment}\n\n"
             "Что сделать с отзывом?"
         )
 

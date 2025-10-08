@@ -633,6 +633,9 @@ def show_user_bookings(chat_id, booking_type="active"):
         )
         return
     text = title + "\n\n"
+    favorite_buttons: dict[int, str] = {}
+    favorite_buttons: dict[int, str] = {}
+    favorite_buttons: dict[int, str] = {}
     for booking in bookings:
         emoji = {"confirmed": "✅", "completed": "✔️", "cancelled": "❌"}.get(
             booking.status, "•"
@@ -1035,6 +1038,21 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
         ).select_related("property", "property__district__city").order_by("-created_at")[:20]
         title = "📋 *История бронирований*"
 
+    state_data = profile.telegram_state or {}
+    view_state_map = {
+        "active": "user_bookings_active",
+        "completed": "user_bookings_completed",
+        "all": "user_bookings_all",
+    }
+    state_data.update(
+        {
+            "state": view_state_map.get(booking_type, "user_bookings_active"),
+            "booking_view": booking_type,
+        }
+    )
+    profile.telegram_state = state_data
+    profile.save(update_fields=["telegram_state"])
+
     if not bookings:
         status_text = {
             "active": "активных",
@@ -1051,6 +1069,7 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
         return
 
     text = title + "\n\n"
+    favorite_buttons: dict[int, str] = {}
 
     for i, booking in enumerate(bookings, 1):
         emoji = {"confirmed": "✅", "completed": "✔️", "cancelled": "❌"}.get(
@@ -1098,6 +1117,19 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
             if access_lines:
                 text += "   🔐 Доступ:\n" + "\n".join(access_lines) + "\n"
 
+        is_favorite = False
+        if booking.status in {"confirmed", "completed"}:
+            is_favorite = Favorite.objects.filter(
+                user=profile.user, property=booking.property
+            ).exists()
+            if is_favorite:
+                button_text = f"❌ Из избранного {booking.property.id}"
+                text += f"   ⭐ Уже в избранном — «{button_text}»\n"
+            else:
+                button_text = f"⭐ В избранное {booking.property.id}"
+                text += f"   ⭐ Добавить в избранное: {button_text}\n"
+            favorite_buttons.setdefault(booking.property.id, button_text)
+
         if booking.status == "confirmed" and booking.is_cancellable():
             days_to_checkin = (booking.start_date - date.today()).days
             if days_to_checkin > 0:
@@ -1118,9 +1150,9 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
             if existing_review:
                 stars = "⭐" * existing_review.rating
                 text += f"   📝 *Ваша оценка: {stars}*\n"
-                if existing_review.text:
-                    preview_text = existing_review.text[:50]
-                    if len(existing_review.text) > 50:
+                if existing_review.comment:
+                    preview_text = existing_review.comment[:50]
+                    if len(existing_review.comment) > 50:
                         preview_text += "..."
                     text += f"   💬 «{preview_text}»\n"
 
@@ -1181,6 +1213,9 @@ def show_user_bookings_with_cancel(chat_id, booking_type="active"):
         kb.append([KeyboardButton("📋 Завершенные бронирования")])
     elif booking_type == "completed":
         kb.append([KeyboardButton("📊 Текущие бронирования")])
+
+    for button_text in favorite_buttons.values():
+        kb.append([KeyboardButton(button_text)])
 
     kb.extend([[KeyboardButton("🔍 Поиск квартир")], [KeyboardButton("🧭 Главное меню")]])
 

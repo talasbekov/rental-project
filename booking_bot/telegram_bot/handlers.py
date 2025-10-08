@@ -438,6 +438,33 @@ def message_handler(chat_id, text, update=None, context=None):
         process_extend_payment(chat_id)
         return
 
+    if state in {"user_bookings_active", "user_bookings_completed", "user_bookings_all"}:
+        booking_view = state_data.get("booking_view", "active")
+
+        if text.startswith("⭐ В избранное") or text.startswith("❌ Из избранного"):
+            try:
+                prop_id = int(text.split()[-1])
+            except (IndexError, ValueError):
+                send_telegram_message(chat_id, "Не удалось определить квартиру.")
+                return
+            toggle_favorite(chat_id, prop_id)
+            show_user_bookings_with_cancel(chat_id, booking_view)
+            return
+
+        if text == "📋 Завершенные бронирования":
+            show_user_bookings_with_cancel(chat_id, "completed")
+            return
+        if text == "📊 Текущие бронирования":
+            show_user_bookings_with_cancel(chat_id, "active")
+            return
+        if text == "📋 История бронирований":
+            show_user_bookings_with_cancel(chat_id, "all")
+            return
+
+        if text == "🧭 Главное меню":
+            start_command_handler(chat_id)
+            return
+
     if state == STATE_MAIN_MENU:
         # — Общие для всех —
         if text == "🔍 Поиск квартир":
@@ -1104,7 +1131,7 @@ def handle_review_text(chat_id, text):
     try:
         prop = Property.objects.get(id=prop_id)
         Review.objects.create(
-            property=prop, user=profile.user, rating=rating, text=comment
+            property=prop, user=profile.user, rating=rating, comment=comment
         )
         send_telegram_message(chat_id, "✅ Спасибо! Ваш отзыв сохранён.")
     except Exception as e:
@@ -1274,7 +1301,7 @@ def save_review(chat_id):
 
         # Создаем отзыв
         review = Review.objects.create(
-            property=prop, user=profile.user, rating=rating, text=text
+            property=prop, user=profile.user, rating=rating, comment=text
         )
 
         # Добавляем фото если есть
@@ -2079,7 +2106,7 @@ def start_review_editing(chat_id, booking, existing_review):
         f"📅 Ваше пребывание: {booking.start_date.strftime('%d.%m.%Y')} - "
         f"{booking.end_date.strftime('%d.%m.%Y')}\n\n"
         f"Текущая оценка: {current_stars} ({existing_review.rating}/5)\n"
-        f"Текущий отзыв: {existing_review.text[:100] if existing_review.text else 'Без комментария'}...\n\n"
+        f"Текущий отзыв: {existing_review.comment[:100] if existing_review.comment else 'Без комментария'}...\n\n"
         "Поставьте новую оценку:"
     )
 
@@ -2314,7 +2341,7 @@ def save_user_review(chat_id):
             # Обновляем существующий отзыв
             review = Review.objects.get(id=existing_review_id)
             review.rating = rating
-            review.text = text
+            review.comment = text
             review.save()
 
             # Удаляем старые фото отзыва
@@ -2327,8 +2354,8 @@ def save_user_review(chat_id):
                 property=property_obj,
                 user=profile.user,
                 rating=rating,
-                text=text,
-                booking_id=booking_id  # Связываем с конкретным бронированием
+                comment=text,
+                booking=booking  # Связываем с конкретным бронированием
             )
             action_text = "сохранен"
 

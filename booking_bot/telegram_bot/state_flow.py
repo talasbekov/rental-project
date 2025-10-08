@@ -3,6 +3,7 @@
 import logging
 import re
 from datetime import date, timedelta
+from typing import List
 
 from telegram import KeyboardButton, ReplyKeyboardMarkup
 
@@ -122,6 +123,18 @@ PROPERTY_CLASS_LABELS = {
 }
 ROOM_OPTIONS = ["1", "2", "3", "4+"]
 
+NO_RESULTS_MESSAGE = (
+    "К сожалению, подходящих вам квартир мы не смогли найти, попробуйте изменить свои критерии для поиска."
+)
+
+
+def _send_no_results_response(chat_id: int) -> None:
+    rows = [
+        [KeyboardButton("Новый поиск")],
+        [KeyboardButton("Главное меню")],
+    ]
+    _send_with_keyboard(chat_id, NO_RESULTS_MESSAGE, rows, "Выберите действие")
+
 
 @log_handler
 def navigate_results(chat_id, profile, text):
@@ -132,7 +145,10 @@ def navigate_results(chat_id, profile, text):
     normalized = _normalize(text)
 
     if not normalized:
-        send_telegram_message(chat_id, "Используйте кнопки для управления поиском.")
+        if total == 0:
+            _send_no_results_response(chat_id)
+        else:
+            send_telegram_message(chat_id, "Пожалуйста, используйте кнопки навигации.")
         return
 
     max_index = max(total - 1, 0)
@@ -151,10 +167,7 @@ def navigate_results(chat_id, profile, text):
 
     # Согласно ТЗ п.5: Новый поиск начинает поиск заново
     if normalized in {"🆕 Новый поиск", "Новый поиск"}:
-        from .constants import start_command_handler
-        start_command_handler(chat_id)
-        from .handlers import prompt_city_selection
-        prompt_city_selection(chat_id)
+        navigate_refined_search(chat_id, profile, "🔍 Поиск квартир")
         return
 
     if normalized.startswith("📄") or normalized.startswith("Страница"):
@@ -195,7 +208,7 @@ def navigate_results(chat_id, profile, text):
         handle_show_property_reviews(chat_id, property_id, page=1)
         return
 
-    if normalized in {"🔍 Поиск квартир", "🔄 Новый поиск", "🧭 Главное меню"}:
+    if normalized in {"🔍 Поиск квартир", "🔄 Новый поиск", "🆕 Новый поиск", "Новый поиск", "🧭 Главное меню", "Главное меню"}:
         navigate_refined_search(chat_id, profile, normalized)
         return
 
@@ -216,7 +229,7 @@ def navigate_results(chat_id, profile, text):
                 show_favorite_property_detail(chat_id, favorites[index].property.id)
                 return
 
-    send_telegram_message(chat_id, "К сожалению, подходящих вам квартир мы не смогли найти, попробуйте изменить свои критерии для поиска.")
+    _send_no_results_response(chat_id)
 
 @log_handler
 def navigate_refined_search(chat_id, profile, text):
@@ -242,7 +255,7 @@ def navigate_refined_search(chat_id, profile, text):
         prompt_city(chat_id, profile)
         return
 
-    if text == "🧭 Главное меню":
+    if text in {"🧭 Главное меню", "Главное меню"}:
         _update_state(
             profile,
             state=STATE_MAIN_MENU,
@@ -307,13 +320,25 @@ def select_city(chat_id, profile, text):
 
 @log_handler
 def select_district(chat_id, profile, text):
+    state = _get_state(profile)
+    base_filters = state.get("base_filters") or {}
+    refined_filters = state.get("refined_filters") or {}
+
+    city_id = refined_filters.get("city_id") or state.get("city_id") or base_filters.get("city_id")
+
+    queryset = District.objects.filter(name=text)
+    if city_id:
+        queryset = queryset.filter(city_id=city_id)
+
     try:
-        district = District.objects.get(name=text)
+        district = queryset.get()
     except District.DoesNotExist:
         send_telegram_message(chat_id, "Неверный район. Попробуйте ещё раз.")
         return
+    except District.MultipleObjectsReturned:
+        send_telegram_message(chat_id, "Уточните район — найдено несколько вариантов.")
+        return
 
-    state = _get_state(profile)
     old_state = state.get("state", STATE_MAIN_MENU)
 
     if state.get("base_filters"):
@@ -443,11 +468,8 @@ def show_search_results(chat_id, profile, offset=0):
 
     total = len(property_ids)
     if total == 0:
-        _send_with_keyboard(
-            chat_id,
-            "К сожалению, подходящих вам квартир мы не смогли найти, попробуйте изменить свои критерии для поиска.",
-            [[KeyboardButton("🆕 Новый поиск")], [KeyboardButton("🧭 Главное меню")]],
-        )
+        _update_state(profile, search_offset=0, total_results=0)
+        _send_no_results_response(chat_id)
         return
 
     offset = max(0, min(offset, total - 1))
@@ -520,9 +542,9 @@ def show_search_results(chat_id, profile, offset=0):
 
     # Согласно ТЗ п.5: последняя карточка → К началу / Новый поиск
     if offset == total - 1 and total > 1:
-        keyboard.append([KeyboardButton("🔄 К началу"), KeyboardButton("🆕 Новый поиск")])
+        keyboard.append([KeyboardButton("К началу"), KeyboardButton("Новый поиск")])
     else:
-        keyboard.append([KeyboardButton("🔍 Поиск квартир"), KeyboardButton("🧭 Главное меню")])
+        keyboard.append([KeyboardButton("🔍 Поиск квартир"), KeyboardButton("Главное меню")])
 
     _send_with_keyboard(chat_id, text, keyboard)
 

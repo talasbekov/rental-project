@@ -573,7 +573,7 @@ STATE_ADMIN_ADD_INSTRUCTIONS = "admin_add_instructions"
 
 
 @log_handler
-def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
+def handle_add_property_start(chat_id: int, text: Optional[str] = None) -> Optional[bool]:
     profile = _get_profile(chat_id)
     state_data = profile.telegram_state or {}
     state = state_data.get("state")
@@ -596,8 +596,10 @@ def handle_add_property_start(chat_id: int, text: str) -> Optional[bool]:
         STATE_ADMIN_ADD_PHOTOS,
     }
 
+    normalized = (text or "").strip()
+
     # Триггер на первый шаг
-    if text == "➕ Добавить квартиру" and state not in admin_states:
+    if normalized == "➕ Добавить квартиру" and state not in admin_states:
         if profile.role not in ("admin", "super_admin", "super_user"):
             send_telegram_message(chat_id, "У вас нет доступа к этой функции.")
             return True

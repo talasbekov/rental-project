@@ -198,7 +198,7 @@ def handle_property_list_selection(chat_id: int, text: str) -> bool:
     if normalized == "➕ Добавить квартиру":
         from .admin_handlers import handle_add_property_start
 
-        handle_add_property_start(chat_id)
+        handle_add_property_start(chat_id, "➕ Добавить квартиру")
         return True
 
     if normalized == "🧭 Главное меню":
@@ -629,7 +629,7 @@ def handle_admin_dashboard_selection(chat_id: int, text: str) -> bool:
     if normalized == "➕ Добавить квартиру":
         from .admin_handlers import handle_add_property_start
 
-        handle_add_property_start(chat_id)
+        handle_add_property_start(chat_id, "➕ Добавить квартиру")
         return True
 
     if normalized == "📋 Все бронирования":

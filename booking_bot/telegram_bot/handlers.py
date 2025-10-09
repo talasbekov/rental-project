@@ -1,5 +1,6 @@
 import html
 import logging
+import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
@@ -143,6 +144,7 @@ from .user_review_handlers import (
     handle_user_review_uploading,
     handle_user_review_photo_upload,
     handle_reviews_navigation,
+    handle_show_property_reviews,
 )
 
 
@@ -401,6 +403,18 @@ def message_handler(chat_id, text, update=None, context=None):
             send_telegram_message(chat_id, "Неверный формат команды редактирования отзыва.")
         return
 
+    if handle_add_property_start(chat_id, text):
+        return
+
+    if text.startswith("💬 Отзывы"):
+        match = re.search(r"(\d+)(?!.*\d)", text)
+        if not match:
+            send_telegram_message(chat_id, "Не удалось определить квартиру для отзывов.")
+            return
+        property_id = int(match.group(1))
+        handle_show_property_reviews(chat_id, property_id, page=1)
+        return
+
     # Навигация по отзывам (согласно ТЗ п.8: просмотр отзывов постранично)
     if handle_reviews_navigation(chat_id, text):
         return
@@ -479,7 +493,6 @@ def message_handler(chat_id, text, update=None, context=None):
         elif text.startswith("⭐") and ". " in text:  # Исправленная проверка
             # Обработка выбора из избранного
             try:
-                import re
                 match = re.match(r'⭐(\d+)\.\s+(.+)', text)
                 if match:
                     num = int(match.group(1))
@@ -532,7 +545,6 @@ def message_handler(chat_id, text, update=None, context=None):
         if profile.role in ("admin", "super_admin", "super_user"):
             # ДОБАВЛЯЕМ ОБРАБОТКУ НАВИГАЦИИ ПО КВАРТИРАМ
             if text.startswith("➡️ Далее (стр.") or text.startswith("⬅️ Назад (стр."):
-                import re
                 match = re.search(r'стр\.\s*(\d+)', text)
                 if match:
                     page = int(match.group(1))
@@ -545,7 +557,6 @@ def message_handler(chat_id, text, update=None, context=None):
             # ДОБАВЛЯЕМ ОБРАБОТКУ КНОПКИ СТРАНИЦЫ (для информации)
             if text.startswith("📄"):
                 # Просто показываем текущую страницу заново
-                import re
                 match = re.search(r'(\d+)/\d+', text)
                 if match:
                     page = int(match.group(1))
@@ -645,10 +656,7 @@ def message_handler(chat_id, text, update=None, context=None):
                 return
 
             # Основные команды
-            if text == "➕ Добавить квартиру":
-                handle_add_property_start(chat_id, text)
-                return
-            elif text == "🏠 Мои квартиры":
+            if text == "🏠 Мои квартиры":
                 # Route to enhanced property list
                 from .admin_property_handlers import handle_property_list
                 handle_property_list(chat_id)
@@ -700,7 +708,6 @@ def message_handler(chat_id, text, update=None, context=None):
                         prop_id = None
 
                         # Ищем первое число в строке
-                        import re
                         match = re.search(r'(\d+)', id_part)
                         if match:
                             prop_id = int(match.group(1))
@@ -1017,7 +1024,6 @@ def message_handler(chat_id, text, update=None, context=None):
 @log_handler
 def handle_admin_properties_navigation(chat_id, text):
     """Обработка навигации по квартирам админа"""
-    import re
 
     # Обработка кнопок "Далее" и "Назад"
     if text.startswith("➡️ Далее (стр.") or text.startswith("⬅️ Назад (стр."):
@@ -1560,7 +1566,6 @@ def handle_photo_delete_with_confirmation(chat_id, text):
 
         elif text.startswith("🗑 Удалить фото #"):
             # Извлекаем номер фото
-            import re
             match = re.search(r'#(\d+)', text)
             if match:
                 photo_num = int(match.group(1))
@@ -1859,7 +1864,6 @@ def handle_extend_booking(chat_id, booking_id):
 @log_handler
 def confirm_extend_booking(chat_id, text):
     """Подтверждение продления"""
-    import re
 
     profile = _get_profile(chat_id)
     sd = profile.telegram_state or {}

@@ -1,0 +1,219 @@
+@startuml LayeredArchitecture
+!theme plain
+
+title Layered Architecture - ЖильеGO (Hexagonal/Clean Architecture + DDD + CQRS)
+
+skinparam component {
+    BackgroundColor<<Domain>> #95e1d3
+    BorderColor<<Domain>> #38ada9
+
+    BackgroundColor<<Application>> #4ecdc4
+    BorderColor<<Application>> #2a9d8f
+
+    BackgroundColor<<Infrastructure>> #786fa6
+    BorderColor<<Infrastructure>> #574b90
+
+    BackgroundColor<<Adapter>> #f8b500
+    BorderColor<<Adapter>> #c79100
+
+    BackgroundColor<<External>> #999999
+    BorderColor<<External>> #666666
+}
+
+' External Systems
+package "External Systems" <<External>> {
+    [REST API Client] as RestClient
+    [Telegram Bot] as TelegramBot
+    [Kaspi Pay Webhook] as KaspiWebhook
+}
+
+' Entry Points (Adapters)
+package "Entry Points / Adapters" <<Adapter>> {
+    [REST API Views\n(Django REST Framework)] as RestAPI
+    [Webhook Handler\n(Kaspi Pay)] as WebhookHandler
+    [Django Admin Panel] as AdminPanel
+}
+
+' Application Layer
+package "Application / Service Layer" <<Application>> {
+    rectangle "Command Side (Write)" {
+        [Message Bus] as MessageBus
+        [Command Handlers\n- CreateBookingHandler\n- ConfirmPaymentHandler\n- CancelBookingHandler] as CommandHandlers
+        [Unit of Work\n(Transaction Management)] as UoW
+    }
+
+    rectangle "Query Side (Read)" {
+        [Query Views\n- SearchPropertiesView\n- GetAvailabilityView\n- GetAnalyticsView] as QueryViews
+    }
+
+    rectangle "Event Processing" {
+        [Event Handlers\n- SendNotificationHandler\n- UpdateReadModelHandler\n- ProcessRefundHandler] as EventHandlers
+    }
+}
+
+' Domain Layer (Core)
+package "Domain Layer (Business Logic)" <<Domain>> {
+    rectangle "Aggregates" {
+        [Property Aggregate] as PropertyAgg
+        [Booking Aggregate] as BookingAgg
+        [Inventory Aggregate\n(Consistency Boundary)] as InventoryAgg
+        [Payment Aggregate] as PaymentAgg
+    }
+
+    rectangle "Domain Model" {
+        [Entities\n- Booking\n- Allocation] as Entities
+        [Value Objects\n- DateRange\n- Money\n- Location] as ValueObjects
+        [Domain Events\n- BookingConfirmed\n- PaymentSucceeded\n- InventoryAllocated] as DomainEvents
+        [Commands\n- CreateBooking\n- ProcessPayment\n- CancelBooking] as Commands
+    }
+}
+
+' Infrastructure Layer
+package "Infrastructure / Adapters" <<Infrastructure>> {
+    rectangle "Persistence" {
+        [Repositories\n- BookingRepository\n- PropertyRepository\n- PaymentRepository] as Repositories
+        [Django ORM Models] as ORM
+    }
+
+    rectangle "External Integrations" {
+        [Payment Adapter\n(Kaspi Pay)] as PaymentAdapter
+        [Notification Adapters\n(Telegram, Email)] as NotificationAdapters
+        [Cache Adapter\n(Redis)] as CacheAdapter
+        [Storage Adapter\n(MinIO S3)] as StorageAdapter
+    }
+
+    rectangle "Read Model (CQRS)" {
+        [Read Model Store\n(Redis Cache)] as ReadModelStore
+    }
+}
+
+' External Infrastructure
+package "Data Stores" <<External>> {
+    database "PostgreSQL\n(Write Model)" as PostgreSQL
+    database "Redis\n(Cache/Broker)" as Redis
+    database "MinIO\n(Object Storage)" as MinIO
+    queue "Celery Workers" as Celery
+}
+
+' External Services
+package "Third-party Services" <<External>> {
+    cloud "Kaspi Pay API" as KaspiAPI
+    cloud "Telegram API" as TelegramAPI
+    cloud "Email SMTP" as EmailSMTP
+}
+
+' Flow: Entry Points -> Application Layer
+RestClient --> RestAPI
+TelegramBot --> RestAPI
+KaspiWebhook --> WebhookHandler
+
+RestAPI --> MessageBus : Commands
+WebhookHandler --> MessageBus : Commands
+AdminPanel --> MessageBus : Commands
+RestAPI --> QueryViews : Queries
+
+' Flow: Application Layer -> Domain Layer
+MessageBus --> CommandHandlers : Route Commands
+MessageBus --> EventHandlers : Route Events
+
+CommandHandlers --> UoW
+UoW --> Repositories
+
+CommandHandlers --> InventoryAgg : Load/Save
+CommandHandlers --> BookingAgg
+CommandHandlers --> PropertyAgg
+CommandHandlers --> PaymentAgg
+
+InventoryAgg --> DomainEvents : Generate
+BookingAgg --> DomainEvents : Generate
+PaymentAgg --> DomainEvents : Generate
+
+PropertyAgg --> Entities
+BookingAgg --> Entities
+InventoryAgg --> Entities
+
+Entities --> ValueObjects
+Commands --> MessageBus
+
+UoW --> DomainEvents : Collect
+UoW --> MessageBus : Publish after commit
+
+' Flow: Query Side
+QueryViews --> ReadModelStore : Read
+QueryViews --> PostgreSQL : Optional direct read
+
+' Flow: Event Handlers
+EventHandlers --> NotificationAdapters
+EventHandlers --> PaymentAdapter
+EventHandlers --> ReadModelStore : Update
+EventHandlers --> Celery : Queue tasks
+
+' Flow: Infrastructure -> External
+Repositories --> ORM
+ORM --> PostgreSQL
+ReadModelStore --> Redis
+CacheAdapter --> Redis
+StorageAdapter --> MinIO
+
+PaymentAdapter --> KaspiAPI
+NotificationAdapters --> TelegramAPI
+NotificationAdapters --> EmailSMTP
+NotificationAdapters --> Celery
+
+' Dependency Direction
+note right of InventoryAgg
+  Dependency Rule:
+
+  Domain Layer (Core)
+      ↑
+  Application Layer
+      ↑
+  Infrastructure/Adapters
+      ↑
+  External Systems
+
+  **Зависимости направлены
+  от внешних слоев
+  к внутренним**
+end note
+
+note bottom of UoW
+  Unit of Work Pattern:
+
+  1. BEGIN TRANSACTION
+  2. Load Aggregates via Repositories
+  3. Execute domain logic
+  4. Collect Domain Events
+  5. COMMIT TRANSACTION
+  6. Publish Events to Message Bus
+end note
+
+note left of ReadModelStore
+  CQRS Pattern:
+
+  Write Model (Command Side):
+  - PostgreSQL
+  - ACID transactions
+  - Aggregates
+
+  Read Model (Query Side):
+  - Redis cache
+  - Denormalized
+  - Eventually consistent
+end note
+
+note bottom of InventoryAgg
+  Key Invariant Protection:
+
+  Prevent Double Booking:
+  1. Domain validation
+  2. PostgreSQL EXCLUDE INDEX
+  3. Optimistic locking
+
+  EXCLUDE USING gist (
+    property_id WITH =,
+    daterange WITH &&
+  )
+end note
+
+@enduml

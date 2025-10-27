@@ -1,0 +1,126 @@
+@startuml C4_Deployment
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Deployment.puml
+
+LAYOUT_TOP_DOWN()
+
+title Deployment diagram for ЖильеGO Platform
+
+Person(users, "Users", "Web/Mobile/Telegram")
+
+System_Ext(kaspi, "Kaspi Pay API")
+System_Ext(telegram_api, "Telegram Bot API")
+System_Ext(smtp, "Email SMTP")
+
+Deployment_Node(ps_kz, "PS.kz Cloud", "Kazakhstan Cloud Provider") {
+
+    Deployment_Node(k8s_cluster, "Kubernetes Cluster", "Этап 3: Production") {
+
+        Deployment_Node(ingress, "Ingress Layer") {
+            Container(ingress_ctrl, "Nginx Ingress Controller", "Nginx", "SSL termination, Load balancing")
+        }
+
+        Deployment_Node(app_pods, "Application Pods") {
+            Container(web_pod_1, "Django Web Pod 1", "Gunicorn", "CPU: 2, RAM: 4GB")
+            Container(web_pod_2, "Django Web Pod 2", "Gunicorn", "CPU: 2, RAM: 4GB")
+            Container(web_pod_3, "Django Web Pod 3", "Gunicorn", "Auto-scaling")
+
+            Container(bot_pod, "Telegram Bot Pod", "Aiogram", "CPU: 1, RAM: 2GB")
+        }
+
+        Deployment_Node(worker_pods, "Worker Pods") {
+            Container(celery_worker_1, "Celery Worker 1", "Celery", "Concurrency: 4, CPU: 2, RAM: 4GB")
+            Container(celery_worker_2, "Celery Worker 2", "Celery", "Concurrency: 4")
+            Container(celery_worker_3, "Celery Worker 3", "Celery", "Auto-scaling")
+
+            Container(celery_beat, "Celery Beat", "Celery Beat", "Scheduler, CPU: 1, RAM: 1GB")
+        }
+
+        Deployment_Node(data_pods, "Data Layer") {
+            ContainerDb(redis_pod, "Redis Pod", "Redis", "Master-Replica, Persistence: RDB+AOF\nCPU: 2, RAM: 8GB")
+
+            ContainerDb(minio_cluster, "MinIO Cluster", "MinIO", "Distributed mode, Replicas: 4\nStorage: 500GB")
+        }
+    }
+
+    Deployment_Node(managed_db, "Managed Database") {
+        ContainerDb(postgresql, "PostgreSQL 15", "PostgreSQL", "Primary + Replica\nvCPU: 4, RAM: 16GB, SSD: 500GB\nAutomated backups, PITR")
+    }
+
+    Deployment_Node(monitoring, "Monitoring Stack") {
+        Container(prometheus, "Prometheus", "Metrics", "Retention: 15d")
+        Container(grafana, "Grafana", "Dashboards", "Visualization, Alerts")
+        Container(sentry, "Sentry", "APM", "Error tracking")
+        Container(loki, "Loki", "Logs", "Log aggregation")
+    }
+
+    Deployment_Node(cicd, "CI/CD") {
+        Container(gitlab, "GitLab CI/CD", "CI/CD", "Build & Deploy\nBlue-Green deployment")
+        Container(registry, "Container Registry", "Docker", "Image versioning")
+    }
+}
+
+Deployment_Node(mvp_env, "MVP Environment (Этап 1)", "Docker Compose on Single VPS") {
+    Deployment_Node(docker_host, "VPS Server", "8 vCPU, 32GB RAM, PS.kz") {
+        Container(mvp_nginx, "nginx", "Nginx", "Reverse proxy")
+        Container(mvp_web, "django-web", "Gunicorn", "Django app")
+        Container(mvp_bot, "telegram-bot", "Aiogram", "Bot")
+        Container(mvp_worker, "celery-worker", "Celery", "Worker")
+        Container(mvp_beat, "celery-beat", "Celery Beat", "Scheduler")
+        ContainerDb(mvp_redis, "redis", "Redis", "Cache/Broker")
+        ContainerDb(mvp_postgres, "postgresql", "PostgreSQL", "Database")
+        ContainerDb(mvp_minio, "minio", "MinIO", "Storage")
+    }
+}
+
+' Production connections
+Rel(users, ingress_ctrl, "HTTPS/443")
+Rel(ingress_ctrl, web_pod_1, "HTTP")
+Rel(ingress_ctrl, web_pod_2, "HTTP")
+Rel(ingress_ctrl, web_pod_3, "HTTP")
+
+Rel(web_pod_1, postgresql, "SQL")
+Rel(web_pod_2, postgresql, "SQL")
+Rel(web_pod_3, postgresql, "SQL")
+
+Rel(web_pod_1, redis_pod, "Pub/Sub")
+Rel(web_pod_2, redis_pod, "Pub/Sub")
+Rel(bot_pod, web_pod_1, "API calls")
+
+Rel(celery_worker_1, redis_pod, "Consume")
+Rel(celery_worker_2, redis_pod, "Consume")
+Rel(celery_worker_3, redis_pod, "Consume")
+Rel(celery_beat, redis_pod, "Schedule")
+
+Rel(celery_worker_1, postgresql, "SQL")
+Rel(celery_worker_2, postgresql, "SQL")
+
+Rel(web_pod_1, minio_cluster, "S3 API")
+Rel(web_pod_2, minio_cluster, "S3 API")
+
+' External connections
+Rel(web_pod_1, kaspi, "HTTPS", "Payment API")
+Rel(celery_worker_1, smtp, "SMTP", "Email")
+Rel(bot_pod, telegram_api, "HTTPS", "Bot API")
+Rel(celery_worker_2, telegram_api, "HTTPS", "Notifications")
+
+' Monitoring
+Rel(web_pod_1, prometheus, "Metrics")
+Rel(celery_worker_1, prometheus, "Metrics")
+Rel(postgresql, prometheus, "Metrics")
+Rel(prometheus, grafana, "Data source")
+Rel(web_pod_1, sentry, "Errors")
+
+' CI/CD
+Rel(gitlab, registry, "Push images")
+Rel(registry, k8s_cluster, "Pull images")
+
+' MVP connections
+Rel_D(users, mvp_nginx, "HTTPS")
+Rel(mvp_nginx, mvp_web, "Proxy")
+Rel(mvp_web, mvp_postgres, "SQL")
+Rel(mvp_web, mvp_redis, "Cache")
+Rel(mvp_bot, mvp_web, "API")
+Rel(mvp_worker, mvp_redis, "Tasks")
+Rel(mvp_beat, mvp_redis, "Schedule")
+
+@enduml

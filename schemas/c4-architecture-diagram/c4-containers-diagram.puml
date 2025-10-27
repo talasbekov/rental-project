@@ -1,0 +1,77 @@
+@startuml C4_Container
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title Container diagram for ЖильеGO Platform
+
+Person(users, "Пользователи", "Гости, Пользователи, Риелторы, Администраторы")
+
+System_Ext(kaspi, "Kaspi Pay", "Платежный шлюз")
+System_Ext(telegram_api, "Telegram Bot API", "Bot интерфейс")
+System_Ext(email_smtp, "Email SMTP", "Отправка писем")
+
+System_Boundary(zhilyego, "ЖильеGO Platform") {
+    Container(web_app, "Django Web Application", "Python 3.11, Django 5, DRF", "REST API, Message Bus, Domain Logic, Admin Panel")
+
+    Container(telegram_bot, "Telegram Bot", "Python, python-telegram-bot 20", "Обработка команд пользователей, диалоги, интерфейс бронирования")
+
+    Container(web_client, "Web Frontend", "HTML, CSS, JavaScript", "Веб-интерфейс для пользователей (Этап 3)")
+
+    Container(celery_workers, "Celery Workers", "Python, Celery", "Фоновые задачи: уведомления, обработка вебхуков, таймауты HOLD")
+
+    Container(celery_beat, "Celery Beat", "Python, Celery Beat", "Планировщик: отмена HOLD через 15 мин, генерация отчетов")
+
+    ContainerDb(postgresql, "PostgreSQL", "PostgreSQL 15", "Write Model: транзакции, EXCLUDE индексы, Point-in-Time Recovery")
+
+    ContainerDb(redis, "Redis", "Redis", "Кеш поиска, сессии, Rate limiting, Celery message broker")
+
+    ContainerDb(minio, "MinIO", "S3-compatible", "Объектное хранилище для фото объектов, аватаров")
+
+    Container(nginx, "Nginx (опционально)", "Nginx", "Reverse proxy, SSL termination, статика, балансировка (этап масштабирования)")
+}
+
+System_Ext(prometheus, "Prometheus/Grafana", "Метрики и дашборды")
+System_Ext(sentry, "Sentry", "Отслеживание ошибок и APM")
+
+' User interactions
+Rel(users, web_app, "HTTPS запросы (MVP)", "HTTPS/JSON")
+Rel(users, nginx, "HTTPS запросы (масштабирование)", "HTTPS/JSON")
+Rel(users, telegram_bot, "Telegram сообщения", "Telegram")
+Rel(users, web_client, "Веб-интерфейс", "HTTPS")
+
+' Nginx routing
+Rel(nginx, web_app, "Проксирует запросы", "HTTP")
+Rel(nginx, web_client, "Отдает статику", "HTTP")
+
+' Web application dependencies
+Rel(web_app, postgresql, "Читает/пишет данные", "SQL/TCP")
+Rel(web_app, redis, "Кеширует, публикует задачи", "Redis Protocol")
+Rel(web_app, minio, "Загружает файлы", "S3 API/HTTPS")
+
+' Bot interactions
+Rel(telegram_bot, web_app, "API вызовы", "HTTPS/JSON")
+Rel(telegram_bot, telegram_api, "Отправка сообщений", "Bot API/HTTPS")
+
+' Web client
+Rel(web_client, web_app, "API запросы", "HTTPS/JSON")
+
+' Celery
+Rel(celery_workers, redis, "Потребляет задачи", "Redis Protocol")
+Rel(celery_workers, postgresql, "Читает/пишет", "SQL/TCP")
+Rel(celery_workers, email_smtp, "Отправляет email", "SMTP")
+Rel(celery_workers, telegram_api, "Отправляет уведомления", "Bot API/HTTPS")
+
+Rel(celery_beat, redis, "Создает периодические задачи", "Redis Protocol")
+
+' External integrations
+Rel(web_app, kaspi, "Создание платежей", "HTTPS/JSON")
+Rel(kaspi, web_app, "Webhook уведомления", "HTTPS/JSON")
+
+' Monitoring
+Rel(web_app, prometheus, "Экспортирует метрики", "HTTP")
+Rel(web_app, sentry, "Отправляет ошибки", "HTTPS")
+Rel(celery_workers, prometheus, "Экспортирует метрики", "HTTP")
+
+@enduml

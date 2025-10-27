@@ -1,0 +1,205 @@
+@startuml ArchitecturalDecisions
+!theme plain
+
+title Архитектурные решения и паттерны ЖильеGO
+
+skinparam rectangle {
+    BackgroundColor<<Pattern>> #e3f2fd
+    BorderColor<<Pattern>> #1976d2
+
+    BackgroundColor<<Requirement>> #fff3e0
+    BorderColor<<Requirement>> #f57c00
+
+    BackgroundColor<<Solution>> #e8f5e9
+    BorderColor<<Solution>> #388e3c
+
+    BackgroundColor<<Trade-off>> #fce4ec
+    BorderColor<<Trade-off>> #c2185b
+}
+
+package "Требования ТЗ" <<Requirement>> {
+    rectangle "Нет двойного\nбронирования" as R1
+    rectangle "Атомарность\nопераций" as R2
+    rectangle "99.9% uptime" as R3
+    rectangle "API p95 < 300ms" as R4
+    rectangle "Масштабируемость\n100k+ объектов" as R5
+    rectangle "Безопасность\nOWASP ASVS L2" as R6
+    rectangle "Идемпотентность\nплатежей" as R7
+}
+
+package "Архитектурные стили" <<Pattern>> {
+    rectangle "Domain-Driven\nDesign (DDD)" as P1 {
+        note bottom
+          • Aggregates
+          • Entities
+          • Value Objects
+          • Domain Events
+          • Bounded Contexts
+        end note
+    }
+
+    rectangle "Hexagonal\nArchitecture\n(Ports & Adapters)" as P2 {
+        note bottom
+          • Domain независим
+            от инфраструктуры
+          • Инверсия зависимостей
+          • Тестируемость
+        end note
+    }
+
+    rectangle "CQRS\n(Command Query\nResponsibility\nSegregation)" as P3 {
+        note bottom
+          • Write Model: PostgreSQL
+          • Read Model: Redis
+          • Eventual Consistency
+        end note
+    }
+
+    rectangle "Event-Driven\nArchitecture" as P4 {
+        note bottom
+          • Message Bus
+          • Async processing
+          • Loose coupling
+        end note
+    }
+}
+
+package "Технические решения" <<Solution>> {
+    rectangle "PostgreSQL\nEXCLUDE INDEX" as S1 {
+        note bottom
+          EXCLUDE USING gist (
+            property_id WITH =,
+            daterange WITH &&
+          )
+          WHERE status IN
+            ('HOLD', 'CONFIRMED')
+        end note
+    }
+
+    rectangle "Unit of Work\nPattern" as S2 {
+        note bottom
+          • Атомарные транзакции
+          • Event collection
+          • Commit/Rollback
+        end note
+    }
+
+    rectangle "Repository\nPattern" as S3 {
+        note bottom
+          • Abstraction over ORM
+          • Returns Aggregates
+          • Isolation & Testing
+        end note
+    }
+
+    rectangle "Idempotency Key" as S4 {
+        note bottom
+          • Payment.idempotency_key
+          • Webhook replay safety
+          • Exactly-once processing
+        end note
+    }
+
+    rectangle "Redis Caching" as S5 {
+        note bottom
+          • Search results cache
+          • Read Model
+          • Rate limiting
+        end note
+    }
+
+    rectangle "Celery Workers" as S6 {
+        note bottom
+          • Async notifications
+          • HOLD timeout (15 min)
+          • Long-running tasks
+        end note
+    }
+
+    rectangle "Field-level\nEncryption" as S7 {
+        note bottom
+          • pgcrypto extension
+          • PII encryption
+          • Access audit logs
+        end note
+    }
+}
+
+package "Trade-offs" <<Trade-off>> {
+    rectangle "Eventual\nConsistency" as T1 {
+        note bottom
+          ✅ Высокая производительность
+          ✅ Масштабируемость
+          ❌ Временная рассинхронизация
+        end note
+    }
+
+    rectangle "Монолит на Django\n(Этап 1-2)" as T2 {
+        note bottom
+          ✅ Быстрый старт MVP
+          ✅ Простота разработки
+          ➡️ Миграция на K8s (Этап 3)
+        end note
+    }
+
+    rectangle "HOLD таймаут\n15 минут" as T3 {
+        note bottom
+          ✅ Защита от залипших броней
+          ❌ UX: нужно быстро оплатить
+          ⚖️ Компромисс: не продлевается
+        end note
+    }
+
+    rectangle "Денормализация\nRead Model" as T4 {
+        note bottom
+          ✅ Быстрые запросы
+          ❌ Дублирование данных
+          ❌ Eventual consistency
+        end note
+    }
+}
+
+' Mapping Requirements to Solutions
+R1 --> S1 : Предотвращает\nпересечения
+R1 --> S2 : Атомарность
+R1 --> P1 : Aggregate защищает\nинвариант
+
+R2 --> S2 : UoW обеспечивает
+R2 --> S1 : DB constraints
+
+R3 --> P4 : Отказоустойчивость
+R3 --> S6 : Retry механизмы
+
+R4 --> P3 : Разделение чтения
+R4 --> S5 : Кеширование
+
+R5 --> P3 : Масштабируемость чтения
+R5 --> T2 : Эволюция архитектуры
+
+R6 --> S7 : Шифрование
+R6 --> P2 : Изоляция логики
+
+R7 --> S4 : Идемпотентность
+
+' Pattern relationships
+P1 --> S2 : Использует
+P1 --> S3 : Использует
+P1 --> P2 : Реализуется через
+P3 --> T1 : Приводит к
+P4 --> S6 : Использует
+
+' Trade-off connections
+T1 --> P3
+T2 --> P2
+T3 --> S6
+T4 --> P3
+
+legend right
+  |= Тип |= Цвет |
+  | Требование | <color:#fff3e0>■</color> |
+  | Паттерн | <color:#e3f2fd>■</color> |
+  | Решение | <color:#e8f5e9>■</color> |
+  | Trade-off | <color:#fce4ec>■</color> |
+endlegend
+
+@enduml

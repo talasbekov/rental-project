@@ -1,0 +1,64 @@
+@startuml BookingStatusFSM
+!theme plain
+
+title Finite State Machine - Booking Status (ЖильеGO)
+
+[*] --> HOLD : CreateBooking\n(Пользователь создает бронь)
+
+HOLD --> CONFIRMED : PaymentSucceeded\n(Оплата прошла успешно)
+HOLD --> CANCELLED : UserCancelled\n(Пользователь отменил до оплаты)
+HOLD --> EXPIRED : HoldTimeout\n(Истек срок холда 15 мин)
+
+CONFIRMED --> CHECKED_IN : CheckInDateReached\n(Наступила дата заезда)
+CONFIRMED --> CANCELLED : UserCancelled\n(Пользователь отменил после оплаты)
+CONFIRMED --> CANCELLED : RealtorCancelled\n(Риелтор отменил)
+
+CHECKED_IN --> COMPLETED : CheckOutDateReached\n(Гость выехал)
+
+CANCELLED --> [*]
+EXPIRED --> [*]
+COMPLETED --> [*]
+
+note right of HOLD
+  **HOLD** (Холд, ожидание оплаты)
+  - Длительность: 15 минут
+  - Резерв дат на объекте
+  - Ожидание подтверждения оплаты
+end note
+
+note right of CONFIRMED
+  **CONFIRMED** (Подтверждено)
+  - Оплата получена
+  - Бронирование активно
+  - Отправлены инструкции
+end note
+
+note right of CHECKED_IN
+  **CHECKED_IN** (Заселен)
+  - Гость заселился
+  - Начато использование объекта
+  - Ожидание выезда
+end note
+
+note right of COMPLETED
+  **COMPLETED** (Завершено)
+  - Гость выехал
+  - Бронирование успешно завершено
+  - Можно оставить отзыв
+end note
+
+note right of CANCELLED
+  **CANCELLED** (Отменено)
+  - Бронь отменена
+  - Причина отмены записана
+  - Возможен возврат средств
+end note
+
+note right of EXPIRED
+  **EXPIRED** (Истек холд)
+  - Не оплачено в срок
+  - Освобождены даты
+  - Бронирование недействительно
+end note
+
+@enduml

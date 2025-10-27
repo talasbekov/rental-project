@@ -1,0 +1,163 @@
+@startuml CreateBookingSequence
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+
+title Сценарий создания бронирования (Create Booking with HOLD)
+
+actor "Client\n(REST API)" as Client
+participant "BookingViewSet" as API
+participant "MessageBus" as Bus
+participant "CreateBookingHandler" as Handler
+participant "DjangoUnitOfWork" as UoW
+participant "BookingRepository" as Repo
+participant "Inventory\nAggregate" as Agg
+participant "Domain Events" as Events
+database "PostgreSQL" as DB
+participant "Event Handlers" as EventHandler
+queue "Celery Tasks" as Celery
+
+== Создание бронирования ==
+
+Client -> API: POST /api/bookings/\n{property_id, dates, guests}
+activate API
+note right of API
+  Валидация входных данных
+  Проверка аутентификации
+end note
+
+API -> Bus: CreateBooking command\n(user_id, property_id,\ncheckin, checkout)
+activate Bus
+
+Bus -> Handler: handle(CreateBooking)
+activate Handler
+note right of Handler
+  Начало use-case
+  оркестрации
+end note
+
+Handler -> UoW: __enter__()\nНачало транзакции
+activate UoW
+UoW -> DB: BEGIN TRANSACTION
+activate DB
+
+Handler -> UoW: uow.inventory.get(property_id)
+UoW -> Repo: get(property_id)
+activate Repo
+Repo -> DB: SELECT * FROM inventory\nWHERE property_id = ?
+DB --> Repo: inventory_data
+Repo -> Repo: Reconstitute Aggregate\nfrom ORM models
+Repo --> UoW: Inventory Aggregate
+deactivate Repo
+UoW --> Handler: Inventory Aggregate
+
+== Выполнение доменной логики ==
+
+Handler -> Agg: allocate(booking_dates,\nquantity=1)
+activate Agg
+note right of Agg
+  Проверка инвариантов:
+  1. Нет пересечений дат
+  2. Доступность > 0
+end note
+
+alt Даты свободны
+    Agg -> Agg: Create Booking entity\nstatus = HOLD\nhold_expires_at = now + 15min
+    Agg -> Events: Append BookingCreated event
+    activate Events
+    Agg -> Events: Append InventoryAllocated event
+    Agg --> Handler: Success
+    deactivate Agg
+else Даты заняты
+    Agg --> Handler: ❌ raise OutOfStock
+    Handler --> Bus: OutOfStock exception
+    Bus --> API: HTTP 409 Conflict
+    API --> Client: {"error": "Даты заняты"}
+    deactivate Events
+    deactivate Handler
+    deactivate Bus
+    deactivate API
+end
+
+== Сохранение изменений ==
+
+Handler -> UoW: uow.commit()
+UoW -> Repo: Save Aggregate changes
+activate Repo
+Repo -> DB: INSERT INTO bookings\n(id, property_id, dates, status)\nON CONFLICT DO NOTHING
+
+note right of DB
+  Эксклюзивный индекс
+  проверяет пересечения:
+
+  EXCLUDE USING gist
+  (property_id WITH =,
+   daterange WITH &&)
+end note
+
+alt Insert успешен
+    DB --> Repo: ✅ Success
+    Repo --> UoW: Saved
+    deactivate Repo
+
+    UoW -> UoW: Collect events from Aggregate
+    UoW -> DB: COMMIT TRANSACTION
+    deactivate DB
+    UoW --> Handler: Transaction committed
+    deactivate UoW
+else Constraint violation
+    DB --> Repo: ❌ IntegrityError
+    Repo --> UoW: Error
+    UoW -> DB: ROLLBACK
+    UoW --> Handler: Exception
+    Handler --> Bus: ConflictError
+    Bus --> API: HTTP 409
+    API --> Client: {"error": "Конфликт бронирования"}
+end
+
+== Публикация событий ==
+
+note over Handler, Bus
+  События публикуются
+  только после успешного commit
+end note
+
+Handler -> Bus: Publish collected events:\n• BookingCreated\n• InventoryAllocated
+deactivate Events
+Bus --> Handler: Events queued
+
+Handler --> Bus: ✅ Booking created\n(booking_id, expires_at)
+deactivate Handler
+Bus --> API: Success response
+deactivate Bus
+API --> Client: HTTP 201 Created\n{booking_id, status: "HOLD",\nexpires_at}
+deactivate API
+
+== Асинхронная обработка событий ==
+
+activate Bus
+Bus -> EventHandler: handle(BookingCreated)
+activate EventHandler
+EventHandler -> Celery: send_notification.delay(\nuser_id, booking_details)
+activate Celery
+Celery --> EventHandler: ✅ Task queued
+EventHandler --> Bus: Handled
+deactivate EventHandler
+
+Bus -> EventHandler: handle(InventoryAllocated)
+activate EventHandler
+EventHandler -> Celery: update_read_model.delay(\nproperty_id, dates)
+Celery --> EventHandler: ✅ Task queued
+deactivate Celery
+EventHandler --> Bus: Handled
+deactivate EventHandler
+deactivate Bus
+
+note over Celery
+  Фоновые задачи:
+  1. Отправка уведомлений
+  2. Обновление кеша поиска
+  3. Планирование автоотмены HOLD
+end note
+
+@enduml

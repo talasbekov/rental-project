@@ -1,0 +1,339 @@
+@startuml DomainModel
+!theme plain
+skinparam linetype ortho
+skinparam groupInheritance 2
+
+title Domain Model - ЖильеGO (DDD)
+
+package "Base DDD Classes" <<Frame>> {
+    abstract class Entity {
+        + id: UUID
+        + created_at: datetime
+        + updated_at: datetime
+        --
+        + __eq__(other)
+        + __hash__()
+    }
+
+    abstract class ValueObject {
+        --
+        {abstract} + __eq__(other)
+        {abstract} + __hash__()
+        # Immutable
+    }
+
+    abstract class Aggregate {
+        + events: List[DomainEvent]
+        --
+        + add_event(event)
+        + clear_events()
+    }
+
+    abstract class DomainEvent {
+        + event_id: UUID
+        + occurred_at: datetime
+        + aggregate_id: UUID
+        --
+        + to_dict()
+    }
+
+    Aggregate --|> Entity
+}
+
+package "Booking Context" <<Frame>> {
+
+    class "Inventory\n(Aggregate Root)" as Inventory {
+        + property_id: UUID
+        + allocations: List[Allocation]
+        --
+        + allocate(dates, quantity)
+        + deallocate(allocation_id)
+        + can_allocate(dates): bool
+        __
+        # Инварианты:
+        # - Нет пересечений дат
+        # - Quantity >= 0
+    }
+
+    class Booking {
+        + id: UUID
+        + user_id: UUID
+        + property_id: UUID
+        + checkin_date: date
+        + checkout_date: date
+        + status: BookingStatus
+        + payment_status: PaymentStatus
+        + total_amount: Money
+        + hold_expires_at: datetime
+        --
+        + confirm()
+        + cancel(reason)
+        + is_expired(): bool
+    }
+
+    enum BookingStatus {
+        HOLD
+        CONFIRMED
+        CANCELLED
+        EXPIRED
+        COMPLETED
+        CHECKED_IN
+    }
+
+    enum PaymentStatus {
+        PENDING
+        PAID
+        FAILED
+        REFUNDED
+    }
+
+    class Allocation {
+        + id: UUID
+        + booking_id: UUID
+        + dates: DateRange
+        + quantity: int
+    }
+
+    ' Value Objects
+    class DateRange <<ValueObject>> {
+        + start_date: date
+        + end_date: date
+        --
+        + overlaps_with(other): bool
+        + contains(date): bool
+        + __len__(): int
+    }
+
+    class Money <<ValueObject>> {
+        + amount: Decimal
+        + currency: str
+        --
+        + __add__(other)
+        + __mul__(factor)
+    }
+
+    ' Domain Events
+    class BookingCreated <<Event>> {
+        + booking_id: UUID
+        + property_id: UUID
+        + user_id: UUID
+        + dates: DateRange
+    }
+
+    class BookingConfirmed <<Event>> {
+        + booking_id: UUID
+        + confirmed_at: datetime
+    }
+
+    class BookingCancelled <<Event>> {
+        + booking_id: UUID
+        + reason: str
+        + cancelled_at: datetime
+    }
+
+    class InventoryAllocated <<Event>> {
+        + property_id: UUID
+        + allocation_id: UUID
+        + dates: DateRange
+    }
+
+    class InventoryDeallocated <<Event>> {
+        + property_id: UUID
+        + allocation_id: UUID
+    }
+
+    ' Relationships
+    Inventory "1" *-- "many" Allocation
+    Inventory --|> Aggregate
+    Booking --|> Entity
+    Allocation --|> Entity
+
+    Booking *-- DateRange
+    Booking *-- Money
+    Booking --> BookingStatus
+    Booking --> PaymentStatus
+    Allocation *-- DateRange
+
+    BookingCreated --|> DomainEvent
+    BookingConfirmed --|> DomainEvent
+    BookingCancelled --|> DomainEvent
+    InventoryAllocated --|> DomainEvent
+    InventoryDeallocated --|> DomainEvent
+
+    DateRange --|> ValueObject
+    Money --|> ValueObject
+}
+
+package "Property Context" <<Frame>> {
+
+    class Property {
+        + id: UUID
+        + owner_id: UUID
+        + type: PropertyType
+        + title: str
+        + location: Location
+        + base_price: Money
+        + amenities: List[str]
+        + status: PropertyStatus
+        --
+        + update_price(new_price)
+        + publish()
+        + unpublish()
+    }
+
+    enum PropertyType {
+        APARTMENT
+        HOUSE
+        COTTAGE
+        ROOM
+        HOSTEL
+        HOTEL
+    }
+
+    enum PropertyStatus {
+        DRAFT
+        ACTIVE
+        HIDDEN
+        ARCHIVED
+    }
+
+    class Location <<ValueObject>> {
+        + city: str
+        + district: str
+        + address: str
+        + coordinates: Coordinates
+    }
+
+    class Coordinates <<ValueObject>> {
+        + latitude: float
+        + longitude: float
+    }
+
+    ' Domain Events
+    class PropertyCreated <<Event>> {
+        + property_id: UUID
+        + owner_id: UUID
+        + property_type: PropertyType
+    }
+
+    class PriceChanged <<Event>> {
+        + property_id: UUID
+        + old_price: Money
+        + new_price: Money
+    }
+
+    Property --|> Aggregate
+    Property --> PropertyType
+    Property --> PropertyStatus
+    Property *-- Location
+    Property *-- Money
+    Location *-- Coordinates
+
+    Location --|> ValueObject
+    Coordinates --|> ValueObject
+    PropertyCreated --|> DomainEvent
+    PriceChanged --|> DomainEvent
+}
+
+package "Payment Context" <<Frame>> {
+
+    class Payment {
+        + id: UUID
+        + booking_id: UUID
+        + provider: str
+        + amount: Money
+        + status: PaymentStatus
+        + idempotency_key: str
+        + external_id: str
+        --
+        + mark_succeeded()
+        + mark_failed(reason)
+        + refund()
+    }
+
+    ' Domain Events
+    class PaymentSucceeded <<Event>> {
+        + payment_id: UUID
+        + booking_id: UUID
+        + amount: Money
+    }
+
+    class PaymentFailed <<Event>> {
+        + payment_id: UUID
+        + reason: str
+    }
+
+    class RefundProcessed <<Event>> {
+        + payment_id: UUID
+        + refund_amount: Money
+    }
+
+    Payment --|> Aggregate
+    Payment *-- Money
+    Payment --> PaymentStatus
+
+    PaymentSucceeded --|> DomainEvent
+    PaymentFailed --|> DomainEvent
+    RefundProcessed --|> DomainEvent
+}
+
+package "Commands" <<Frame>> {
+
+    class CreateBooking <<Command>> {
+        + user_id: UUID
+        + property_id: UUID
+        + checkin_date: date
+        + checkout_date: date
+        + guests: int
+    }
+
+    class ConfirmBooking <<Command>> {
+        + booking_id: UUID
+        + payment_id: UUID
+    }
+
+    class CancelBooking <<Command>> {
+        + booking_id: UUID
+        + reason: str
+    }
+
+    class ProcessPayment <<Command>> {
+        + booking_id: UUID
+        + payment_method: str
+        + idempotency_key: str
+    }
+
+    class CreateProperty <<Command>> {
+        + owner_id: UUID
+        + property_type: PropertyType
+        + title: str
+        + location: Location
+        + base_price: Money
+    }
+}
+
+note right of Aggregate
+  Aggregate Root:
+  - Граница согласованности
+  - Защищает инварианты
+  - Генерирует Domain Events
+  - Единственная точка входа
+end note
+
+note right of Inventory
+  Ключевой инвариант:
+
+  Предотвращение двойного
+  бронирования через:
+  1. Доменную логику
+  2. PostgreSQL EXCLUDE INDEX
+end note
+
+note bottom of DateRange
+  Value Objects:
+  - Immutable
+  - Без идентичности
+  - Сравнение по значению
+end note
+
+@enduml

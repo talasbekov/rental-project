@@ -1,0 +1,105 @@
+@startuml C4_Component
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_TOP_DOWN()
+
+title Component diagram for Django Web Application
+
+Person(client, "Client", "REST API вызовы")
+System_Ext(telegram_bot, "Telegram Bot", "API вызовы")
+System_Ext(kaspi_webhook, "Kaspi Pay", "Webhook уведомления")
+
+ContainerDb_Ext(postgresql, "PostgreSQL", "Write Model")
+ContainerDb_Ext(redis, "Redis", "Cache/Broker")
+ContainerDb_Ext(minio, "MinIO", "File Storage")
+Container_Ext(celery, "Celery Workers", "Async tasks")
+
+Container_Boundary(web_app, "Django Web Application") {
+
+    ' Entry Points Layer
+    Component(rest_api, "REST API Views", "Django REST Framework", "BookingViewSet, PropertyViewSet, UserViewSet")
+    Component(webhook_handler, "Webhook Handler", "Django Views", "Обработка вебхуков Kaspi, проверка подписи")
+    Component(admin_panel, "Django Admin", "Django Admin", "Управление объектами, модерация")
+
+    ' Application Layer
+    Component(message_bus, "Message Bus", "Orchestrator", "Центральный роутер команд и событий")
+
+    Component(command_handlers, "Command Handlers", "Service Layer", "CreateBookingHandler\nConfirmPaymentHandler\nCancelBookingHandler")
+
+    Component(event_handlers, "Event Handlers", "Service Layer", "SendNotificationHandler\nUpdateReadModelHandler\nProcessRefundHandler")
+
+    Component(query_views, "Query Views", "CQRS Read", "SearchPropertiesView\nGetAvailabilityView\nGetAnalyticsView")
+
+    ' Domain Layer
+    Component(aggregates, "Aggregates", "Domain Model", "Property\nBooking\nInventory/Availability")
+
+    Component(domain_events, "Domain Events", "Domain Model", "BookingConfirmed\nPaymentSucceeded\nBookingCancelled")
+
+    Component(commands, "Commands", "Domain Model", "CreateBooking\nProcessPayment\nCancelBooking")
+
+    Component(value_objects, "Value Objects", "Domain Model", "DateRange\nMoney\nBookingDates")
+
+    ' Infrastructure Layer
+    Component(uow, "Unit of Work", "Pattern", "DjangoUnitOfWork:\nУправление транзакциями\nСбор событий")
+
+    Component(repositories, "Repositories", "Pattern", "BookingRepository\nPropertyRepository\nUserRepository")
+
+    Component(orm_models, "Django ORM Models", "Django ORM", "Booking, Property, User,\nPayment, Review, Agency")
+
+    Component(payment_adapter, "Payment Adapter", "Integration", "KaspiPayAdapter:\nИдемпотентность, retry")
+
+    Component(notification_adapter, "Notification Adapters", "Integration", "TelegramAdapter\nEmailAdapter")
+
+    Component(cache_adapter, "Cache Adapter", "Integration", "Redis operations\nRate limiting")
+
+    ' Read Model
+    Component(read_model_store, "Read Model Store", "CQRS Cache", "Redis кеш поиска\nДенормализованные данные")
+}
+
+' Entry points
+Rel(client, rest_api, "HTTP Requests", "HTTPS/JSON")
+Rel(telegram_bot, rest_api, "API Calls", "HTTPS/JSON")
+Rel(kaspi_webhook, webhook_handler, "POST /webhook", "HTTPS/JSON")
+
+' Entry to Message Bus
+Rel(rest_api, commands, "Создает")
+Rel(webhook_handler, commands, "Создает")
+Rel(commands, message_bus, "Отправляет")
+
+' Message Bus routing
+Rel(message_bus, command_handlers, "Роутинг команд")
+Rel(message_bus, event_handlers, "Роутинг событий")
+
+' Command Handlers flow
+Rel(command_handlers, uow, "Использует")
+Rel(uow, repositories, "Предоставляет")
+Rel(repositories, orm_models, "CRUD операции")
+Rel(orm_models, postgresql, "SQL запросы")
+
+Rel(command_handlers, aggregates, "Загружает/обновляет")
+Rel(aggregates, domain_events, "Генерирует")
+Rel(aggregates, value_objects, "Использует")
+
+Rel(uow, domain_events, "Собирает после изменений")
+Rel(uow, message_bus, "Публикует после commit")
+
+' Event Handlers flow
+Rel(event_handlers, notification_adapter, "Вызывает")
+Rel(event_handlers, payment_adapter, "Вызывает")
+Rel(event_handlers, read_model_store, "Обновляет")
+Rel(event_handlers, celery, "Создает задачи")
+
+' Query Side
+Rel(rest_api, query_views, "Запросы чтения")
+Rel(query_views, read_model_store, "Читает из кеша")
+Rel(query_views, postgresql, "Опционально читает")
+
+' Infrastructure
+Rel(read_model_store, redis, "GET/SET")
+Rel(payment_adapter, kaspi_webhook, "API calls")
+Rel(notification_adapter, celery, "Публикует задачи")
+Rel(cache_adapter, redis, "Operations")
+Rel(repositories, minio, "Загружает файлы")
+Rel(admin_panel, orm_models, "CRUD")
+
+@enduml

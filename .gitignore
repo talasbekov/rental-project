@@ -36,3 +36,7 @@ Thumbs.db
 *.bak
 
 pgdata/
+celerybeat-schedule
+/apps/bookings/migrations/
+/apps/properties/migrations/
+/apps/users/migrations/

@@ -1,0 +1,1 @@
+"""Booking infrastructure layer - repositories and external integrations"""

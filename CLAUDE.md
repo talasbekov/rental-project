@@ -4,383 +4,258 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ЖильеGO is a Django-based Telegram bot for daily apartment rentals in Kazakhstan. The system allows users to search and book apartments, administrators to manage listings, and provides analytics. It also includes WhatsApp integration and uses Celery for background tasks.
+**ЖильеGO** is a Django 5-based rental property platform (like Airbnb) for Kazakhstan, starting with Astana. The platform handles property listings, bookings with payment processing (Kaspi Pay), user management with roles, and background tasks via Celery.
 
-## Quick Start
-
-### Onboarding (for Claude Code)
-
-1. **Python 3.12.x** - Create `.env` from `.env.example` and fill in secrets (see "Environment")
-2. **Install dependencies:**
-   - Locally: `pip install -r requirements.txt -r requirements-dev.txt`
-   - Or via Docker: `docker-compose up -d --build`
-3. **Run migrations:** `python manage.py migrate`
-4. **(Optional) Create superuser:** `python manage.py createsuperuser`
-5. **Run services:**
-   - API/Admin: `python manage.py runserver 0.0.0.0:8000`
-   - Bot (polling): `python booking_bot/telegram_bot/main.py` 
-   - Celery worker: `celery -A booking_bot worker -l info -Q default,notifications,payments`
-   - Celery beat: `celery -A booking_bot beat -l info`
-6. **Tests and linters:**
-   - `pytest -q`
-   - `ruff check . && ruff format --check .`
-   - Alternative: `black . && isort . && flake8 .`
-
-### Key Dependencies
-- Django 5.x
-- Django REST Framework
-- Celery
-- Redis
-- psycopg2-binary
-- python-telegram-bot
-- boto3 (S3/MinIO)
-
-## Environment Configuration
-
-```dotenv
-# Core / Django
-DJANGO_SETTINGS_MODULE=booking_bot.settings
-DEBUG=1
-SECRET_KEY=<django_secret_key>
-ALLOWED_HOSTS=127.0.0.1,localhost
-TIME_ZONE=Asia/Almaty
-
-# Database
-POSTGRES_DB=<db_name>
-POSTGRES_USER=<db_user>
-POSTGRES_PASSWORD=<db_password>
-POSTGRES_HOST=<db_host>
-POSTGRES_PORT=5432
-
-# Redis / Celery
-REDIS_URL=redis://<redis_host>:6379/0
-CELERY_BROKER_URL=${REDIS_URL}
-CELERY_RESULT_BACKEND=${REDIS_URL}
-CELERY_TIMEZONE=Asia/Almaty
-CELERY_QUEUES=default,notifications,payments
-
-# S3/MinIO
-S3_ENDPOINT_URL=http://localhost:9000
-S3_BUCKET=photos
-S3_ACCESS_KEY=minio_access_key
-S3_SECRET_KEY=minio_secret_key
-S3_REGION=us-east-1
-S3_USE_SSL=0
-
-# Telegram Bot
-TELEGRAM_BOT_TOKEN=<telegram_token>
-TELEGRAM_USE_WEBHOOK=0
-TELEGRAM_WEBHOOK_URL=<public_https_url>/telegram/webhook
-
-# API Base
-API_BASE=http://127.0.0.1:8000/api/v1
-JWT_ACCESS_TTL_MIN=30
-JWT_REFRESH_TTL_DAYS=7
-
-# Payments
-KASPI_API_BASE=<kaspi_base>
-KASPI_API_KEY=<kaspi_key>
-KASPI_MERCHANT_ID=<merchant_id>
-KASPI_SANDBOX=1
-
-# Photo limits
-PHOTO_MAX_SIZE=5242880
-```
-
-## Architecture Deep Dive
-
-### Core Structure
-- **booking_bot/**: Main Django project
-  - **users/**: User management and authentication (UserProfile with telegram_state)
-  - **listings/**: Property/apartment listings, cities, districts
-  - **bookings/**: Booking management and business logic
-  - **payments/**: Kaspi payment gateway integration
-  - **telegram_bot/**: Telegram bot handlers and utilities
-  - **whatsapp_bot/**: WhatsApp Business API integration
-  - **notifications/**: Centralized notification system
-  - **core/**: Shared utilities, security, storage
-
-### Key Components
-
-**Telegram Bot Architecture:**
-- Main handlers in `telegram_bot/handlers.py` (139KB, user-facing)
-- Admin handlers in `telegram_bot/admin_handlers.py`  
-- Edit handlers in `telegram_bot/edit_handlers.py`
-- User review handlers in `telegram_bot/user_review_handlers.py`
-- Bot entry point in `telegram_bot/main.py`
-- Centralized callback query handling in `callback_query_handler`
-- User state management via `UserProfile.telegram_state` JSON field
-- JWT authentication with token refresh in `_get_profile` function
-
-**API Communication:**
-- Bot communicates with Django backend via REST API
-- Base URL configured in `settings.API_BASE`
-- Authentication via JWT tokens stored in user state
-
-**Background Tasks:**
-- Extensive Celery beat schedule for automated tasks:
-  - Daily review requests and booking status updates
-  - Check-in/check-out reminders
-  - Occupancy monitoring and KO-factor analysis
-  - Calendar management and cleanup
-
-**Storage:**
-- S3/MinIO integration for photo storage
-- Custom storage backend at `booking_bot.core.storage.S3PhotoStorage`
-- Photo optimization with max size limits and thumbnails
-
-### Database Models
-- **UserProfile**: Extended user model with Telegram integration and role management
-- **Property**: Rental properties with calendar availability
-- **Booking**: Booking lifecycle management with status tracking
-- **Payment**: Kaspi gateway integration for transactions
-
-### FSM Flow
-```
-Start (/start)
-  -> City selection
-    -> District selection
-      -> Listings page (pagination)
-        -> Select listing
-          -> Choose dates
-            -> Confirm booking
-              -> Payment
-                -> Done + Notifications
-```
-
-### FSM Rules
-- callback_data must map 1:1 with handler
-- FSM state stored in profile.telegram_state
-- Transitions must be logged
-
-### Role-Based Access
-- User roles: user, admin, super_admin
-- Role-specific handlers and business logic
-- Admin functionality separated in dedicated handlers
-
-## Development Commands
+## Essential Commands
 
 ### Development Setup
+
 ```bash
-# Activate virtual environment
+# Initial setup (local)
+python -m venv .venv
 source .venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
+export DJANGO_SETTINGS_MODULE=config.settings.dev
+python manage.py migrate
+python manage.py runserver
 
-# Run migrations
+# Docker setup
+cp .env.example .env
+docker compose up --build
+```
+
+### Testing
+
+```bash
+# Run all tests
+python manage.py test
+
+# Run specific app tests
+python manage.py test apps.users
+python manage.py test apps.properties
+python manage.py test apps.bookings
+
+# Run single test
+python manage.py test apps.users.tests.test_auth_api.AuthAPITests.test_register_returns_tokens
+```
+
+### Database
+
+```bash
+# Create migrations
+python manage.py makemigrations
+
+# Apply migrations
 python manage.py migrate
 
 # Create superuser
 python manage.py createsuperuser
-
-# Start development server
-python manage.py runserver
 ```
 
-### Docker Development
+### Celery
+
 ```bash
-# Quick start
-cp .env.example .env && docker-compose up -d --build
+# Start Celery worker (dev)
+celery -A config.celery worker --loglevel=info
 
-# Start all services (PostgreSQL, Redis, MinIO, Django, Celery)
-docker-compose up -d
-
-# View logs
-docker-compose logs -f web
-docker-compose logs -f celery
-docker-compose logs -f celery-beat
-
-# Run migrations in container
-docker-compose exec web python manage.py migrate
-
-# Access Django shell
-docker-compose exec web python manage.py shell
+# Celery beat (scheduled tasks)
+celery -A config.celery beat --loglevel=info
 ```
 
-### Testing and Quality
-```bash
-# Run tests
-pytest -q
-python manage.py test
+## Architecture
 
-# Check Django configuration
-python manage.py check
+### Project Structure
 
-# Linting and formatting (Ruff - preferred)
-ruff check .
-ruff format --check .
-
-# Alternative linting (Black + isort + flake8)
-black . --check
-isort . --check-only
-flake8 .
+```
+rental-project/
+├── config/               # Django project root
+│   ├── settings/         # Split settings (base, dev, prod)
+│   ├── celery.py         # Celery app configuration
+│   ├── urls.py           # Root URL configuration
+│   ├── wsgi.py / asgi.py # WSGI/ASGI entry points
+├── apps/                 # Domain-driven app structure
+│   ├── users/            # Authentication, User model with roles
+│   ├── properties/       # Property listings, photos, amenities
+│   ├── bookings/         # Bookings, reviews, overlap prevention
+│   ├── analytics/        # Analytics and reporting (future)
+│   ├── notifications/    # Email/Telegram notifications (future)
+│   └── finances/         # Payment processing, payouts (future)
+└── manage.py
 ```
 
-### Custom Management Commands
-```bash
-# Setup Telegram bot menu
-python manage.py setup_bot_menu
+### Custom User Model
 
-# Generate audit report
-python manage.py audit_report
+The project uses a **custom User model** (`apps.users.models.User`) as `AUTH_USER_MODEL`. Key features:
 
-# Fix user profiles (custom command)
-python manage.py fix_user_profile
+- **Email-based authentication** (USERNAME_FIELD = "email")
+- **Phone number required** (REQUIRED_FIELDS = ["phone"])
+- **Role-based access**: `guest`, `realtor`, `super_admin`, `superuser`
+- **Security features**:
+  - Failed login attempt tracking with account locking
+  - `is_locked` property and `register_failed_attempt()` method
+  - Password reset tokens with expiration and attempt limits
+
+**Important**: When creating users programmatically or in tests, always use:
+- `User.objects.create_user(email, phone, password)`
+- `User.objects.create_superuser(email, phone, password)`
+
+### Domain Apps
+
+**apps.users/**
+- Custom User model with role hierarchy (Guest → Realtor → Super Admin → Superuser)
+- RealEstateAgency model for grouping realtors
+- JWT authentication (djangorestframework-simplejwt)
+- PasswordResetToken for secure password recovery
+- Phone normalization: `User.normalize_phone(phone)`
+
+**apps.properties/**
+- Property model: type (apartment/house/cottage/room/hostel), class (comfort/business/premium), pricing
+- PropertyPhoto model with ordering and primary photo logic
+- Amenity catalog (M2M with Property)
+- Favorite model (User ↔ Property bookmarking)
+- Address fields: city, district, address_line, lat/lng
+- Check-in/out times, cancellation policy
+
+**apps.bookings/**
+- Booking model with comprehensive status workflow:
+  - `PENDING` → `CONFIRMED` → `IN_PROGRESS` → `COMPLETED`
+  - Cancellation states: `CANCELLED_BY_GUEST`, `CANCELLED_BY_REALTOR`
+- **Critical**: `BookingQuerySet.overlapping()` prevents double-booking
+- `Booking.create_booking()` class method with atomic transactions
+- Review model (1-to-1 with Booking, only after COMPLETED status)
+- Validation: min/max stay nights, guest count vs sleeps capacity
+
+### Double-Booking Prevention
+
+The booking system uses multiple layers to prevent conflicts:
+
+1. **Database-level**: `BookingQuerySet.overlapping()` filters by date ranges and active statuses
+2. **Transaction atomicity**: `Booking.create_booking()` uses `transaction.atomic()` + `SELECT ... FOR UPDATE`
+3. **Status filtering**: Only `PENDING`, `CONFIRMED`, `IN_PROGRESS` bookings block dates
+
+**When implementing booking features:**
+- Always use `Booking.create_booking()` class method, never direct `.create()`
+- Check overlaps with `.overlapping(property_id, check_in, check_out)` before creating
+- Use `select_for_update()` for pessimistic locking in high-concurrency scenarios
+
+### Settings Architecture
+
+- **Base settings**: `config.settings.base` (shared configuration)
+- **Dev settings**: `config.settings.dev` (DEBUG=True, local DB)
+- **Prod settings**: `config.settings.prod` (production-ready)
+- **Environment**: Default is `config.settings.dev` (set in manage.py)
+- **Configuration**: Use environment variables via `.env` file (see `.env.example`)
+
+### Authentication & Permissions
+
+- REST Framework with JWT tokens (simplejwt)
+- Token endpoints: `/api/v1/auth/` (login, register, token refresh, password reset)
+- Role-based permissions: Check `user.role` for access control
+  - `guest`: Read-only access (no bookings)
+  - `realtor`: Manage own properties and bookings
+  - `super_admin`: Manage team realtors (scoped to agency)
+  - `superuser`: Full platform access
+
+### URLs Structure
+
+```
+/admin/                          # Django admin
+/api/v1/auth/                    # Authentication endpoints
+/api/v1/properties/              # Property CRUD, search, favorites
+/api/v1/bookings/                # Booking creation, management, reviews
 ```
 
-### Celery Tasks
-```bash
-# Start Celery worker
-celery -A booking_bot worker -l info -Q default,notifications,payments
+## Technical Specifications (from TZ)
 
-# Start Celery beat scheduler
-celery -A booking_bot beat -l info
-```
+- **Database**: PostgreSQL with timezone support (Asia/Almaty)
+- **Locale**: Russian (ru-ru) primary, Kazakhstan support planned
+- **Media**: MinIO (S3-compatible) for photos (max 7MB, 6 photos per property)
+- **Payments**: Kaspi Pay integration (MVP), cards/cash planned
+- **Background jobs**: Celery + Redis for:
+  - Expired booking cleanup (15-min hold period)
+  - Notifications (email + Telegram)
+  - Analytics generation
+- **Booking hold**: 15 minutes to complete payment before auto-cancellation
 
-#### Celery Queues
-- **default** — general tasks
-- **notifications** — messaging/notifications
-- **payments** — payment-related tasks
+## Key Business Rules
 
-#### Celery Beat Examples
-- review-request: daily 12:00
-- process-notifications: every minute
-- check-expired-bookings: every 5 minutes
-- monthly-report: 1st of month 09:00
+### Booking Lifecycle
 
-## Development Workflow
+1. User selects dates → creates booking with status `PENDING` (hold)
+2. 15-minute timer starts for payment
+3. On successful payment → `CONFIRMED` (dates locked)
+4. Check-in → `IN_PROGRESS`
+5. Check-out → `COMPLETED` (eligible for review)
+6. If no payment → Celery job sets to `EXPIRED`, releases dates
 
-### Core Principles
-1. Use existing Django patterns and model structures
-2. Follow PEP 8 coding standards with lines under 100 characters (configured in pyproject.toml)
-3. State management via `profile.telegram_state` for conversation flows
-4. API calls use `requests` library with JWT authentication
-5. Extensive logging throughout the application
-6. Security-first approach with CSRF protection and input validation
-7. Use Ruff for linting/formatting (primary), Black+isort+flake8 available as alternative
+### Role Hierarchy
 
-### Storage Rules
-- All photos → S3/MinIO
-- Must upload successfully before saving DB record
-- Public access only via presigned URLs
-- Enforce PHOTO_MAX_SIZE, thumbnails
+- **Guest**: Browse only, must register to book
+- **Realtor**: Manage own properties, see own bookings, access analytics for own properties
+- **Super Admin**: Manage realtors in their agency, aggregate analytics for team
+- **Superuser**: Platform owner, full access to all data and settings
 
-### API Documentation
-- Swagger/OpenAPI: http://127.0.0.1:8000/api/docs/
-- Admin Panel: http://127.0.0.1:8000/admin/
+### Security Requirements
 
-### Sample Data
-```bash
-python manage.py createsuperuser
-```
+- **Sensitive data encryption**: Property access codes (domofon, apartment, safe) must be encrypted (AES-256)
+- **Access logging**: Log all access to encrypted property codes
+- **Failed login protection**: After 5 failed attempts, lock account for 15 minutes
+- **Password reset**: 6-digit code with 3 attempts, time-limited expiration
 
-## Git / PR Workflow
-- Branches: main, develop, feat/*, fix/*
-- Conventional Commits
-- PR checklist:
-  - [ ] Tests & linters pass
-  - [ ] Migrations ok
-  - [ ] Fixtures updated
-  - [ ] Tests added for business logic
-  - [ ] Docs updated
+## Development Patterns
 
-## Claude Code Recipes
+### Creating New Models
 
-### Adding New Telegram Handler
-1. Add handler function in `telegram_bot/handlers.py` or create new handler file
-2. Register handler in `telegram_bot/main.py`
-3. Update keyboards and FSM states
-4. Add corresponding test
+- Use `UUIDField` for primary keys: `id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)`
+- Add timestamps: `created_at = models.DateTimeField(auto_now_add=True)`, `updated_at = models.DateTimeField(auto_now=True)`
+- Use `ForeignKey` with `related_name` for reverse lookups
+- Add indexes for frequently queried fields (city, status, dates)
 
-### Working with User State
-```python
-# Get user profile with state
-profile = _get_profile(user_id)
-state = profile.telegram_state
+### Writing Tests
 
-# Update state
-state['current_step'] = 'selecting_dates'
-profile.save()
-```
+- Use `APITestCase` for endpoint tests (see `apps.users.tests.test_auth_api`)
+- Test authentication flows, role-based access, and edge cases
+- Always test double-booking scenarios for booking-related features
+- Use `reverse()` for URL resolution in tests
 
-### API Communication Pattern
-```python
-headers = {'Authorization': f'Bearer {profile.access_token}'}
-response = requests.get(f"{settings.API_BASE}/endpoint/", headers=headers)
-```
+### Working with Dates
 
-## Troubleshooting
+- Always use `timezone.now()` (Django's timezone-aware datetime)
+- Date ranges: Use `check_in` (inclusive) and `check_out` (exclusive)
+- Booking nights calculation: `(check_out - check_in).days`
 
-### Common Issues
-- **Buttons not working**: check callback_data and state mapping
-- **Photo upload fails**: verify S3_* environment variables
-- **Celery stuck**: verify Redis connection and queue configuration
-- **JWT expired**: check token refresh logic in `_get_profile`
-- **FSM broken**: verify state transitions and logging
+## Future Considerations (Stage 2+)
 
-### Debugging Tools
-- Django logs: logs/django.log
-- Celery monitoring: `flower --broker=redis://localhost:6379/0 --port=5555`
-- Web UI: http://localhost:5555
-- Django shell: `python manage.py shell`
-- Check bot main.py directly for debugging
+- Multi-city expansion (currently Astana only)
+- Hotel/hostel room inventory management
+- Dynamic pricing calendar
+- Telegram bot integration
+- Reviews and ratings system
+- Advanced analytics dashboard
+- Payouts to property owners
 
-## Security
+## Critical Files
 
-- Never commit .env files
-- Use environment-specific settings
-- Rotate API keys regularly
-- Validate all user inputs
-- Use HTTPS in production
-- Implement rate limiting
+- **User model**: `apps/users/models.py:74` - Custom user with roles
+- **Booking logic**: `apps/bookings/models.py:83` - `Booking.create_booking()` with overlap prevention
+- **Settings**: `config/settings/base.py` - Core configuration
+- **Celery**: `config/celery.py` - Background task configuration
+- **URL routing**: `config/urls.py` - API namespace structure
 
-## Monitoring
+## Common Pitfalls
 
-- Django logs: logs/django.log
-- Celery monitoring: flower dashboard
-- Database performance monitoring
-- API response time tracking
-- Bot conversation flow analytics
+1. **Never create bookings directly** - Always use `Booking.create_booking()` to ensure validation and overlap checks
+2. **User creation** - Must use `create_user()` manager method (email + phone required)
+3. **Settings module** - Set `DJANGO_SETTINGS_MODULE=config.settings.dev` in environment
+4. **Migrations** - Run after any model changes, apps are namespaced under `apps.*`
+5. **Timezone** - Use `timezone.now()`, not `datetime.now()`
+6. **Role checks** - Always verify `user.role` for permission logic, don't rely solely on `is_staff`
 
-## Makefile (optional)
-```makefile
-.PHONY: up down logs web celery beat test lint fmt
+## Technical Debt & TODOs
 
-up:        ; docker-compose up -d --build
-down:      ; docker-compose down
-logs:      ; docker-compose logs -f --tail=200 web
-web:       ; docker-compose exec web bash
-celery:    ; docker-compose logs -f celery
-beat:      ; docker-compose logs -f celery-beat
-test:      ; pytest -q
-lint:      ; ruff check .
-fmt:       ; ruff format .
-```
-
-## 🔒 Code Quality Guardrails for Claude Code
-
-### General Rules
-- ❌ **No hallucinations**: если данных нет — прямо ответь "недостаточно информации".  
-- ✅ **Рабочий код only**: только корректные, запускаемые примеры без псевдокода.  
-- ✅ **Минимум абстракций**: используй самые простые и проверяемые решения.  
-- ✅ **Безопасность**: не логируй секреты, используй `ENV` переменные.  
-- ✅ **Оптимальность**: избегай N+1, ненужных циклов, неоптимичных запросов.  
-- ✅ **Портируемость**: код должен запускаться локально без сторонних сервисов (если нужны — укажи моки).
-
-### Output Format
-1. **Context** — кратко, что делаем (2–5 строк).  
-2. **Dependencies** — список библиотек + команды установки.  
-3. **Code** — цельный блок, готовый к запуску.  
-4. **Tests/Checks** — команда для проверки или минимальные автотесты.  
-5. **Limits** — явные упрощения/ограничения.  
-
-### Checklist Before Answer
-- [ ] Нет выдуманных API/функций.  
-- [ ] Код проходит линтер и запускается.  
-- [ ] Есть валидация и обработка ошибок.  
-- [ ] Секреты вынесены в ENV.  
-- [ ] Есть инструкция запуска/проверки.  
-
-💡 Если информации недостаточно для корректной реализации — Клауд обязан вежливо отказаться и запросить недостающие вводные.
-
+- Property access code encryption not yet implemented (security requirement)
+- Analytics, notifications, finances apps are stubs (models.py mostly empty)
+- Kaspi Pay integration pending
+- Celery periodic tasks for booking expiration not configured
+- Telegram bot integration planned but not started
+- MinIO/S3 storage not configured (using local MEDIA_ROOT)

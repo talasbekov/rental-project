@@ -1,0 +1,1 @@
+"""Booking domain layer - pure business logic"""

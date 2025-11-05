@@ -1,0 +1,2 @@
+"""Notification app migrations package."""
+

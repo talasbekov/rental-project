@@ -1,0 +1,2 @@
+"""Favorites app migrations package."""
+

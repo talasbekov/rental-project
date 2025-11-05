@@ -1,95 +1,60 @@
-"""REST API views for authentication flows."""
+"""User API views."""
 
 from __future__ import annotations
 
-import logging
-from typing import Any
+from django.contrib.auth import get_user_model  # type: ignore
+from rest_framework import permissions, status, viewsets  # type: ignore
+from rest_framework.decorators import action  # type: ignore
+from rest_framework.response import Response  # type: ignore
 
-from rest_framework import generics, permissions, status
-from rest_framework.request import Request
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
+from .serializers import RegisterSerializer, UserSerializer
 
-from .models import PasswordResetToken
-from .serializers import (
-    LoginSerializer,
-    PasswordResetConfirmSerializer,
-    PasswordResetRequestSerializer,
-    RegisterSerializer,
-    UserSerializer,
-)
-
-logger = logging.getLogger(__name__)
+User = get_user_model()
 
 
-def _issue_tokens_for_user(user) -> dict[str, str]:
-    refresh = RefreshToken.for_user(user)
-    return {"refresh": str(refresh), "access": str(refresh.access_token)}
+class UserViewSet(viewsets.ModelViewSet):
+    """Управление пользователями.
 
+    - `register` доступен без авторизации (гость -> пользователь)
+    - `me` возвращает профиль текущего пользователя
+    - операции списка/редактирования доступны только персоналу платформы
+    """
 
-class RegisterView(generics.CreateAPIView):
-    """Registers a new user and returns JWT pair."""
+    serializer_class = UserSerializer
+    queryset = User.objects.select_related("agency").all()
 
-    serializer_class = RegisterSerializer
-    permission_classes = (permissions.AllowAny,)
-    created_user = None
+    def get_permissions(self):  # type: ignore
+        if self.action in {"register"}:
+            return [permissions.AllowAny()]
+        if self.action in {"me", "partial_update", "update"}:
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAdminUser()]
 
-    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:  # type: ignore[override]
-        response = super().create(request, *args, **kwargs)
-        user = self.created_user
-        tokens = _issue_tokens_for_user(user)
-        response.data = {
-            "user": UserSerializer(user).data,
-            "tokens": tokens,
-        }
-        return response
+    def list(self, request, *args, **kwargs):  # type: ignore
+        """Ограничиваем стандартный список только персоналом."""
+        return super().list(request, *args, **kwargs)
 
-    def perform_create(self, serializer):  # type: ignore[override]
-        self.created_user = serializer.save()
+    def update(self, request, *args, **kwargs):  # type: ignore
+        # Администраторы могут обновлять произвольных пользователей, остальные только себя.
+        if not request.user.is_staff and str(request.user.pk) != str(kwargs.get("pk")):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
 
+    def partial_update(self, request, *args, **kwargs):  # type: ignore
+        if not request.user.is_staff and str(request.user.pk) != str(kwargs.get("pk")):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        return super().partial_update(request, *args, **kwargs)
 
-class LoginView(APIView):
-    permission_classes = (permissions.AllowAny,)
-
-    def post(self, request: Request) -> Response:
-        serializer = LoginSerializer(data=request.data)
+    @action(detail=False, methods=["post"], permission_classes=[permissions.AllowAny])
+    def register(self, request):
+        """Регистрация нового пользователя (гостя)."""
+        serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.validated_data["user"]
-        tokens = _issue_tokens_for_user(user)
-        return Response({"user": UserSerializer(user).data, "tokens": tokens})
+        user = serializer.save()
+        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
-
-class PasswordResetRequestView(APIView):
-    permission_classes = (permissions.AllowAny,)
-
-    def post(self, request: Request) -> Response:
-        serializer = PasswordResetRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        token: PasswordResetToken = serializer.save()
-
-        # Stub for email delivery; replace with notification service later.
-        logger.info(
-            "Password reset code generated for user_id=%s code=%s (expires at %s)",
-            token.user_id,
-            token.code,
-            token.expires_at,
-        )
-
-        delivery_channel = "email" if "@" in serializer.validated_data["identifier"] else "sms"
-        return Response(
-            {
-                "detail": f"Код отправлен через {delivery_channel}. Действует 15 минут.",
-            },
-            status=status.HTTP_202_ACCEPTED,
-        )
-
-
-class PasswordResetConfirmView(APIView):
-    permission_classes = (permissions.AllowAny,)
-
-    def post(self, request: Request) -> Response:
-        serializer = PasswordResetConfirmSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response({"detail": "Пароль обновлен."}, status=status.HTTP_200_OK)
+    @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated])
+    def me(self, request):
+        """Возвращает профиль текущего пользователя."""
+        serializer = UserSerializer(request.user)
+        return Response(serializer.data)

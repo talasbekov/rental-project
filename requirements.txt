@@ -1,52 +1,45 @@
-# Core Django
-Django>=5.0,<6.0
-djangorestframework>=3.14,<4.0
-djangorestframework-simplejwt>=5.3,<6.0
+# Core framework
+Django==5.1.3
+djangorestframework==3.14.0
+djangorestframework-simplejwt==5.3.1
+django-filter==24.3
+django-cors-headers==4.4.0
 
-# Database
-psycopg2-binary>=2.9,<3.0
+# Database & caching
+psycopg2-binary==2.9.9
+django-redis==5.4.0
+django-mptt==0.16.0
 
-# Celery & Task Queue
-celery>=5.3,<6.0
-django-celery-beat>=2.6,<3.0
-redis>=5.0,<6.0
+# Task processing
+celery==5.4.0
+django-celery-beat==2.7.0
+redis==5.0.8
 
-# Storage & Media
-boto3>=1.28,<2.0  # For S3/MinIO
-django-storages>=1.14,<2.0
-
-# Environment & Configuration
-python-dotenv>=1.0,<2.0
-
-# API Documentation
-drf-spectacular>=0.27,<1.0
-
-# CORS
-django-cors-headers>=4.3,<5.0
-
-# Filters
-django-filter>=23.5,<24.0
-
-# Monitoring & Logging
-sentry-sdk>=1.40,<2.0
-
-# Security
-cryptography>=41.0,<42.0  # For encryption
-PyJWT>=2.8,<3.0
-
-# Telegram Bot
-python-telegram-bot>=20.7,<21.0
-
-# HTTP Requests
-requests>=2.31,<3.0
-httpx>=0.26,<1.0
+# Storage & files
+boto3==1.34.162
+django-storages==1.14.4
+Pillow==10.4.0
+openpyxl==3.1.5
+pdfplumber==0.11.4
 
 # Utilities
-python-dateutil>=2.8,<3.0
-pytz>=2023.3
+cryptography==43.0.1
+python-dateutil==2.9.0
+pytz==2024.2
+python-dotenv==1.0.1
+requests==2.32.3
+httpx==0.27.2
+sentry-sdk==2.15.0
+PyJWT==2.9.0
 
-# Excel Export
-openpyxl>=3.1,<4.0
+# API docs
+drf-spectacular==0.27.2
 
-# Image Processing
-Pillow>=10.0,<11.0
+# Integrations
+python-telegram-bot==21.6
+
+# WSGI server
+gunicorn==23.0.0
+
+# Additional for production stability
+whitenoise==6.7.0

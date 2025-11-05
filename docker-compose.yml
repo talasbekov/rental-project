@@ -1,47 +1,161 @@
-version: "3.9"
+version: '3.8'
 
 services:
-  web:
-    build: .
-    command: bash -lc "python manage.py migrate --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000"
-    volumes:
-      - .:/app
-    env_file: .env.example
-    environment:
-      DJANGO_SETTINGS_MODULE: config.settings.dev
-    ports:
-      - "8000:8000"
-    depends_on:
-      - db
-      - redis
-
   db:
     image: postgres:15-alpine
+    container_name: rental_db
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-zhilyego}
       POSTGRES_USER: ${POSTGRES_USER:-zhilyego}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zhilyego}
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zhilyego} -d ${POSTGRES_DB:-zhilyego}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - rental_network
 
   redis:
     image: redis:7-alpine
+    container_name: rental_redis
+    command: redis-server --appendonly yes
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - rental_network
 
-  celery:
-    build: .
-    command: celery -A config.celery worker --loglevel=info
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rental_web
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120 --access-logfile - --error-logfile -"
     volumes:
       - .:/app
-    env_file: .env.example
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    env_file:
+      - .env
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    ports:
+      - "8000:8000"
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - rental_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/admin/login/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rental_celery_worker
+    command: celery -A config.celery worker --loglevel=info --concurrency=2
+    volumes:
+      - .:/app
+      - media_volume:/app/media
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - rental_network
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rental_celery_beat
+    command: celery -A config.celery beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - rental_network
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: rental_ngrok
+    command: http web:8000 --log stdout
+    ports:
+      - "4040:4040"
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN:-}
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - rental_network
 
 volumes:
   postgres_data:
+  redis_data:
+  static_volume:
+  media_volume:
+
+networks:
+  rental_network:
+    driver: bridge

@@ -1,9 +1,69 @@
-pgdata/
+# Version control
 .git/
+.gitignore
+
+# Python
 .venv/
+venv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Testing
 .pytest_cache/
-.env
-logs/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+
+# Database & storage
+pgdata/
+db.sqlite3
+*.db
+
+# Static & media files (generated)
+staticfiles/
+media/
+
+# Logs
+logs/
+*.log
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# CI/CD
+.github/
+.pre-commit-config.yaml
+
+# Misc
+schemas/
+analysis_*.txt
+*.zip

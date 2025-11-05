@@ -1,14 +1,15 @@
-"""Authentication routes."""
+"""URL declarations for the users app."""
 
-from django.urls import path
+from __future__ import annotations
 
-from .views import LoginView, PasswordResetConfirmView, PasswordResetRequestView, RegisterView
+from django.urls import path, include  # type: ignore
+from rest_framework.routers import DefaultRouter  # type: ignore
 
-app_name = "auth"
+from .views import UserViewSet
+
+router = DefaultRouter()
+router.register(r'', UserViewSet, basename='user')
 
 urlpatterns = [
-    path("register/", RegisterView.as_view(), name="register"),
-    path("login/", LoginView.as_view(), name="login"),
-    path("password-reset/request/", PasswordResetRequestView.as_view(), name="password-reset-request"),
-    path("password-reset/confirm/", PasswordResetConfirmView.as_view(), name="password-reset-confirm"),
+    path('', include(router.urls)),
 ]

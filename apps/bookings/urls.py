@@ -1,14 +1,15 @@
-"""Routes for booking operations."""
+"""URL routing for the booking domain."""
 
-from django.urls import path
+from __future__ import annotations
 
-from .views import BookingCancelView, BookingDetailView, BookingListCreateView, ReviewListCreateView
+from django.urls import include, path  # type: ignore
+from rest_framework.routers import DefaultRouter  # type: ignore
 
-app_name = "bookings"
+from .views import BookingViewSet
+
+router = DefaultRouter()
+router.register(r"", BookingViewSet, basename="booking")
 
 urlpatterns = [
-    path("", BookingListCreateView.as_view(), name="list-create"),
-    path("<uuid:pk>/", BookingDetailView.as_view(), name="detail"),
-    path("<uuid:pk>/cancel/", BookingCancelView.as_view(), name="cancel"),
-    path("reviews/", ReviewListCreateView.as_view(), name="reviews"),
+    path("", include(router.urls)),
 ]

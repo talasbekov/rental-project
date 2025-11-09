@@ -9,6 +9,7 @@ from datetime import date, timedelta
 from asgiref.sync import sync_to_async
 from django.utils import timezone  # type: ignore
 from django.db.models import Q  # type: ignore
+from django.core.exceptions import ValidationError  # type: ignore
 
 from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, InlineKeyboardButton, InlineKeyboardMarkup  # type: ignore
 from telegram.ext import (  # type: ignore
@@ -21,7 +22,7 @@ from telegram.ext import (  # type: ignore
     filters,
 )
 
-from apps.properties.models import Property, PropertyAvailability
+from apps.properties.models import Property, PropertyAvailability, Location
 from apps.favorites.models import Favorite
 from apps.reviews.models import Review
 from apps.notifications.models import Notification
@@ -50,14 +51,14 @@ LINK_IDENTIFIER, LINK_CODE = range(3, 5)
 SEARCH_CITY, SEARCH_DATES = range(5, 7)
 BOOKING_ASK_DATE, BOOKING_ASK_NIGHTS, BOOKING_ASK_GUESTS = range(7, 10)
 REVIEW_ASK_RATING, REVIEW_ASK_COMMENT = range(10, 12)
-ADDPROP_TITLE, ADDPROP_CITY, ADDPROP_PRICE, ADDPROP_GUESTS, ADDPROP_DESC = range(12, 17)
-BLOCK_START, BLOCK_END, BLOCK_REASON = range(17, 20)
-SU_SEARCH_USER = 20
-SU_ASSIGN_AGENCY_ASK = 21
-SU_FILTER_CITY_ASK = 22
-SU_FILTER_AGENCY_ASK = 23
+ADDPROP_TITLE, ADDPROP_CITY, ADDPROP_DISTRICT, ADDPROP_PRICE, ADDPROP_GUESTS, ADDPROP_DESC = range(12, 18)
+BLOCK_START, BLOCK_END, BLOCK_REASON = range(18, 21)
+SU_SEARCH_USER = 21
+SU_ASSIGN_AGENCY_ASK = 22
+SU_FILTER_CITY_ASK = 23
+SU_FILTER_AGENCY_ASK = 24
 # Advanced search flow states
-SRCH_CHECKIN, SRCH_CHECKOUT, SRCH_CITY, SRCH_DISTRICT, SRCH_CLASS, SRCH_ROOMS = range(30, 36)
+SRCH_CHECKIN, SRCH_CHECKOUT, SRCH_CHECKIN_TIME, SRCH_CHECKOUT_TIME, SRCH_CITY, SRCH_DISTRICT, SRCH_CLASS, SRCH_ROOMS = range(30, 38)
 # Post-payment time gathering
 BOOKING_ASK_CHECKIN_TIME, BOOKING_ASK_CHECKOUT_TIME = range(40, 42)
 
@@ -124,6 +125,17 @@ async def show_main_menu_and_end(update: Update, context: ContextTypes.DEFAULT_T
     profile = await get_or_create_profile_from_update(update)
     keyboard = await build_main_menu_async(profile)
     await update.message.reply_text(message, reply_markup=keyboard)
+    return ConversationHandler.END
+
+
+async def conversation_timeout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обрабатывает таймаут разговора - возвращает в главное меню."""
+    profile = await get_or_create_profile_from_update(update)
+    keyboard = await build_main_menu_async(profile)
+    await update.message.reply_text(
+        "⏱ Время ожидания истекло. Возвращаю вас в главное меню.",
+        reply_markup=keyboard
+    )
     return ConversationHandler.END
 
 def build_main_menu(profile, user=None) -> ReplyKeyboardMarkup:
@@ -364,6 +376,8 @@ async def search_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     for k in [
         "srch_checkin",
         "srch_checkout",
+        "srch_checkin_time",
+        "srch_checkout_time",
         "srch_city",
         "srch_district",
         "srch_class",
@@ -372,27 +386,102 @@ async def search_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         "sres_idx",
     ]:
         context.user_data.pop(k, None)
-    await update.message.reply_text("Введите дату заезда (ДД.ММ.ГГГГ):")
+
+    # Создаем быстрые кнопки для даты заезда
+    today = timezone.now().date()
+    tomorrow = today + timedelta(days=1)
+
+    kb = ReplyKeyboardMarkup([
+        [f"Сегодня ({today.strftime('%d.%m.%Y')})"],
+        [f"Завтра ({tomorrow.strftime('%d.%m.%Y')})"],
+    ], resize_keyboard=True, one_time_keyboard=True)
+
+    await update.message.reply_text("Выберите или введите дату заезда (ДД.ММ.ГГГГ):", reply_markup=kb)
     return SRCH_CHECKIN
 
 
 async def search_ask_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    checkin = _parse_date((update.message.text or "").strip())
+    txt = (update.message.text or "").strip()
+
+    # Обработка быстрых кнопок
+    if txt.startswith("Сегодня"):
+        checkin = timezone.now().date()
+    elif txt.startswith("Завтра"):
+        checkin = timezone.now().date() + timedelta(days=1)
+    else:
+        checkin = _parse_date(txt)
+
     if not checkin or checkin < timezone.now().date():
         await update.message.reply_text("Дата заезда некорректна. Введите заново (ДД.ММ.ГГГГ):")
         return SRCH_CHECKIN
     context.user_data["srch_checkin"] = checkin
-    await update.message.reply_text("Введите дату выезда (ДД.ММ.ГГГГ):")
+
+    # Создаем быстрые кнопки для даты выезда
+    tomorrow = checkin + timedelta(days=1)
+    day_after = checkin + timedelta(days=2)
+
+    kb = ReplyKeyboardMarkup([
+        [f"Завтра ({tomorrow.strftime('%d.%m.%Y')})"],
+        [f"Послезавтра ({day_after.strftime('%d.%m.%Y')})"],
+    ], resize_keyboard=True, one_time_keyboard=True)
+
+    await update.message.reply_text("Выберите или введите дату выезда (ДД.ММ.ГГГГ):", reply_markup=kb)
     return SRCH_CHECKOUT
 
 
-async def search_ask_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    checkout = _parse_date((update.message.text or "").strip())
+async def search_ask_checkin_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обрабатывает дату выезда и запрашивает время заезда."""
+    txt = (update.message.text or "").strip()
     checkin = context.user_data.get("srch_checkin")
+
+    # Обработка быстрых кнопок для даты выезда
+    if txt.startswith("Завтра"):
+        checkout = checkin + timedelta(days=1)
+    elif txt.startswith("Послезавтра"):
+        checkout = checkin + timedelta(days=2)
+    else:
+        checkout = _parse_date(txt)
+
     if not checkout or not checkin or checkout <= checkin:
         await update.message.reply_text("Дата выезда должна быть позже даты заезда. Введите снова (ДД.ММ.ГГГГ):")
         return SRCH_CHECKOUT
     context.user_data["srch_checkout"] = checkout
+
+    # Запрашиваем время заезда с быстрыми кнопками
+    kb = ReplyKeyboardMarkup([
+        ["10:00", "12:00", "14:00"],
+        ["16:00", "18:00", "20:00"],
+    ], resize_keyboard=True, one_time_keyboard=True)
+
+    await update.message.reply_text("Выберите или введите время заезда (ЧЧ:ММ):", reply_markup=kb)
+    return SRCH_CHECKIN_TIME
+
+
+async def search_ask_checkout_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обрабатывает время заезда и запрашивает время выезда."""
+    t = _parse_time(update.message.text)
+    if not t:
+        await update.message.reply_text("Введите время в формате ЧЧ:ММ, например 14:00:")
+        return SRCH_CHECKIN_TIME
+    context.user_data["srch_checkin_time"] = t
+
+    # Запрашиваем время выезда с быстрыми кнопками
+    kb = ReplyKeyboardMarkup([
+        ["10:00", "12:00", "14:00"],
+        ["16:00", "18:00", "20:00"],
+    ], resize_keyboard=True, one_time_keyboard=True)
+
+    await update.message.reply_text("Выберите или введите время выезда (ЧЧ:ММ):", reply_markup=kb)
+    return SRCH_CHECKOUT_TIME
+
+
+async def search_ask_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обрабатывает время выезда и запрашивает город."""
+    t = _parse_time(update.message.text)
+    if not t:
+        await update.message.reply_text("Введите время в формате ЧЧ:ММ, например 12:00:")
+        return SRCH_CHECKOUT_TIME
+    context.user_data["srch_checkout_time"] = t
 
     # Получаем список городов из базы данных через Location
     @sync_to_async
@@ -616,7 +705,17 @@ async def search_show_card(update, context: ContextTypes.DEFAULT_TYPE, idx: int)
     @sync_to_async
     def get_property(prop_id):
         try:
-            return Property.objects.select_related('city_location', 'district_location').get(id=prop_id)
+            prop = Property.objects.select_related('city_location', 'district_location').get(id=prop_id)
+            # Format all data within sync context
+            return {
+                'id': prop.id,
+                'title': prop.title,
+                'location': _format_location(prop),
+                'base_price': prop.base_price,
+                'currency': prop.currency,
+                'rooms': prop.rooms,
+                'max_guests': prop.max_guests,
+            }
         except Property.DoesNotExist:
             return None
 
@@ -626,14 +725,14 @@ async def search_show_card(update, context: ContextTypes.DEFAULT_TYPE, idx: int)
         return
 
     # Сохраняем текущий property_id для последующих действий
-    context.user_data["current_property_id"] = prop.id
+    context.user_data["current_property_id"] = prop['id']
 
     text = (
         f"[{idx+1}/{len(ids)}]\n"
-        f"🏠 {prop.title}\n"
-        f"📍 {_format_location(prop)}\n"
-        f"💰 {prop.base_price} {prop.currency}/ночь\n"
-        f"🛏️ Комнат: {prop.rooms}  👥 Макс гостей: {prop.max_guests}"
+        f"🏠 {prop['title']}\n"
+        f"📍 {prop['location']}\n"
+        f"💰 {prop['base_price']} {prop['currency']}/ночь\n"
+        f"🛏️ Комнат: {prop['rooms']}  👥 Макс гостей: {prop['max_guests']}"
     )
 
     # Создаём ReplyKeyboard с навигацией и действиями
@@ -699,7 +798,20 @@ async def send_property_detail_text(update: Update, context: ContextTypes.DEFAUL
     @sync_to_async
     def get_property():
         try:
-            return Property.objects.select_related('city_location', 'district_location').get(id=property_id)
+            prop = Property.objects.select_related('city_location', 'district_location').get(id=property_id)
+            return {
+                'title': prop.title,
+                'location': _format_location(prop),
+                'base_price': prop.base_price,
+                'currency': prop.currency,
+                'sleeping_places': prop.sleeping_places or '-',
+                'max_guests': prop.max_guests,
+                'check_in_from': prop.check_in_from.strftime('%H:%M'),
+                'check_in_to': prop.check_in_to.strftime('%H:%M'),
+                'check_out_from': prop.check_out_from.strftime('%H:%M'),
+                'check_out_to': prop.check_out_to.strftime('%H:%M'),
+                'description': prop.description[:800] if prop.description else '',
+            }
         except Property.DoesNotExist:
             return None
 
@@ -709,13 +821,13 @@ async def send_property_detail_text(update: Update, context: ContextTypes.DEFAUL
         return
 
     text = (
-        f"🏠 {prop.title}\n\n"
-        f"📍 {_format_location(prop)}\n"
-        f"💰 {prop.base_price} {prop.currency}/ночь\n"
-        f"🛏️ Спальных мест: {prop.sleeping_places or '-'}  👥 Макс гостей: {prop.max_guests}\n"
-        f"⏱️ Заезд: {prop.check_in_from.strftime('%H:%M')}–{prop.check_in_to.strftime('%H:%M')}  "
-        f"Выезд: {prop.check_out_from.strftime('%H:%M')}–{prop.check_out_to.strftime('%H:%M')}\n\n"
-        f"{prop.description[:800]}"
+        f"🏠 {prop['title']}\n\n"
+        f"📍 {prop['location']}\n"
+        f"💰 {prop['base_price']} {prop['currency']}/ночь\n"
+        f"🛏️ Спальных мест: {prop['sleeping_places']}  👥 Макс гостей: {prop['max_guests']}\n"
+        f"⏱️ Заезд: {prop['check_in_from']}–{prop['check_in_to']}  "
+        f"Выезд: {prop['check_out_from']}–{prop['check_out_to']}\n\n"
+        f"{prop['description']}"
     )
 
     # Возвращаемся к кнопкам результатов поиска
@@ -796,23 +908,42 @@ async def start_booking_flow_text(update: Update, context: ContextTypes.DEFAULT_
 
     context.user_data["booking_property"] = prop
 
-    # Проверяем, есть ли даты из поиска
+    # Проверяем, есть ли даты и время из поиска
     srch_checkin = context.user_data.get("srch_checkin")
     srch_checkout = context.user_data.get("srch_checkout")
+    srch_checkin_time = context.user_data.get("srch_checkin_time")
+    srch_checkout_time = context.user_data.get("srch_checkout_time")
 
     if srch_checkin and srch_checkout:
-        # Используем даты из поиска
+        # Используем даты и время из поиска
         context.user_data["booking_check_in"] = srch_checkin
         context.user_data["booking_check_out"] = srch_checkout
+        if srch_checkin_time:
+            context.user_data["booking_checkin_time"] = srch_checkin_time
+        if srch_checkout_time:
+            context.user_data["booking_checkout_time"] = srch_checkout_time
+
         nights = (srch_checkout - srch_checkin).days
         context.user_data["booking_nights"] = nights
         context.user_data["awaiting_guest_count"] = True  # Флаг, что ждем количество гостей
+        logger.info(f"Set awaiting_guest_count=True for property {prop.id}")
+
+        time_info = ""
+        if srch_checkin_time and srch_checkout_time:
+            time_info = f"⏰ Время: заезд {srch_checkin_time}, выезд {srch_checkout_time}\n"
+
+        # Создаем быстрые кнопки для количества гостей
+        kb = ReplyKeyboardMarkup([
+            ["1", "2", "3"],
+            ["4", "5", "6+"],
+        ], resize_keyboard=True, one_time_keyboard=True)
 
         await update.message.reply_text(
             f"🏠 Бронирование: {prop.title}\n"
-            f"📅 Даты: {srch_checkin.strftime('%d.%m.%Y')} - {srch_checkout.strftime('%d.%m.%Y')} ({nights} ночей)\n\n"
-            f"Количество гостей?",
-            reply_markup=ReplyKeyboardRemove()
+            f"📅 Даты: {srch_checkin.strftime('%d.%m.%Y')} - {srch_checkout.strftime('%d.%m.%Y')} ({nights} ночей)\n"
+            f"{time_info}\n"
+            f"Сколько гостей?",
+            reply_markup=kb
         )
     else:
         await update.message.reply_text(
@@ -857,11 +988,28 @@ async def search_dates(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     nights = context.user_data.get("search_nights", 3)
     departure = arrival + timedelta(days=max(int(nights), 1))
 
-    city = context.user_data.get("search_city")
-    properties = (
-        Property.objects.select_related('city_location', 'district_location').filter(city__iexact=city, status=Property.Status.ACTIVE)
-        .order_by("-is_featured", "-created_at")[:5]
-    )
+    @sync_to_async
+    def get_properties():
+        city = context.user_data.get("search_city")
+        props = list(
+            Property.objects.select_related('city_location', 'district_location')
+            .filter(city__iexact=city, status=Property.Status.ACTIVE)
+            .order_by("-is_featured", "-created_at")[:5]
+        )
+        # Format within sync context
+        result = []
+        for p in props:
+            result.append({
+                'id': p.id,
+                'title': p.title,
+                'location': _format_location(p),
+                'base_price': p.base_price,
+                'currency': p.currency,
+                'max_guests': p.max_guests,
+            })
+        return result
+
+    properties = await get_properties()
     if not properties:
         await update.message.reply_text(
             "Ничего не найдено по заданным параметрам. Попробуйте другой город или дату."
@@ -870,17 +1018,17 @@ async def search_dates(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     for property_obj in properties:
         message = (
-            f"🏠 {property_obj.title}\n"
-            f"📍 {_format_location(property_obj)}\n"
-            f"💰 {property_obj.base_price} {property_obj.currency}/ночь\n"
-            f"👥 Макс гостей: {property_obj.max_guests}"
+            f"🏠 {property_obj['title']}\n"
+            f"📍 {property_obj['location']}\n"
+            f"💰 {property_obj['base_price']} {property_obj['currency']}/ночь\n"
+            f"👥 Макс гостей: {property_obj['max_guests']}"
         )
         kb = InlineKeyboardMarkup(
             [[
-                InlineKeyboardButton("Подробнее", callback_data=f"prop:detail:{property_obj.id}"),
-                InlineKeyboardButton("Забронировать", callback_data=f"prop:book:{property_obj.id}"),
+                InlineKeyboardButton("Подробнее", callback_data=f"prop:detail:{property_obj['id']}"),
+                InlineKeyboardButton("Забронировать", callback_data=f"prop:book:{property_obj['id']}"),
             ], [
-                InlineKeyboardButton("В избранное ⭐", callback_data=f"prop:fav:{property_obj.id}"),
+                InlineKeyboardButton("В избранное ⭐", callback_data=f"prop:fav:{property_obj['id']}"),
             ]]
         )
         await update.message.reply_text(message, reply_markup=kb)
@@ -984,23 +1132,44 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def send_property_detail(query, property_id: str):
-    try:
-        prop = Property.objects.select_related('city_location', 'district_location').get(id=int(property_id))
-    except Property.DoesNotExist:
+    @sync_to_async
+    def get_property():
+        try:
+            prop = Property.objects.select_related('city_location', 'district_location').get(id=int(property_id))
+            return {
+                'id': prop.id,
+                'title': prop.title,
+                'location': _format_location(prop),
+                'base_price': prop.base_price,
+                'currency': prop.currency,
+                'sleeping_places': prop.sleeping_places or '-',
+                'max_guests': prop.max_guests,
+                'check_in_from': prop.check_in_from.strftime('%H:%M'),
+                'check_in_to': prop.check_in_to.strftime('%H:%M'),
+                'check_out_from': prop.check_out_from.strftime('%H:%M'),
+                'check_out_to': prop.check_out_to.strftime('%H:%M'),
+                'description': prop.description[:800] if prop.description else '',
+            }
+        except Property.DoesNotExist:
+            return None
+
+    prop = await get_property()
+    if not prop:
         return await query.edit_message_text("Объект не найден.")
+
     text = (
-        f"🏠 {prop.title}\n\n"
-        f"📍 {_format_location(prop)}\n"
-        f"💰 {prop.base_price} {prop.currency}/ночь\n"
-        f"🛏️ Спальных мест: {prop.sleeping_places or '-'}  👥 Макс гостей: {prop.max_guests}\n"
-        f"⏱️ Заезд: {prop.check_in_from.strftime('%H:%M')}–{prop.check_in_to.strftime('%H:%M')}  "
-        f"Выезд: {prop.check_out_from.strftime('%H:%M')}–{prop.check_out_to.strftime('%H:%M')}\n\n"
-        f"{prop.description[:800]}"
+        f"🏠 {prop['title']}\n\n"
+        f"📍 {prop['location']}\n"
+        f"💰 {prop['base_price']} {prop['currency']}/ночь\n"
+        f"🛏️ Спальных мест: {prop['sleeping_places']}  👥 Макс гостей: {prop['max_guests']}\n"
+        f"⏱️ Заезд: {prop['check_in_from']}–{prop['check_in_to']}  "
+        f"Выезд: {prop['check_out_from']}–{prop['check_out_to']}\n\n"
+        f"{prop['description']}"
     )
     kb = InlineKeyboardMarkup(
         [[
-            InlineKeyboardButton("Забронировать", callback_data=f"prop:book:{prop.id}"),
-            InlineKeyboardButton("В избранное ⭐", callback_data=f"prop:fav:{prop.id}"),
+            InlineKeyboardButton("Забронировать", callback_data=f"prop:book:{prop['id']}"),
+            InlineKeyboardButton("В избранное ⭐", callback_data=f"prop:fav:{prop['id']}"),
         ]]
     )
     await query.edit_message_text(text, reply_markup=kb)
@@ -1087,11 +1256,20 @@ async def booking_ask_guests_from_time(update: Update, context: ContextTypes.DEF
 
 async def handle_guest_count_from_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обрабатывает ввод количества гостей после бронирования из поиска."""
-    if not context.user_data.get("awaiting_guest_count"):
+    awaiting = context.user_data.get("awaiting_guest_count")
+    logger.info(f"handle_guest_count_from_search: awaiting={awaiting}, text={update.message.text}")
+
+    if not awaiting:
         return  # Не наш случай
 
+    txt = update.message.text.strip()
+    logger.info(f"Processing guest count: {txt}")
     try:
-        guests = int(update.message.text.strip())
+        # Обработка кнопки "6+"
+        if txt == "6+":
+            guests = 6
+        else:
+            guests = int(txt)
         if guests < 1:
             raise ValueError
     except Exception:
@@ -1107,7 +1285,8 @@ async def handle_guest_count_from_search(update: Update, context: ContextTypes.D
         await update.message.reply_text("Требуется регистрация.")
         return
 
-    user = profile.user
+    # Get user with sync_to_async to avoid SynchronousOnlyOperation
+    user = await sync_to_async(lambda: profile.user)()
     prop_id = context.user_data.get("booking_property_id")
     check_in = context.user_data.get("booking_check_in")
     check_out = context.user_data.get("booking_check_out")
@@ -1130,15 +1309,22 @@ async def handle_guest_count_from_search(update: Update, context: ContextTypes.D
             return None, f"Объект недоступен на выбранные даты: {exc}"
 
         # Создаём бронь (pending)
-        booking = Booking.objects.create(
-            guest=user,
-            property=prop,
-            agency=prop.agency,
-            check_in=check_in,
-            check_out=check_out,
-            guests_count=guests,
-            status=Booking.Status.PENDING,
-        )
+        try:
+            booking = Booking.objects.create(
+                guest=user,
+                property=prop,
+                agency=prop.agency,
+                check_in=check_in,
+                check_out=check_out,
+                guests_count=guests,
+                status=Booking.Status.PENDING,
+            )
+        except ValidationError as e:
+            # Validation failed (e.g., too many guests)
+            if "превышает допустимое" in str(e):
+                return None, f"❌ Этот объект рассчитан максимум на {prop.max_guests} гостей. Вы выбрали {guests} гостей. Пожалуйста, выберите другой объект или уменьшите количество гостей."
+            error_msg = "; ".join(e.messages) if hasattr(e, 'messages') else str(e)
+            return None, f"Ошибка бронирования: {error_msg}"
         # Резервируем даты
         reserve_dates_for_booking(booking)
 
@@ -1418,14 +1604,28 @@ async def my_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     @sync_to_async
     def get_favorites():
-        return list(Favorite.objects.filter(user=profile.user).select_related("property").order_by("-created_at")[:10])
+        favs = list(
+            Favorite.objects.filter(user=profile.user)
+            .select_related("property", "property__city_location", "property__district_location")
+            .order_by("-created_at")[:10]
+        )
+        # Format location within sync context
+        result = []
+        for f in favs:
+            location = _format_location(f.property)
+            result.append({
+                'id': f.id,
+                'title': f.property.title,
+                'location': location,
+            })
+        return result
 
     favs = await get_favorites()
     if not favs:
         return await update.message.reply_text("Список избранного пуст.")
     for f in favs:
-        text = f"⭐ {f.property.title} — {_format_location(f.property)}"
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton("Удалить", callback_data=f"fav:remove:{f.id}")]])
+        text = f"⭐ {f['title']} — {f['location']}"
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("Удалить", callback_data=f"fav:remove:{f['id']}")]])
         await update.message.reply_text(text, reply_markup=kb)
 
 
@@ -1481,21 +1681,47 @@ async def my_properties(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         last_name=update.effective_user.last_name,
         language_code=update.effective_user.language_code,
     )
-    u = profile.user
-    if not (u and hasattr(u, "is_realtor") and u.is_realtor()):
+
+    @sync_to_async
+    def get_user_and_properties():
+        u = profile.user
+        if not (u and hasattr(u, "is_realtor") and u.is_realtor()):
+            return None, []
+
+        props = list(
+            Property.objects.select_related('city_location', 'district_location')
+            .filter(owner=u)
+            .order_by("-created_at")[:10]
+        )
+        # Format data within sync context
+        result = []
+        for p in props:
+            result.append({
+                'id': p.id,
+                'title': p.title,
+                'location': _format_location(p),
+                'status': p.get_status_display(),
+                'is_active': p.status == Property.Status.ACTIVE,
+            })
+        return u, result
+
+    u, props = await get_user_and_properties()
+
+    if not u:
         return await update.message.reply_text("Доступно только риелторам.")
-    props = Property.objects.select_related('city_location', 'district_location').filter(owner=u).order_by("-created_at")[:10]
+
     if not props:
         return await update.message.reply_text("У вас пока нет объектов. Используйте «➕ Добавить объект».")
+
     for p in props:
-        text = f"🏠 {p.title} — {_format_location(p)} | Статус: {p.get_status_display()}"
+        text = f"🏠 {p['title']} — {p['location']} | Статус: {p['status']}"
         actions = [
-            InlineKeyboardButton("Календарь", callback_data=f"propcal:list:{p.id}"),
-            InlineKeyboardButton("Добавить блок", callback_data=f"propcal:add:{p.id}"),
+            InlineKeyboardButton("Календарь", callback_data=f"propcal:list:{p['id']}"),
+            InlineKeyboardButton("Добавить блок", callback_data=f"propcal:add:{p['id']}"),
         ]
         toggle = InlineKeyboardButton(
-            "Снять с публикации" if p.status == Property.Status.ACTIVE else "Активировать",
-            callback_data=f"prop:toggle:{p.id}"
+            "Снять с публикации" if p['is_active'] else "Активировать",
+            callback_data=f"prop:toggle:{p['id']}"
         )
         kb = InlineKeyboardMarkup([actions, [toggle]])
         await update.message.reply_text(text, reply_markup=kb)
@@ -1510,43 +1736,143 @@ async def add_property_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         last_name=update.effective_user.last_name,
         language_code=update.effective_user.language_code,
     )
-    if not (profile.user and profile.user.is_realtor()):
+
+    @sync_to_async
+    def check_realtor():
+        u = profile.user
+        return u and u.is_realtor()
+
+    is_realtor = await check_realtor()
+    if not is_realtor:
         await update.message.reply_text("Доступно только риелторам.")
         return ConversationHandler.END
+
     await update.message.reply_text("Название объекта:")
     return ADDPROP_TITLE
 
 
 async def add_property_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """После ввода названия объекта - показываем список городов из Location."""
     context.user_data["newprop_title"] = update.message.text.strip()
-    await update.message.reply_text("Город:")
+
+    @sync_to_async
+    def get_cities():
+        # Получаем все города (Location без родителя)
+        cities = list(Location.objects.filter(parent__isnull=True, is_active=True).order_by('name'))
+        return [{'id': c.id, 'name': c.name} for c in cities]
+
+    cities = await get_cities()
+
+    if not cities:
+        await update.message.reply_text("Нет доступных городов в системе. Обратитесь к администратору.")
+        return ConversationHandler.END
+
+    # Создаём кнопки с городами
+    buttons = [[city['name']] for city in cities]
+    kb = ReplyKeyboardMarkup(buttons, resize_keyboard=True, one_time_keyboard=True)
+
+    # Сохраняем список городов в контекст для дальнейшей валидации
+    context.user_data["available_cities"] = {c['name']: c['id'] for c in cities}
+
+    await update.message.reply_text("Выберите город:", reply_markup=kb)
     return ADDPROP_CITY
 
 
+async def add_property_district(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """После выбора города - показываем районы этого города."""
+    logger.info(f"add_property_district: CALLED")
+    city_name = update.message.text.strip()
+    logger.info(f"add_property_district: city_name='{city_name}'")
+    available_cities = context.user_data.get("available_cities", {})
+
+    city_id = available_cities.get(city_name)
+    if not city_id:
+        await update.message.reply_text("Пожалуйста, выберите город из списка.")
+        return ADDPROP_CITY
+
+    # Сохраняем выбранный город
+    context.user_data["newprop_city_id"] = city_id
+
+    @sync_to_async
+    def get_districts():
+        # Получаем районы этого города
+        districts = list(Location.objects.filter(parent_id=city_id, is_active=True).order_by('name'))
+        return [{'id': d.id, 'name': d.name} for d in districts]
+
+    districts = await get_districts()
+
+    if not districts:
+        # Если нет районов, пропускаем этот шаг
+        logger.info(f"add_property_district: no districts, skipping to ADDPROP_PRICE")
+        await update.message.reply_text("Цена за ночь (число):")
+        return ADDPROP_PRICE
+
+    # Создаём кнопки с районами + кнопка "Пропустить"
+    buttons = [[d['name']] for d in districts]
+    buttons.append(["Пропустить"])
+    kb = ReplyKeyboardMarkup(buttons, resize_keyboard=True, one_time_keyboard=True)
+
+    # Сохраняем список районов
+    context.user_data["available_districts"] = {d['name']: d['id'] for d in districts}
+
+    logger.info(f"add_property_district: showing {len(districts)} districts, returning ADDPROP_DISTRICT")
+    await update.message.reply_text("Выберите район (или пропустите):", reply_markup=kb)
+    return ADDPROP_DISTRICT
+
+
 async def add_property_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data["newprop_city"] = update.message.text.strip()
-    await update.message.reply_text("Цена за ночь (число):")
+    """После выбора района (или пропуска) - запрашиваем цену."""
+    district_name = update.message.text.strip()
+    logger.info(f"add_property_price: received district_name='{district_name}'")
+
+    if district_name != "Пропустить":
+        available_districts = context.user_data.get("available_districts", {})
+        district_id = available_districts.get(district_name)
+        logger.info(f"add_property_price: district_id={district_id}")
+
+        if district_id:
+            context.user_data["newprop_district_id"] = district_id
+            logger.info(f"add_property_price: saved district_id={district_id}")
+        # Если район не найден, просто пропускаем
+
+    logger.info(f"add_property_price: asking for price")
+    await update.message.reply_text("Цена за ночь (число):", reply_markup=ReplyKeyboardRemove())
     return ADDPROP_PRICE
 
 
 async def add_property_guests(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = update.message.text.strip()
+    logger.info(f"add_property_guests: received text='{text}'")
     try:
-        price = float(update.message.text.strip())
-    except Exception:
+        price = float(text)
+        logger.info(f"add_property_guests: parsed price={price}")
+    except Exception as e:
+        logger.error(f"add_property_guests: failed to parse price: {e}")
         await update.message.reply_text("Введите число (цена за ночь):")
         return ADDPROP_PRICE
     context.user_data["newprop_price"] = price
-    await update.message.reply_text("Максимальное число гостей:")
+    logger.info(f"add_property_guests: asking for max_guests")
+    try:
+        await update.message.reply_text("Максимальное число гостей:")
+        logger.info(f"add_property_guests: message sent successfully")
+    except Exception as e:
+        logger.error(f"add_property_guests: failed to send message: {e}")
+        raise
     return ADDPROP_GUESTS
 
 
 async def add_property_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = update.message.text.strip()
+    logger.info(f"add_property_desc: received text='{text}'")
     try:
-        guests = int(update.message.text.strip())
-    except Exception:
+        guests = int(text)
+        logger.info(f"add_property_desc: parsed guests={guests}")
+    except Exception as e:
+        logger.error(f"add_property_desc: failed to parse guests: {e}")
         await update.message.reply_text("Введите целое число гостей:")
         return ADDPROP_GUESTS
     context.user_data["newprop_guests"] = guests
+    logger.info(f"add_property_desc: asking for description")
     await update.message.reply_text("Краткое описание:")
     return ADDPROP_DESC
 
@@ -1560,19 +1886,52 @@ async def add_property_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
         last_name=update.effective_user.last_name,
         language_code=update.effective_user.language_code,
     )
-    u = profile.user
-    data = context.user_data
-    p = Property.objects.create(
-        owner=u,
-        agency=getattr(u, "agency", None),
-        title=data.get("newprop_title"),
-        description=data.get("newprop_desc", update.message.text.strip()),
-        city=data.get("newprop_city"),
-        base_price=data.get("newprop_price"),
-        max_guests=data.get("newprop_guests"),
-        status=Property.Status.DRAFT,
-    )
-    await update.message.reply_text(f"Объект создан в статусе Черновик: {p.title}")
+
+    @sync_to_async
+    def create_property():
+        u = profile.user
+        if not u:
+            return None
+
+        data = context.user_data
+        city_id = data.get("newprop_city_id")
+        district_id = data.get("newprop_district_id")
+
+        # Получаем Location объекты
+        city_location = None
+        district_location = None
+
+        if city_id:
+            try:
+                city_location = Location.objects.get(id=city_id)
+            except Location.DoesNotExist:
+                pass
+
+        if district_id:
+            try:
+                district_location = Location.objects.get(id=district_id)
+            except Location.DoesNotExist:
+                pass
+
+        p = Property.objects.create(
+            owner=u,
+            agency=getattr(u, "agency", None),
+            title=data.get("newprop_title"),
+            description=data.get("newprop_desc", update.message.text.strip()),
+            city_location=city_location,
+            district_location=district_location,
+            base_price=data.get("newprop_price"),
+            max_guests=data.get("newprop_guests"),
+            status=Property.Status.DRAFT,
+        )
+        return p.title
+
+    title = await create_property()
+    if not title:
+        await update.message.reply_text("Ошибка: пользователь не найден.")
+        return ConversationHandler.END
+
+    await update.message.reply_text(f"Объект создан в статусе Черновик: {title}")
     return ConversationHandler.END
 
 
@@ -1679,19 +2038,46 @@ async def realtor_bookings(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         last_name=update.effective_user.last_name,
         language_code=update.effective_user.language_code,
     )
-    u = profile.user
-    if not (u and u.is_realtor()):
+
+    @sync_to_async
+    def get_bookings():
+        u = profile.user
+        if not (u and u.is_realtor()):
+            return None, []
+
+        bookings = list(
+            Booking.objects.filter(property__owner=u)
+            .select_related('property')
+            .order_by("-created_at")[:10]
+        )
+        result = []
+        for b in bookings:
+            result.append({
+                'id': b.id,
+                'booking_code': b.booking_code,
+                'property_title': b.property.title,
+                'check_in': b.check_in,
+                'check_out': b.check_out,
+                'status': b.status,
+                'status_display': b.get_status_display(),
+            })
+        return u, result
+
+    u, bookings = await get_bookings()
+
+    if not u:
         return await update.message.reply_text("Доступно только риелторам.")
-    bookings = Booking.objects.filter(property__owner=u).order_by("-created_at")[:10]
+
     if not bookings:
         return await update.message.reply_text("Брони не найдены.")
+
     for b in bookings:
-        text = f"#{b.booking_code} — {b.property.title} {b.check_in:%d.%m}–{b.check_out:%d.%m} | {b.get_status_display()}"
+        text = f"#{b['booking_code']} — {b['property_title']} {b['check_in']:%d.%m}–{b['check_out']:%d.%m} | {b['status_display']}"
         actions = []
-        if b.status == Booking.Status.PENDING:
-            actions.append(InlineKeyboardButton("Подтвердить", callback_data=f"booking:confirm:{b.id}"))
-        if b.status in [Booking.Status.PENDING, Booking.Status.CONFIRMED]:
-            actions.append(InlineKeyboardButton("Отменить", callback_data=f"booking:cancel:{b.id}"))
+        if b['status'] == Booking.Status.PENDING:
+            actions.append(InlineKeyboardButton("Подтвердить", callback_data=f"booking:confirm:{b['id']}"))
+        if b['status'] in [Booking.Status.PENDING, Booking.Status.CONFIRMED]:
+            actions.append(InlineKeyboardButton("Отменить", callback_data=f"booking:cancel:{b['id']}"))
         kb = InlineKeyboardMarkup([actions]) if actions else None
         await update.message.reply_text(text, reply_markup=kb)
 
@@ -1710,33 +2096,85 @@ async def realtor_confirm_booking(query, context, booking_id: str):
     await query.edit_message_text("Подтверждено.")
 
 
+async def demo_pay_start_wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Wrapper that extracts booking_id from callback_data and calls demo_pay_start."""
+    query = update.callback_query
+    await query.answer()
+
+    # Extract booking_id from callback_data (format: "booking:pay:123")
+    data = query.data or ""
+    parts = data.split(":")
+    if len(parts) != 3:
+        await query.edit_message_text("Ошибка: неверный формат данных.")
+        return ConversationHandler.END
+
+    booking_id = parts[2]
+    return await demo_pay_start(query, context, booking_id)
+
+
 async def demo_pay_start(query, context, booking_id: str):
+    """Обрабатывает оплату бронирования (демо режим)."""
     profile = await get_or_create_profile_from_update(query)
-    try:
-        b = Booking.objects.get(id=int(booking_id), guest=profile.user)
-    except Booking.DoesNotExist:
-        return await query.edit_message_text("Бронирование не найдено.")
+
+    @sync_to_async
+    def get_booking():
+        try:
+            return Booking.objects.select_related('property__owner').get(id=int(booking_id), guest=profile.user)
+        except Booking.DoesNotExist:
+            return None
+
+    b = await get_booking()
+    if not b:
+        await query.edit_message_text("Бронирование не найдено.")
+        return
+
     # Проверяем, не оплачено ли уже
     if b.payment_status == Booking.PaymentStatus.PAID:
-        return await query.edit_message_text("Оплата уже подтверждена.")
-    # Создаём или находим payment
-    payment, created = Payment.objects.get_or_create(
-        booking=b,
-        defaults={
-            "method": Payment.Method.CARD,
-            "amount": b.total_price,
-            "currency": b.currency,
-            "provider": "demo",
-            "invoice_url": f"https://demo-pay.local/invoice/{b.booking_code}",
-        },
+        await query.edit_message_text("Оплата уже подтверждена.")
+        return
+
+    # Получаем времена из поиска
+    checkin_time = context.user_data.get("booking_checkin_time")
+    checkout_time = context.user_data.get("booking_checkout_time")
+
+    # Создаём или находим payment и подтверждаем оплату
+    @sync_to_async
+    def process_payment_and_save():
+        payment, created = Payment.objects.get_or_create(
+            booking=b,
+            defaults={
+                "method": Payment.Method.CARD,
+                "amount": b.total_price,
+                "currency": b.currency,
+                "provider": "demo",
+                "invoice_url": f"https://demo-pay.local/invoice/{b.booking_code}",
+            },
+        )
+        # Подтверждаем оплату (демо)
+        payment.mark_success(transaction_id=f"DEMO-{b.booking_code}")
+        Notification.objects.create(user=b.property.owner, title="Новая оплата", message=f"#{b.booking_code}")
+
+        # Сохраняем времена, если они есть
+        if checkin_time and checkout_time:
+            b.check_in_time = checkin_time
+            b.check_out_time = checkout_time
+            b.save(update_fields=['check_in_time', 'check_out_time'])
+
+        return payment, checkin_time, checkout_time
+
+    await process_payment_and_save()
+
+    # Формируем сообщение
+    time_info = ""
+    if checkin_time and checkout_time:
+        time_info = f"⏰ Заезд: {checkin_time}, Выезд: {checkout_time}\n"
+
+    await query.edit_message_text(
+        f"✅ Оплата успешна!\n"
+        f"📅 Бронирование #{b.booking_code} подтверждено.\n"
+        f"{time_info}\n"
+        f"Ожидайте подтверждения от владельца."
     )
-    # Подтверждаем оплату (демо)
-    payment.mark_success(transaction_id=f"DEMO-{b.booking_code}")
-    Notification.objects.create(user=b.property.owner, title="Новая оплата", message=f"#{b.booking_code}")
-    # Ask times
-    context.user_data["postpay_booking_id"] = b.id
-    await query.edit_message_text("Оплата успешна. Укажите время заезда (часы:минуты, например 14:30):")
-    return BOOKING_ASK_CHECKIN_TIME
 
 
 # --- Super Admin flows ----------------------------------------------------------
@@ -2025,17 +2463,26 @@ def build_application(token: str | None = None) -> Application:
         ],
         states={
             SRCH_CHECKIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_ask_checkout)],
-            SRCH_CHECKOUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_ask_city)],
+            SRCH_CHECKOUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_ask_checkin_time)],
+            SRCH_CHECKIN_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_ask_checkout_time)],
+            SRCH_CHECKOUT_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_ask_city)],
             SRCH_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_ask_district)],
             SRCH_DISTRICT: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_ask_class)],
             SRCH_CLASS: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_ask_rooms_choice)],
             SRCH_ROOMS: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_perform)],
+            ConversationHandler.TIMEOUT: [MessageHandler(filters.TEXT | filters.COMMAND, conversation_timeout)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        conversation_timeout=120,  # 2 минуты
     )
     application.add_handler(adv_search_handler)
 
     application.add_handler(CommandHandler("cancel", cancel))
+
+    # Guest count handler for search-based booking - only matches numbers or "6+"
+    guest_count_pattern = filters.Regex(r"^(\d+|6\+)$")
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & guest_count_pattern, handle_guest_count_from_search))
+
 
     # Booking flow
     booking_handler = ConversationHandler(
@@ -2066,7 +2513,8 @@ def build_application(token: str | None = None) -> Application:
         entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex("^➕ Добавить объект$"), add_property_start)],
         states={
             ADDPROP_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_city)],
-            ADDPROP_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_price)],
+            ADDPROP_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_district)],
+            ADDPROP_DISTRICT: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_price)],
             ADDPROP_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_guests)],
             ADDPROP_GUESTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_desc)],
             ADDPROP_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_finish)],
@@ -2087,22 +2535,13 @@ def build_application(token: str | None = None) -> Application:
     )
     application.add_handler(block_handler)
 
-    # Post-payment times flow
-    postpay_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(demo_pay_start, pattern=r"^booking:pay:\d+$")],
-        states={
-            BOOKING_ASK_CHECKIN_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, booking_postpay_checkin_time)],
-            BOOKING_ASK_CHECKOUT_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, booking_postpay_checkout_time)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
-    application.add_handler(postpay_handler)
+    # Post-payment flow - now handled directly in on_callback (no longer uses ConversationHandler)
+    # Payment is completed immediately using times from search
+    # Old ConversationHandler removed as it's no longer needed
 
     # Generic callback handler for inline buttons
     application.add_handler(CallbackQueryHandler(on_callback))
 
-    # Guest count handler for search-based booking (должен быть перед всеми другими text handlers)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_guest_count_from_search))
 
     # Search results navigation handler (должен быть перед menu_router)
     search_nav_patterns = filters.Regex("^(◀️ Назад|Вперёд ▶️|📄 Подробнее|📅 Забронировать|⭐ В избранное|🔙 Главное меню)$")
@@ -2498,5 +2937,9 @@ async def _assign_realtor_to_agency(update_or_query, context, agency: RealEstate
 def run_bot() -> None:
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     application = build_application(token)
+    logger.info("=== BOT STARTING ===")
+    logger.info(f"ADDPROP_TITLE={ADDPROP_TITLE}, ADDPROP_CITY={ADDPROP_CITY}, ADDPROP_DISTRICT={ADDPROP_DISTRICT}")
+    logger.info(f"ADDPROP_PRICE={ADDPROP_PRICE}, ADDPROP_GUESTS={ADDPROP_GUESTS}, ADDPROP_DESC={ADDPROP_DESC}")
+    logger.info(f"BLOCK_START={BLOCK_START}, BLOCK_END={BLOCK_END}, BLOCK_REASON={BLOCK_REASON}")
     logger.info("Starting Telegram bot polling...")
     application.run_polling()

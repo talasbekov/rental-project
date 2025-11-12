@@ -31,16 +31,15 @@ class PropertySeasonalRateInline(admin.TabularInline):
 class PropertyAdmin(admin.ModelAdmin):
     list_display = (
         "title",
-        "city",
-        "district",
+        "city_location",
+        "district_location",
         "property_type",
         "status",
         "base_price",
-        "max_guests",
         "owner",
     )
-    list_filter = ("status", "city", "property_type", "property_class", "has_pets_allowed")
-    search_fields = ("title", "city", "district", "owner__email")
+    list_filter = ("status", "city_location", "property_type", "property_class", "has_pets_allowed")
+    search_fields = ("title", "city_location__name", "district_location__name", "owner__email")
     inlines = (PropertyPhotoInline, PropertySeasonalRateInline)
     filter_horizontal = ("amenities",)
     readonly_fields = ("created_at", "updated_at", "published_at")

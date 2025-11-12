@@ -114,8 +114,6 @@ class Property(models.Model):
         choices=PropertyClass.choices,
         default=PropertyClass.COMFORT,
     )
-    city = models.CharField(max_length=100, blank=True)
-    district = models.CharField(max_length=100, blank=True)
     city_location = models.ForeignKey(
         "Location",
         on_delete=models.PROTECT,
@@ -137,7 +135,7 @@ class Property(models.Model):
     address_line = models.CharField(max_length=255, help_text=_("Улица, дом, квартира"))
     entrance = models.CharField(max_length=10, blank=True)
     floor = models.PositiveSmallIntegerField(null=True, blank=True)
-    floor_total = models.PositiveSmallIntegerField(null=True, blank=True)
+    
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     area_sqm = models.DecimalField(
@@ -150,19 +148,13 @@ class Property(models.Model):
     rooms = models.PositiveSmallIntegerField(default=1)
     bedrooms = models.PositiveSmallIntegerField(default=1)
     bathrooms = models.PositiveSmallIntegerField(default=1)
-    max_guests = models.PositiveSmallIntegerField(default=1)
     sleeping_places = models.PositiveSmallIntegerField(default=1)
     has_children_allowed = models.BooleanField(default=True)
     has_pets_allowed = models.BooleanField(default=False)
     has_smoking_allowed = models.BooleanField(default=False)
     has_events_allowed = models.BooleanField(default=False)
     base_price = models.DecimalField(max_digits=10, decimal_places=2)
-    cleaning_fee = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=Decimal("0.00"),
-        help_text=_("Дополнительная уборка (если имеется)."),
-    )
+    
     security_deposit = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -192,7 +184,7 @@ class Property(models.Model):
         verbose_name_plural = _("Объекты недвижимости")
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["city", "district"]),  # FK indexes created automatically
+            # FK indexes for city_location and district_location created automatically
             models.Index(fields=["status"]),
             models.Index(fields=["owner", "status"]),
         ]

@@ -51,14 +51,27 @@ LINK_IDENTIFIER, LINK_CODE = range(3, 5)
 SEARCH_CITY, SEARCH_DATES = range(5, 7)
 BOOKING_ASK_DATE, BOOKING_ASK_NIGHTS, BOOKING_ASK_GUESTS = range(7, 10)
 REVIEW_ASK_RATING, REVIEW_ASK_COMMENT = range(10, 12)
-ADDPROP_TITLE, ADDPROP_CITY, ADDPROP_DISTRICT, ADDPROP_PRICE, ADDPROP_GUESTS, ADDPROP_DESC = range(12, 18)
-BLOCK_START, BLOCK_END, BLOCK_REASON = range(18, 21)
-SU_SEARCH_USER = 21
-SU_ASSIGN_AGENCY_ASK = 22
-SU_FILTER_CITY_ASK = 23
-SU_FILTER_AGENCY_ASK = 24
+(
+    ADDPROP_TITLE,
+    ADDPROP_CITY,
+    ADDPROP_DISTRICT,
+    ADDPROP_ADDRESS,
+    ADDPROP_PROPERTY_TYPE,
+    ADDPROP_PROPERTY_CLASS,
+    ADDPROP_FLOOR,
+    ADDPROP_PRICE,
+    ADDPROP_GUESTS,
+    ADDPROP_ROOMS,
+    ADDPROP_SLEEPING,
+    ADDPROP_DESC,
+) = range(12, 24)
+BLOCK_START, BLOCK_END, BLOCK_REASON = range(24, 27)
+SU_SEARCH_USER = 27
+SU_ASSIGN_AGENCY_ASK = 28
+SU_FILTER_CITY_ASK = 29
+SU_FILTER_AGENCY_ASK = 30
 # Advanced search flow states
-SRCH_CHECKIN, SRCH_CHECKOUT, SRCH_CHECKIN_TIME, SRCH_CHECKOUT_TIME, SRCH_CITY, SRCH_DISTRICT, SRCH_CLASS, SRCH_ROOMS = range(30, 38)
+SRCH_CHECKIN, SRCH_CHECKOUT, SRCH_CHECKIN_TIME, SRCH_CHECKOUT_TIME, SRCH_CITY, SRCH_DISTRICT, SRCH_CLASS, SRCH_ROOMS = range(31, 39)
 # Post-payment time gathering
 BOOKING_ASK_CHECKIN_TIME, BOOKING_ASK_CHECKOUT_TIME = range(40, 42)
 
@@ -714,7 +727,7 @@ async def search_show_card(update, context: ContextTypes.DEFAULT_TYPE, idx: int)
                 'base_price': prop.base_price,
                 'currency': prop.currency,
                 'rooms': prop.rooms,
-                'max_guests': prop.max_guests,
+                'sleeping_places': prop.sleeping_places,
             }
         except Property.DoesNotExist:
             return None
@@ -732,7 +745,7 @@ async def search_show_card(update, context: ContextTypes.DEFAULT_TYPE, idx: int)
         f"🏠 {prop['title']}\n"
         f"📍 {prop['location']}\n"
         f"💰 {prop['base_price']} {prop['currency']}/ночь\n"
-        f"🛏️ Комнат: {prop['rooms']}  👥 Макс гостей: {prop['max_guests']}"
+        f"🛏️ Комнат: {prop['rooms']}  👥 Спальных мест: {prop['sleeping_places']}"
     )
 
     # Создаём ReplyKeyboard с навигацией и действиями
@@ -805,7 +818,6 @@ async def send_property_detail_text(update: Update, context: ContextTypes.DEFAUL
                 'base_price': prop.base_price,
                 'currency': prop.currency,
                 'sleeping_places': prop.sleeping_places or '-',
-                'max_guests': prop.max_guests,
                 'check_in_from': prop.check_in_from.strftime('%H:%M'),
                 'check_in_to': prop.check_in_to.strftime('%H:%M'),
                 'check_out_from': prop.check_out_from.strftime('%H:%M'),
@@ -824,7 +836,7 @@ async def send_property_detail_text(update: Update, context: ContextTypes.DEFAUL
         f"🏠 {prop['title']}\n\n"
         f"📍 {prop['location']}\n"
         f"💰 {prop['base_price']} {prop['currency']}/ночь\n"
-        f"🛏️ Спальных мест: {prop['sleeping_places']}  👥 Макс гостей: {prop['max_guests']}\n"
+        f"🛏️ Спальных мест: {prop['sleeping_places']}\n"
         f"⏱️ Заезд: {prop['check_in_from']}–{prop['check_in_to']}  "
         f"Выезд: {prop['check_out_from']}–{prop['check_out_to']}\n\n"
         f"{prop['description']}"
@@ -1005,7 +1017,7 @@ async def search_dates(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
                 'location': _format_location(p),
                 'base_price': p.base_price,
                 'currency': p.currency,
-                'max_guests': p.max_guests,
+                'sleeping_places': p.sleeping_places,
             })
         return result
 
@@ -1021,7 +1033,7 @@ async def search_dates(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             f"🏠 {property_obj['title']}\n"
             f"📍 {property_obj['location']}\n"
             f"💰 {property_obj['base_price']} {property_obj['currency']}/ночь\n"
-            f"👥 Макс гостей: {property_obj['max_guests']}"
+            f"🛏️ Спальных мест: {property_obj['sleeping_places']}"
         )
         kb = InlineKeyboardMarkup(
             [[
@@ -1143,7 +1155,6 @@ async def send_property_detail(query, property_id: str):
                 'base_price': prop.base_price,
                 'currency': prop.currency,
                 'sleeping_places': prop.sleeping_places or '-',
-                'max_guests': prop.max_guests,
                 'check_in_from': prop.check_in_from.strftime('%H:%M'),
                 'check_in_to': prop.check_in_to.strftime('%H:%M'),
                 'check_out_from': prop.check_out_from.strftime('%H:%M'),
@@ -1161,7 +1172,7 @@ async def send_property_detail(query, property_id: str):
         f"🏠 {prop['title']}\n\n"
         f"📍 {prop['location']}\n"
         f"💰 {prop['base_price']} {prop['currency']}/ночь\n"
-        f"🛏️ Спальных мест: {prop['sleeping_places']}  👥 Макс гостей: {prop['max_guests']}\n"
+        f"🛏️ Спальных мест: {prop['sleeping_places']}\n"
         f"⏱️ Заезд: {prop['check_in_from']}–{prop['check_in_to']}  "
         f"Выезд: {prop['check_out_from']}–{prop['check_out_to']}\n\n"
         f"{prop['description']}"
@@ -1212,7 +1223,8 @@ async def get_or_create_profile_from_update(query_or_update):
 
 async def start_booking_flow(query, context: ContextTypes.DEFAULT_TYPE, property_id: str) -> int:
     profile = await get_or_create_profile_from_update(query)
-    if not profile.user:
+    has_user = await sync_to_async(lambda: profile.user_id is not None)()
+    if not has_user:
         await query.edit_message_text("Сначала зарегистрируйтесь или привяжите аккаунт.")
         return ConversationHandler.END
     context.user_data["booking_property_id"] = int(property_id)
@@ -1322,7 +1334,7 @@ async def handle_guest_count_from_search(update: Update, context: ContextTypes.D
         except ValidationError as e:
             # Validation failed (e.g., too many guests)
             if "превышает допустимое" in str(e):
-                return None, f"❌ Этот объект рассчитан максимум на {prop.max_guests} гостей. Вы выбрали {guests} гостей. Пожалуйста, выберите другой объект или уменьшите количество гостей."
+                return None, f"❌ Этот объект рассчитан максимум на {prop.sleeping_places} человек. Вы выбрали {guests} гостей. Пожалуйста, выберите другой объект или уменьшите количество гостей."
             error_msg = "; ".join(e.messages) if hasattr(e, 'messages') else str(e)
             return None, f"Ошибка бронирования: {error_msg}"
         # Резервируем даты
@@ -1357,48 +1369,23 @@ async def handle_guest_count_from_search(update: Update, context: ContextTypes.D
     )
 
 
-async def booking_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    profile = await get_or_create_profile(
-        telegram_id=update.effective_user.id,
-        chat_id=update.effective_chat.id,
-        username=update.effective_user.username,
-        first_name=update.effective_user.first_name,
-        last_name=update.effective_user.last_name,
-        language_code=update.effective_user.language_code,
-    )
+@sync_to_async
+def _create_booking_with_notifications(profile, prop_id, check_in, check_out, guests):
+    """Create booking and notifications."""
     user = profile.user
     if not user:
-        await update.message.reply_text("Сначала зарегистрируйтесь или привяжите аккаунт.")
-        return ConversationHandler.END
+        return None, "Сначала зарегистрируйтесь или привяжите аккаунт."
 
-    try:
-        guests = int(update.message.text.strip())
-        if guests < 1:
-            raise ValueError
-    except Exception:
-        await update.message.reply_text("Количество гостей должно быть целым числом ≥ 1. Повторите ввод:")
-        return BOOKING_ASK_GUESTS
-
-    prop_id = context.user_data.get("booking_property_id")
-    check_in = context.user_data.get("booking_check_in")
-    nights = context.user_data.get("booking_nights")
-    if not (prop_id and check_in and nights):
-        await update.message.reply_text("Ошибка состояния бронирования. Попробуйте снова.")
-        return ConversationHandler.END
-
-    check_out = check_in + timedelta(days=nights)
     try:
         prop = Property.objects.select_related('city_location', 'district_location').get(id=prop_id, status=Property.Status.ACTIVE)
     except Property.DoesNotExist:
-        await update.message.reply_text("Объект не найден.")
-        return ConversationHandler.END
+        return None, "Объект не найден."
 
     # Проверка доступности
     try:
         ensure_property_is_available(prop, check_in, check_out)
-    except Exception as exc:  # BookingConflictError
-        await update.message.reply_text(f"Объект недоступен на выбранные даты: {exc}")
-        return ConversationHandler.END
+    except Exception as exc:
+        return None, f"Объект недоступен на выбранные даты: {exc}"
 
     # Создаём бронь (pending)
     booking = Booking.objects.create(
@@ -1425,6 +1412,41 @@ async def booking_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             title=f"Новое бронирование #{booking.booking_code}",
             message=f"{prop.title}: {check_in:%d.%m}–{check_out:%d.%m}",
         )
+
+    return booking, None
+
+
+async def booking_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    profile = await get_or_create_profile(
+        telegram_id=update.effective_user.id,
+        chat_id=update.effective_chat.id,
+        username=update.effective_user.username,
+        first_name=update.effective_user.first_name,
+        last_name=update.effective_user.last_name,
+        language_code=update.effective_user.language_code,
+    )
+
+    try:
+        guests = int(update.message.text.strip())
+        if guests < 1:
+            raise ValueError
+    except Exception:
+        await update.message.reply_text("Количество гостей должно быть целым числом ≥ 1. Повторите ввод:")
+        return BOOKING_ASK_GUESTS
+
+    prop_id = context.user_data.get("booking_property_id")
+    check_in = context.user_data.get("booking_check_in")
+    nights = context.user_data.get("booking_nights")
+    if not (prop_id and check_in and nights):
+        await update.message.reply_text("Ошибка состояния бронирования. Попробуйте снова.")
+        return ConversationHandler.END
+
+    check_out = check_in + timedelta(days=nights)
+
+    booking, error = await _create_booking_with_notifications(profile, prop_id, check_in, check_out, guests)
+    if error:
+        await update.message.reply_text(error)
+        return ConversationHandler.END
 
     pay_kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("Оплатить (демо)", callback_data=f"booking:pay:{booking.id}")]
@@ -1525,16 +1547,23 @@ async def my_bookings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text(text, reply_markup=kb)
 
 
-async def cancel_booking_action(query, context, booking_id: str):
-    profile = await get_or_create_profile_from_update(query)
+@sync_to_async
+def _cancel_booking(profile, booking_id):
+    """Cancel a booking if permitted."""
     try:
         b = Booking.objects.get(id=int(booking_id), guest=profile.user)
     except Booking.DoesNotExist:
-        return await query.edit_message_text("Бронирование не найдено.")
+        return False, "Бронирование не найдено."
     if b.status in [Booking.Status.COMPLETED, Booking.Status.EXPIRED]:
-        return await query.edit_message_text("Нельзя отменить это бронирование.")
+        return False, "Нельзя отменить это бронирование."
     b.mark_cancelled(Booking.CancellationSource.GUEST, "Отменено через Telegram")
-    await query.edit_message_text("Бронирование отменено.")
+    return True, "Бронирование отменено."
+
+
+async def cancel_booking_action(query, context, booking_id: str):
+    profile = await get_or_create_profile_from_update(query)
+    success, message = await _cancel_booking(profile, booking_id)
+    await query.edit_message_text(message)
 
 
 async def review_start_from_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1560,6 +1589,24 @@ async def review_ask_comment(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return REVIEW_ASK_COMMENT
 
 
+@sync_to_async
+def _create_review(profile, booking_id, rating, comment):
+    """Create a review for a booking."""
+    try:
+        booking = Booking.objects.get(id=booking_id, guest=profile.user, status=Booking.Status.COMPLETED)
+    except Booking.DoesNotExist:
+        return False, "Доступно только для завершенных броней."
+
+    Review.objects.create(
+        user=profile.user,
+        property=booking.property,
+        booking=booking,
+        rating=rating,
+        comment=comment or "",
+    )
+    return True, "Спасибо! Ваш отзыв опубликован (после проверки)."
+
+
 async def review_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     comment = update.message.text.strip()
     booking_id = context.user_data.get("review_booking_id")
@@ -1571,19 +1618,9 @@ async def review_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         last_name=update.effective_user.last_name,
         language_code=update.effective_user.language_code,
     )
-    try:
-        booking = Booking.objects.get(id=booking_id, guest=profile.user, status=Booking.Status.COMPLETED)
-    except Booking.DoesNotExist:
-        await update.message.reply_text("Доступно только для завершенных броней.")
-        return ConversationHandler.END
-    Review.objects.create(
-        user=profile.user,
-        property=booking.property,
-        booking=booking,
-        rating=context.user_data.get("review_rating", 5),
-        comment=comment or "",
-    )
-    await update.message.reply_text("Спасибо! Ваш отзыв опубликован (после проверки).")
+
+    success, message = await _create_review(profile, booking_id, context.user_data.get("review_rating", 5), comment)
+    await update.message.reply_text(message)
     return ConversationHandler.END
 
 
@@ -1629,14 +1666,21 @@ async def my_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text(text, reply_markup=kb)
 
 
-async def remove_favorite_action(query, context, favorite_id: str):
-    profile = await get_or_create_profile_from_update(query)
+@sync_to_async
+def _remove_favorite(profile, favorite_id):
+    """Remove a favorite item."""
     try:
         fav = Favorite.objects.get(id=int(favorite_id), user=profile.user)
     except Favorite.DoesNotExist:
-        return await query.edit_message_text("Элемент избранного не найден.")
+        return False, "Элемент избранного не найден."
     fav.delete()
-    await query.edit_message_text("Удалено из избранного.")
+    return True, "Удалено из избранного."
+
+
+async def remove_favorite_action(query, context, favorite_id: str):
+    profile = await get_or_create_profile_from_update(query)
+    success, message = await _remove_favorite(profile, favorite_id)
+    await query.edit_message_text(message)
 
 
 # --- Notifications --------------------------------------------------------------
@@ -1802,10 +1846,13 @@ async def add_property_district(update: Update, context: ContextTypes.DEFAULT_TY
     districts = await get_districts()
 
     if not districts:
-        # Если нет районов, пропускаем этот шаг
-        logger.info(f"add_property_district: no districts, skipping to ADDPROP_PRICE")
-        await update.message.reply_text("Цена за ночь (число):")
-        return ADDPROP_PRICE
+        # Если нет районов, сразу переходим к запросу адреса
+        logger.info("add_property_district: no districts, asking for address")
+        await update.message.reply_text(
+            "Введите адрес (улица, дом, квартира):",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return ADDPROP_ADDRESS
 
     # Создаём кнопки с районами + кнопка "Пропустить"
     buttons = [[d['name']] for d in districts]
@@ -1820,23 +1867,160 @@ async def add_property_district(update: Update, context: ContextTypes.DEFAULT_TY
     return ADDPROP_DISTRICT
 
 
-async def add_property_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """После выбора района (или пропуска) - запрашиваем цену."""
+async def add_property_district_to_address(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """После выбора района (или пропуска) - запрашиваем адрес."""
     district_name = update.message.text.strip()
-    logger.info(f"add_property_price: received district_name='{district_name}'")
+    logger.info(f"add_property_district_to_address: received district_name='{district_name}'")
 
     if district_name != "Пропустить":
         available_districts = context.user_data.get("available_districts", {})
         district_id = available_districts.get(district_name)
-        logger.info(f"add_property_price: district_id={district_id}")
+        logger.info(f"add_property_district_to_address: district_id={district_id}")
 
         if district_id:
             context.user_data["newprop_district_id"] = district_id
-            logger.info(f"add_property_price: saved district_id={district_id}")
+            logger.info(f"add_property_district_to_address: saved district_id={district_id}")
         # Если район не найден, просто пропускаем
 
-    logger.info(f"add_property_price: asking for price")
-    await update.message.reply_text("Цена за ночь (число):", reply_markup=ReplyKeyboardRemove())
+    logger.info("add_property_district_to_address: asking for address")
+    await update.message.reply_text(
+        "Введите адрес (улица, дом, квартира):",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    return ADDPROP_ADDRESS
+
+
+async def add_property_address(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """После ввода адреса - переходим к выбору типа недвижимости."""
+    address = update.message.text.strip()
+    logger.info(f"add_property_address: received address='{address}'")
+    if not address:
+        await update.message.reply_text("Адрес не может быть пустым. Укажите улицу и дом:")
+        return ADDPROP_ADDRESS
+
+    context.user_data["newprop_address"] = address
+
+    @sync_to_async
+    def get_property_types():
+        from apps.properties.models import PropertyType
+        types = list(PropertyType.objects.all().order_by('name'))
+        return [{'id': t.id, 'name': t.name} for t in types]
+
+    property_types = await get_property_types()
+
+    if not property_types:
+        # Если нет типов, пропускаем этот шаг
+        await update.message.reply_text("Класс недвижимости:")
+        return ADDPROP_PROPERTY_CLASS
+
+    # Создаём кнопки с типами недвижимости + кнопка "Пропустить"
+    buttons = [[pt['name']] for pt in property_types]
+    buttons.append(["Пропустить"])
+    kb = ReplyKeyboardMarkup(buttons, resize_keyboard=True, one_time_keyboard=True)
+
+    context.user_data["available_property_types"] = {pt['name']: pt['id'] for pt in property_types}
+
+    logger.info("add_property_address: asking for property type")
+    await update.message.reply_text("Выберите тип недвижимости:", reply_markup=kb)
+    return ADDPROP_PROPERTY_TYPE
+
+
+async def add_property_property_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """После выбора типа недвижимости - переходим к выбору класса недвижимости."""
+    property_type_name = update.message.text.strip()
+    logger.info(f"add_property_property_type: received property_type_name='{property_type_name}'")
+
+    if property_type_name != "Пропустить":
+        available_property_types = context.user_data.get("available_property_types", {})
+        property_type_id = available_property_types.get(property_type_name)
+        logger.info(f"add_property_property_type: property_type_id={property_type_id}")
+
+        if property_type_id:
+            context.user_data["newprop_property_type_id"] = property_type_id
+            logger.info(f"add_property_property_type: saved property_type_id={property_type_id}")
+
+    # Создаём кнопки с классами недвижимости
+    from apps.properties.models import Property
+    property_classes = [
+        {"value": Property.PropertyClass.COMFORT, "label": "Комфорт"},
+        {"value": Property.PropertyClass.BUSINESS, "label": "Бизнес"},
+        {"value": Property.PropertyClass.PREMIUM, "label": "Премиум"},
+    ]
+
+    buttons = [[pc['label']] for pc in property_classes]
+    kb = ReplyKeyboardMarkup(buttons, resize_keyboard=True, one_time_keyboard=True)
+
+    context.user_data["available_property_classes"] = {pc['label']: pc['value'] for pc in property_classes}
+
+    logger.info("add_property_property_type: asking for property class")
+    await update.message.reply_text("Выберите класс недвижимости:", reply_markup=kb)
+    return ADDPROP_PROPERTY_CLASS
+
+
+async def add_property_property_class(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """После выбора класса недвижимости - переходим к вводу этажа."""
+    property_class_label = update.message.text.strip()
+    logger.info(f"add_property_property_class: received property_class_label='{property_class_label}'")
+
+    available_property_classes = context.user_data.get("available_property_classes", {})
+    property_class_value = available_property_classes.get(property_class_label)
+    logger.info(f"add_property_property_class: property_class_value={property_class_value}")
+
+    if property_class_value:
+        context.user_data["newprop_property_class"] = property_class_value
+        logger.info(f"add_property_property_class: saved property_class={property_class_value}")
+    else:
+        # Если класс не найден, используем значение по умолчанию
+        from apps.properties.models import Property
+        context.user_data["newprop_property_class"] = Property.PropertyClass.COMFORT
+
+    logger.info("add_property_property_class: asking for floor")
+    await update.message.reply_text(
+        "Введите этаж (число) или введите 0, чтобы пропустить:",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    return ADDPROP_FLOOR
+
+
+async def add_property_floor(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """После ввода этажа - переходим к вводу количества комнат."""
+    text = update.message.text.strip()
+    logger.info(f"add_property_floor: received text='{text}'")
+
+    try:
+        floor = int(text)
+        if floor < 0:
+            raise ValueError
+        logger.info(f"add_property_floor: parsed floor={floor}")
+
+        if floor > 0:
+            context.user_data["newprop_floor"] = floor
+    except Exception as e:
+        logger.error(f"add_property_floor: failed to parse floor: {e}")
+        await update.message.reply_text("Введите целое число (этаж) или 0, чтобы пропустить:")
+        return ADDPROP_FLOOR
+
+    logger.info("add_property_floor: asking for rooms")
+    await update.message.reply_text("Сколько комнат в объекте?")
+    return ADDPROP_ROOMS
+
+
+async def add_property_rooms_to_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """После ввода комнат - переходим к цене."""
+    text = update.message.text.strip()
+    logger.info(f"add_property_rooms_to_price: received text='{text}'")
+    try:
+        rooms = int(text)
+        if rooms < 1:
+            raise ValueError
+        logger.info(f"add_property_rooms_to_price: parsed rooms={rooms}")
+    except Exception as e:
+        logger.error(f"add_property_rooms_to_price: failed to parse rooms: {e}")
+        await update.message.reply_text("Введите целое число комнат (минимум 1):")
+        return ADDPROP_ROOMS
+    context.user_data["newprop_rooms"] = rooms
+    logger.info("add_property_rooms_to_price: asking for price")
+    await update.message.reply_text("Цена за ночь (число):")
     return ADDPROP_PRICE
 
 
@@ -1851,7 +2035,7 @@ async def add_property_guests(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Введите число (цена за ночь):")
         return ADDPROP_PRICE
     context.user_data["newprop_price"] = price
-    logger.info(f"add_property_guests: asking for max_guests")
+    logger.info(f"add_property_guests: asking for guests count")
     try:
         await update.message.reply_text("Максимальное число гостей:")
         logger.info(f"add_property_guests: message sent successfully")
@@ -1861,17 +2045,56 @@ async def add_property_guests(update: Update, context: ContextTypes.DEFAULT_TYPE
     return ADDPROP_GUESTS
 
 
+async def add_property_rooms(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """После ввода гостей - переходим к спальным местам."""
+    text = update.message.text.strip()
+    logger.info(f"add_property_rooms: received text='{text}'")
+    try:
+        guests = int(text)
+        if guests < 1:
+            raise ValueError
+        logger.info(f"add_property_rooms: parsed guests={guests}")
+    except Exception as e:
+        logger.error(f"add_property_rooms: failed to parse guests: {e}")
+        await update.message.reply_text("Введите целое число гостей (минимум 1):")
+        return ADDPROP_GUESTS
+    context.user_data["newprop_guests"] = guests
+    logger.info("add_property_rooms: asking for sleeping places")
+    await update.message.reply_text("Сколько спальных мест доступно?")
+    return ADDPROP_SLEEPING
+
+
+async def add_property_sleeping(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = update.message.text.strip()
+    logger.info(f"add_property_sleeping: received text='{text}'")
+    try:
+        rooms = int(text)
+        if rooms < 1:
+            raise ValueError
+        logger.info(f"add_property_sleeping: parsed rooms={rooms}")
+    except Exception as e:
+        logger.error(f"add_property_sleeping: failed to parse rooms: {e}")
+        await update.message.reply_text("Введите целое число комнат (минимум 1):")
+        return ADDPROP_ROOMS
+    context.user_data["newprop_rooms"] = rooms
+    logger.info("add_property_sleeping: asking for sleeping places")
+    await update.message.reply_text("Сколько спальных мест доступно?")
+    return ADDPROP_SLEEPING
+
+
 async def add_property_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = update.message.text.strip()
     logger.info(f"add_property_desc: received text='{text}'")
     try:
-        guests = int(text)
-        logger.info(f"add_property_desc: parsed guests={guests}")
+        sleeping = int(text)
+        if sleeping < 1:
+            raise ValueError
+        logger.info(f"add_property_desc: parsed sleeping={sleeping}")
     except Exception as e:
-        logger.error(f"add_property_desc: failed to parse guests: {e}")
-        await update.message.reply_text("Введите целое число гостей:")
-        return ADDPROP_GUESTS
-    context.user_data["newprop_guests"] = guests
+        logger.error(f"add_property_desc: failed to parse sleeping: {e}")
+        await update.message.reply_text("Введите целое число спальных мест (минимум 1):")
+        return ADDPROP_SLEEPING
+    context.user_data["newprop_sleeping"] = sleeping
     logger.info(f"add_property_desc: asking for description")
     await update.message.reply_text("Краткое описание:")
     return ADDPROP_DESC
@@ -1889,6 +2112,7 @@ async def add_property_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     @sync_to_async
     def create_property():
+        from apps.properties.models import PropertyType
         u = profile.user
         if not u:
             return None
@@ -1913,6 +2137,21 @@ async def add_property_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
             except Location.DoesNotExist:
                 pass
 
+        # Получаем PropertyType объект
+        property_type = None
+        property_type_id = data.get("newprop_property_type_id")
+        if property_type_id:
+            try:
+                property_type = PropertyType.objects.get(id=property_type_id)
+            except PropertyType.DoesNotExist:
+                pass
+
+        address = data.get("newprop_address") or "Адрес не указан"
+        rooms = data.get("newprop_rooms") or 1
+        sleeping_places = data.get("newprop_sleeping") or 1
+        property_class = data.get("newprop_property_class") or Property.PropertyClass.COMFORT
+        floor = data.get("newprop_floor")
+
         p = Property.objects.create(
             owner=u,
             agency=getattr(u, "agency", None),
@@ -1920,8 +2159,13 @@ async def add_property_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
             description=data.get("newprop_desc", update.message.text.strip()),
             city_location=city_location,
             district_location=district_location,
+            property_type=property_type,
+            property_class=property_class,
+            floor=floor,
             base_price=data.get("newprop_price"),
-            max_guests=data.get("newprop_guests"),
+            address_line=address,
+            rooms=rooms,
+            sleeping_places=sleeping_places,
             status=Property.Status.DRAFT,
         )
         return p.title
@@ -1931,38 +2175,63 @@ async def add_property_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Ошибка: пользователь не найден.")
         return ConversationHandler.END
 
-    await update.message.reply_text(f"Объект создан в статусе Черновик: {title}")
+    # Создаем кнопку "Главная страница"
+    keyboard = ReplyKeyboardMarkup(
+        [["🏠 Главная страница"]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+
+    await update.message.reply_text(
+        f"Объект создан в статусе Черновик: {title}",
+        reply_markup=keyboard
+    )
     return ConversationHandler.END
 
 
 async def prop_toggle_callback(query, context, property_id: str):
     profile = await get_or_create_profile_from_update(query)
-    try:
-        p = Property.objects.select_related('city_location', 'district_location').get(id=int(property_id), owner=profile.user)
-    except Property.DoesNotExist:
+
+    @sync_to_async
+    def toggle_property():
+        try:
+            p = Property.objects.select_related('city_location', 'district_location').get(id=int(property_id), owner=profile.user)
+            if p.status == Property.Status.ACTIVE:
+                p.deactivate()
+                msg = "Снято с публикации"
+            else:
+                p.activate()
+                msg = "Активирован"
+            return f"{p.title}: {msg}"
+        except Property.DoesNotExist:
+            return None
+
+    result = await toggle_property()
+    if result is None:
         return await query.edit_message_text("Объект не найден.")
-    if p.status == Property.Status.ACTIVE:
-        p.deactivate()
-        msg = "Снято с публикации"
-    else:
-        p.activate()
-        msg = "Активирован"
-    await query.edit_message_text(f"{p.title}: {msg}")
+    await query.edit_message_text(result)
 
 
 async def prop_calendar_list(query, context, property_id: str):
-    try:
-        p = Property.objects.select_related('city_location', 'district_location').get(id=int(property_id))
-    except Property.DoesNotExist:
-        return await query.edit_message_text("Объект не найден.")
-    periods = PropertyAvailability.objects.filter(property=p).order_by("start_date")[:10]
-    if not periods:
-        return await query.edit_message_text("Календарь пуст.")
-    lines = [
-        f"{pr.start_date:%d.%m}–{pr.end_date:%d.%m} {pr.get_status_display()} ({pr.reason or ''})"
-        for pr in periods
-    ]
-    await query.edit_message_text("\n".join(lines) or "Календарь пуст.")
+    @sync_to_async
+    def get_calendar_data():
+        try:
+            p = Property.objects.select_related('city_location', 'district_location').get(id=int(property_id))
+            periods = list(PropertyAvailability.objects.filter(property=p).order_by("start_date")[:10])
+            if not periods:
+                return None, "Календарь пуст."
+            lines = [
+                f"{pr.start_date:%d.%m}–{pr.end_date:%d.%m} {pr.get_status_display()} ({pr.reason or ''})"
+                for pr in periods
+            ]
+            return "\n".join(lines), None
+        except Property.DoesNotExist:
+            return None, "Объект не найден."
+
+    result, error = await get_calendar_data()
+    if error:
+        return await query.edit_message_text(error)
+    await query.edit_message_text(result or "Календарь пуст.")
 
 
 async def prop_calendar_add_start(query, context, property_id: str) -> int:
@@ -1996,36 +2265,42 @@ async def prop_calendar_add_finish(update: Update, context: ContextTypes.DEFAULT
     prop_id = context.user_data.get("block_property_id")
     start = context.user_data.get("block_start")
     end = context.user_data.get("block_end")
-    try:
-        p = Property.objects.select_related('city_location', 'district_location').get(id=prop_id)
-    except Property.DoesNotExist:
-        await update.message.reply_text("Объект не найден.")
-        return ConversationHandler.END
-    # Проверка пересечений с существующими блокировками/бронированиями
-    overlap = PropertyAvailability.objects.filter(
-        property=p,
-        start_date__lt=end,
-        end_date__gt=start,
-        status__in=[
-            PropertyAvailability.AvailabilityStatus.BOOKED,
-            PropertyAvailability.AvailabilityStatus.BLOCKED,
-            PropertyAvailability.AvailabilityStatus.MAINTENANCE,
-        ],
-    ).exists()
-    if overlap:
-        await update.message.reply_text("Период пересекается с существующими событиями.")
-        return ConversationHandler.END
-    PropertyAvailability.objects.create(
-        property=p,
-        start_date=start,
-        end_date=end,
-        status=PropertyAvailability.AvailabilityStatus.BLOCKED,
-        availability_type=PropertyAvailability.AvailabilityType.MANUAL_BLOCK,
-        reason=reason or "",
-        source="manual",
-        created_by=p.owner,
-    )
-    await update.message.reply_text("Блокировка добавлена в календарь.")
+
+    @sync_to_async
+    def add_calendar_block():
+        try:
+            p = Property.objects.select_related('city_location', 'district_location').get(id=prop_id)
+        except Property.DoesNotExist:
+            return "Объект не найден."
+
+        # Проверка пересечений с существующими блокировками/бронированиями
+        overlap = PropertyAvailability.objects.filter(
+            property=p,
+            start_date__lt=end,
+            end_date__gt=start,
+            status__in=[
+                PropertyAvailability.AvailabilityStatus.BOOKED,
+                PropertyAvailability.AvailabilityStatus.BLOCKED,
+                PropertyAvailability.AvailabilityStatus.MAINTENANCE,
+            ],
+        ).exists()
+        if overlap:
+            return "Период пересекается с существующими событиями."
+
+        PropertyAvailability.objects.create(
+            property=p,
+            start_date=start,
+            end_date=end,
+            status=PropertyAvailability.AvailabilityStatus.BLOCKED,
+            availability_type=PropertyAvailability.AvailabilityType.MANUAL_BLOCK,
+            reason=reason or "",
+            source="manual",
+            created_by=p.owner,
+        )
+        return "Блокировка добавлена в календарь."
+
+    message = await add_calendar_block()
+    await update.message.reply_text(message)
     return ConversationHandler.END
 
 
@@ -2082,18 +2357,25 @@ async def realtor_bookings(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text(text, reply_markup=kb)
 
 
-async def realtor_confirm_booking(query, context, booking_id: str):
-    profile = await get_or_create_profile_from_update(query)
+@sync_to_async
+def _realtor_confirm_booking(profile, booking_id):
+    """Confirm a booking if it belongs to realtor's property."""
     try:
         b = Booking.objects.get(id=int(booking_id), property__owner=profile.user)
     except Booking.DoesNotExist:
-        return await query.edit_message_text("Бронирование не найдено.")
+        return False, "Бронирование не найдено."
     if b.status != Booking.Status.PENDING:
-        return await query.edit_message_text("Бронирование уже обработано.")
+        return False, "Бронирование уже обработано."
     b.status = Booking.Status.CONFIRMED
     b.save(update_fields=["status"])
     Notification.objects.create(user=b.guest, title="Бронирование подтверждено", message=f"#{b.booking_code}")
-    await query.edit_message_text("Подтверждено.")
+    return True, "Подтверждено."
+
+
+async def realtor_confirm_booking(query, context, booking_id: str):
+    profile = await get_or_create_profile_from_update(query)
+    success, message = await _realtor_confirm_booking(profile, booking_id)
+    await query.edit_message_text(message)
 
 
 async def demo_pay_start_wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2154,12 +2436,8 @@ async def demo_pay_start(query, context, booking_id: str):
         payment.mark_success(transaction_id=f"DEMO-{b.booking_code}")
         Notification.objects.create(user=b.property.owner, title="Новая оплата", message=f"#{b.booking_code}")
 
-        # Сохраняем времена, если они есть
-        if checkin_time and checkout_time:
-            b.check_in_time = checkin_time
-            b.check_out_time = checkout_time
-            b.save(update_fields=['check_in_time', 'check_out_time'])
-
+        # Note: check-in/check-out times are defined in Property model, not Booking
+        # Bookings use the Property's check_in_from/check_out_to times
         return payment, checkin_time, checkout_time
 
     await process_payment_and_save()
@@ -2188,17 +2466,41 @@ async def superadmin_realtors(update: Update, context: ContextTypes.DEFAULT_TYPE
         last_name=update.effective_user.last_name,
         language_code=update.effective_user.language_code,
     )
-    u = profile.user
-    if not (u and u.is_super_admin()):
-        return await update.message.reply_text("Доступно только Супер Админу.")
-    realtors = u.agency.employees.filter(role=u.RoleChoices.REALTOR).order_by("-created_at")[:10]
+
+    @sync_to_async
+    def get_user_and_check():
+        u = profile.user
+        if not u:
+            return None, "Доступно только Супер Админу."
+        if not u.is_super_admin():
+            return None, "Доступно только Супер Админу."
+        if not u.agency:
+            return None, "У вас нет агентства."
+        return u, None
+
+    @sync_to_async
+    def get_realtors(u):
+        realtors_list = list(u.agency.employees.filter(role=u.RoleChoices.REALTOR).order_by("-created_at")[:10])
+        return [{
+            'id': r.id,
+            'username': r.username,
+            'email': r.email,
+            'is_active': r.is_active
+        } for r in realtors_list]
+
+    u, error = await get_user_and_check()
+    if error:
+        return await update.message.reply_text(error)
+
+    realtors = await get_realtors(u)
     if not realtors:
         return await update.message.reply_text("Риелторов пока нет. Добавьте через веб или админку.")
+
     for r in realtors:
-        text = f"{r.username or r.email} | {'Активен' if r.is_active else 'Неактивен'}"
+        text = f"{r['username'] or r['email']} | {'Активен' if r['is_active'] else 'Неактивен'}"
         toggle = InlineKeyboardButton(
-            "Деактивировать" if r.is_active else "Активировать",
-            callback_data=f"realtor:toggle:{r.id}"
+            "Деактивировать" if r['is_active'] else "Активировать",
+            callback_data=f"realtor:toggle:{r['id']}"
         )
         kb = InlineKeyboardMarkup([[toggle]])
         await update.message.reply_text(text, reply_markup=kb)
@@ -2213,22 +2515,49 @@ async def superadmin_agency_stats(update: Update, context: ContextTypes.DEFAULT_
         last_name=update.effective_user.last_name,
         language_code=update.effective_user.language_code,
     )
-    u = profile.user
-    if not (u and u.is_super_admin() and u.agency):
+
+    @sync_to_async
+    def get_agency_stats():
+        u = profile.user
+        if not u:
+            return None
+        if not u.is_super_admin():
+            return None
+        if not u.agency:
+            return None
+
+        agency = u.agency
+        from django.db import models as djm  # type: ignore
+        from apps.bookings.models import Booking
+
+        realtors = agency.employees.filter(role=u.RoleChoices.REALTOR).count()
+        props = agency.properties.count()
+        total_bookings = Booking.objects.filter(agency=agency).count()
+        revenue = Booking.objects.filter(
+            agency=agency,
+            status__in=[Booking.Status.CONFIRMED, Booking.Status.IN_PROGRESS, Booking.Status.COMPLETED],
+            payment_status=Booking.PaymentStatus.PAID,
+        ).aggregate(total=djm.Sum("total_price"))["total"]
+
+        return {
+            'name': agency.name,
+            'realtors': realtors,
+            'props': props,
+            'total_bookings': total_bookings,
+            'revenue': revenue or 0
+        }
+
+    stats = await get_agency_stats()
+    if not stats:
         return await update.message.reply_text("Доступно только Супер Админу.")
-    agency = u.agency
-    from django.db import models as djm  # type: ignore
-    from apps.bookings.models import Booking
-    realtors = agency.employees.filter(role=u.RoleChoices.REALTOR).count()
-    props = agency.properties.count()
-    total_bookings = Booking.objects.filter(agency=agency).count()
-    revenue = Booking.objects.filter(
-        agency=agency,
-        status__in=[Booking.Status.CONFIRMED, Booking.Status.IN_PROGRESS, Booking.Status.COMPLETED],
-        payment_status=Booking.PaymentStatus.PAID,
-    ).aggregate(total=djm.Sum("total_price"))["total"]
+
     await update.message.reply_text(
-        f"Агентство: {agency.name}\nРиелторов: {realtors}\nОбъектов: {props}\nБронирований: {total_bookings}\nДоход: {revenue or 0}")
+        f"Агентство: {stats['name']}\n"
+        f"Риелторов: {stats['realtors']}\n"
+        f"Объектов: {stats['props']}\n"
+        f"Бронирований: {stats['total_bookings']}\n"
+        f"Доход: {stats['revenue']}"
+    )
 
 
 async def superuser_agencies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -2240,71 +2569,123 @@ async def superuser_agencies(update: Update, context: ContextTypes.DEFAULT_TYPE)
         last_name=update.effective_user.last_name,
         language_code=update.effective_user.language_code,
     )
-    u = profile.user
-    if not (u and (u.is_platform_superuser())):
-        return await update.message.reply_text("Доступно только Суперпользователю.")
-    agencies = RealEstateAgency.objects.order_by("-created_at")[:10]
+
+    @sync_to_async
+    def get_user_and_check():
+        u = profile.user
+        if not u:
+            return None, "Доступно только Суперпользователю."
+        if not u.is_platform_superuser():
+            return None, "Доступно только Суперпользователю."
+        return u, None
+
+    @sync_to_async
+    def get_agencies():
+        agencies_list = list(RealEstateAgency.objects.order_by("-created_at")[:10])
+        return [{
+            'id': a.id,
+            'name': a.name,
+            'city': a.city,
+            'is_active': a.is_active
+        } for a in agencies_list]
+
+    u, error = await get_user_and_check()
+    if error:
+        return await update.message.reply_text(error)
+
+    agencies = await get_agencies()
     if not agencies:
         return await update.message.reply_text("Агентств нет.")
+
     for a in agencies:
-        text = f"{a.name} — {a.city} | {'Активно' if a.is_active else 'Неактивно'}"
+        text = f"{a['name']} — {a['city']} | {'Активно' if a['is_active'] else 'Неактивно'}"
         toggle = InlineKeyboardButton(
-            "Деактивировать" if a.is_active else "Активировать",
-            callback_data=f"agency:toggle:{a.id}"
+            "Деактивировать" if a['is_active'] else "Активировать",
+            callback_data=f"agency:toggle:{a['id']}"
         )
-        detail = InlineKeyboardButton("Подробнее", callback_data=f"agency:detail:{a.id}")
+        detail = InlineKeyboardButton("Подробнее", callback_data=f"agency:detail:{a['id']}")
         kb = InlineKeyboardMarkup([[detail, toggle]])
         await update.message.reply_text(text, reply_markup=kb)
 
 
 async def superuser_agency_toggle(query, context, agency_id: str):
     profile = await get_or_create_profile_from_update(query)
-    u = profile.user
-    if not (u and (u.is_platform_superuser())):
-        return await query.edit_message_text("Недостаточно прав.")
-    try:
-        a = RealEstateAgency.objects.get(id=int(agency_id))
-    except RealEstateAgency.DoesNotExist:
-        return await query.edit_message_text("Агентство не найдено.")
-    a.is_active = not a.is_active
-    a.save(update_fields=["is_active"])
-    await query.edit_message_text("Статус агентства изменён.")
+
+    @sync_to_async
+    def toggle_agency():
+        u = profile.user
+        if not u:
+            return "Недостаточно прав."
+        if not u.is_platform_superuser():
+            return "Недостаточно прав."
+
+        try:
+            a = RealEstateAgency.objects.get(id=int(agency_id))
+            a.is_active = not a.is_active
+            a.save(update_fields=["is_active"])
+            return "Статус агентства изменён."
+        except RealEstateAgency.DoesNotExist:
+            return "Агентство не найдено."
+
+    message = await toggle_agency()
+    await query.edit_message_text(message)
 
 
 async def superuser_agency_detail(query, context, agency_id: str):
     profile = await get_or_create_profile_from_update(query)
-    u = profile.user
-    if not (u and (u.is_platform_superuser())):
-        return await query.edit_message_text("Недостаточно прав.")
-    try:
-        a = RealEstateAgency.objects.get(id=int(agency_id))
-    except RealEstateAgency.DoesNotExist:
-        return await query.edit_message_text("Агентство не найдено.")
-    from django.db import models as djm  # type: ignore
-    from apps.bookings.models import Booking
-    realtors = a.employees.filter(role=CustomUser.RoleChoices.REALTOR).count()
-    props = a.properties.count()
-    total_bookings = Booking.objects.filter(agency=a).count()
-    revenue = Booking.objects.filter(
-        agency=a,
-        status__in=[Booking.Status.CONFIRMED, Booking.Status.IN_PROGRESS, Booking.Status.COMPLETED],
-        payment_status=Booking.PaymentStatus.PAID,
-    ).aggregate(total=djm.Sum("total_price"))["total"]
-    owner_email = a.owner.email if a.owner else "—"
-    text = (
-        f"🏢 {a.name}\n"
-        f"📍 {a.city}\n"
-        f"☎️ {a.phone}  ✉️ {a.email}\n"
-        f"🌐 {a.website or '—'}\n"
-        f"👤 Владелец: {owner_email}\n\n"
-        f"👨‍💼 Риелторов: {realtors}\n🏠 Объектов: {props}\n📅 Бронирований: {total_bookings}\n💰 Доход: {revenue or 0}\n\n"
-        f"Статус: {'Активно' if a.is_active else 'Неактивно'}\n"
-    )
-    toggle = InlineKeyboardButton(
-        "Деактивировать" if a.is_active else "Активировать",
-        callback_data=f"agency:toggle:{a.id}"
-    )
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[toggle]]))
+
+    @sync_to_async
+    def get_agency_detail():
+        u = profile.user
+        if not u:
+            return None, None, "Недостаточно прав."
+        if not u.is_platform_superuser():
+            return None, None, "Недостаточно прав."
+
+        try:
+            a = RealEstateAgency.objects.get(id=int(agency_id))
+        except RealEstateAgency.DoesNotExist:
+            return None, None, "Агентство не найдено."
+
+        from django.db import models as djm  # type: ignore
+        from apps.bookings.models import Booking
+
+        realtors = a.employees.filter(role=CustomUser.RoleChoices.REALTOR).count()
+        props = a.properties.count()
+        total_bookings = Booking.objects.filter(agency=a).count()
+        revenue = Booking.objects.filter(
+            agency=a,
+            status__in=[Booking.Status.CONFIRMED, Booking.Status.IN_PROGRESS, Booking.Status.COMPLETED],
+            payment_status=Booking.PaymentStatus.PAID,
+        ).aggregate(total=djm.Sum("total_price"))["total"]
+        owner_email = a.owner.email if a.owner else "—"
+
+        text = (
+            f"🏢 {a.name}\n"
+            f"📍 {a.city}\n"
+            f"☎️ {a.phone}  ✉️ {a.email}\n"
+            f"🌐 {a.website or '—'}\n"
+            f"👤 Владелец: {owner_email}\n\n"
+            f"👨‍💼 Риелторов: {realtors}\n🏠 Объектов: {props}\n📅 Бронирований: {total_bookings}\n💰 Доход: {revenue or 0}\n\n"
+            f"Статус: {'Активно' if a.is_active else 'Неактивно'}\n"
+        )
+
+        toggle = InlineKeyboardButton(
+            "Деактивировать" if a.is_active else "Активировать",
+            callback_data=f"agency:toggle:{a.id}"
+        )
+        return text, InlineKeyboardMarkup([[toggle]]), None
+
+    text, markup, error = await get_agency_detail()
+    if error:
+        return await query.edit_message_text(error)
+    await query.edit_message_text(text, reply_markup=markup)
+
+
+@sync_to_async
+def _check_is_superuser(profile):
+    """Check if profile's user is a platform superuser."""
+    return profile.user and profile.user.is_platform_superuser()
 
 
 async def superuser_user_search_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -2316,21 +2697,29 @@ async def superuser_user_search_start(update: Update, context: ContextTypes.DEFA
         last_name=update.effective_user.last_name,
         language_code=update.effective_user.language_code,
     )
-    if not (profile.user and profile.user.is_platform_superuser()):
+    if not await _check_is_superuser(profile):
         await update.message.reply_text("Доступно только Суперпользователю.")
         return ConversationHandler.END
     await update.message.reply_text("Введите email или телефон пользователя:")
     return SU_SEARCH_USER
 
 
-async def superuser_user_search_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    identifier = update.message.text.strip()
+@sync_to_async
+def _find_user_by_identifier(identifier):
+    """Find user by email or phone."""
     try:
         if "@" in identifier:
-            u = CustomUser.objects.get(email__iexact=identifier)
+            return CustomUser.objects.get(email__iexact=identifier)
         else:
-            u = CustomUser.objects.get(phone=identifier)
+            return CustomUser.objects.get(phone=identifier)
     except CustomUser.DoesNotExist:
+        return None
+
+
+async def superuser_user_search_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    identifier = update.message.text.strip()
+    u = await _find_user_by_identifier(identifier)
+    if not u:
         await update.message.reply_text("Пользователь не найден.")
         return ConversationHandler.END
     text = f"{u.username or u.email}\nРоль: {u.get_role_display()} | {'Активен' if u.is_active else 'Неактивен'}"
@@ -2345,23 +2734,50 @@ async def superuser_user_search_finish(update: Update, context: ContextTypes.DEF
 
 async def superadmin_realtor_toggle(query, context, realtor_id: str):
     profile = await get_or_create_profile_from_update(query)
-    u = profile.user
-    if not (u and u.is_super_admin() and u.agency):
-        return await query.edit_message_text("Недостаточно прав.")
-    from apps.users.models import CustomUser
-    try:
-        realtor = CustomUser.objects.get(id=int(realtor_id), agency=u.agency, role=CustomUser.RoleChoices.REALTOR)
-    except CustomUser.DoesNotExist:
-        return await query.edit_message_text("Риелтор не найден.")
-    realtor.is_active = not realtor.is_active
-    realtor.save(update_fields=["is_active"])
-    await query.edit_message_text("Статус изменён.")
+
+    @sync_to_async
+    def toggle_realtor():
+        u = profile.user
+        if not u:
+            return "Недостаточно прав."
+        if not u.is_super_admin():
+            return "Недостаточно прав."
+        if not u.agency:
+            return "Недостаточно прав."
+
+        from apps.users.models import CustomUser
+        try:
+            realtor = CustomUser.objects.get(id=int(realtor_id), agency=u.agency, role=CustomUser.RoleChoices.REALTOR)
+            realtor.is_active = not realtor.is_active
+            realtor.save(update_fields=["is_active"])
+            return "Статус изменён."
+        except CustomUser.DoesNotExist:
+            return "Риелтор не найден."
+
+    message = await toggle_realtor()
+    await query.edit_message_text(message)
 
 
 # --- Routing based on text buttons --------------------------------------------
 
 async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (update.message.text or "").strip()
+
+    # Обработка кнопки "Главная страница"
+    if text == "🏠 Главная страница":
+        profile = await get_or_create_profile(
+            telegram_id=update.effective_user.id,
+            chat_id=update.effective_chat.id,
+            username=update.effective_user.username,
+            first_name=update.effective_user.first_name,
+            last_name=update.effective_user.last_name,
+            language_code=update.effective_user.language_code,
+        )
+        profile_user = await sync_to_async(lambda: profile.user)()
+        keyboard = build_main_menu(profile, user=profile_user)
+        await update.message.reply_text("Главное меню:", reply_markup=keyboard)
+        return
+
     # Для незарегистрированных пользователей
     if text == "🔎 Поиск жилья":
         await search_start(update, context)
@@ -2479,11 +2895,6 @@ def build_application(token: str | None = None) -> Application:
 
     application.add_handler(CommandHandler("cancel", cancel))
 
-    # Guest count handler for search-based booking - only matches numbers or "6+"
-    guest_count_pattern = filters.Regex(r"^(\d+|6\+)$")
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & guest_count_pattern, handle_guest_count_from_search))
-
-
     # Booking flow
     booking_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(start_booking_flow, pattern=r"^prop:book:\d+$")],
@@ -2514,9 +2925,15 @@ def build_application(token: str | None = None) -> Application:
         states={
             ADDPROP_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_city)],
             ADDPROP_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_district)],
-            ADDPROP_DISTRICT: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_price)],
+            ADDPROP_DISTRICT: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_district_to_address)],
+            ADDPROP_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_address)],
+            ADDPROP_PROPERTY_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_property_type)],
+            ADDPROP_PROPERTY_CLASS: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_property_class)],
+            ADDPROP_FLOOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_floor)],
+            ADDPROP_ROOMS: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_rooms_to_price)],
             ADDPROP_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_guests)],
-            ADDPROP_GUESTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_desc)],
+            ADDPROP_GUESTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_rooms)],
+            ADDPROP_SLEEPING: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_desc)],
             ADDPROP_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_property_finish)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
@@ -2546,6 +2963,10 @@ def build_application(token: str | None = None) -> Application:
     # Search results navigation handler (должен быть перед menu_router)
     search_nav_patterns = filters.Regex("^(◀️ Назад|Вперёд ▶️|📄 Подробнее|📅 Забронировать|⭐ В избранное|🔙 Главное меню)$")
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & search_nav_patterns, search_results_navigation))
+
+    # Guest count handler for search-based booking - placed after other conversations to avoid intercepting inputs
+    guest_count_pattern = filters.Regex(r"^(\d+|6\+)$")
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & guest_count_pattern, handle_guest_count_from_search))
 
     # Menu router
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, menu_router))
@@ -2597,6 +3018,32 @@ def build_application(token: str | None = None) -> Application:
     return application
 
 
+@sync_to_async
+def _get_users_list_data(profile):
+    """Get user list data for superuser."""
+    u = profile.user
+    if not (u and u.is_platform_superuser()):
+        return None, "Недостаточно прав."
+
+    users = list(CustomUser.objects.order_by("-created_at")[:10])
+    if not users:
+        return None, "Пользователей нет."
+
+    # Prepare data for each user
+    users_data = []
+    for usr in users:
+        role_label = usr.get_role_display()
+        users_data.append({
+            'id': usr.id,
+            'username': usr.username,
+            'email': usr.email,
+            'role_label': role_label,
+            'is_active': usr.is_active,
+        })
+
+    return users_data, None
+
+
 async def superuser_users_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     profile = await get_or_create_profile(
         telegram_id=update.effective_user.id,
@@ -2606,47 +3053,55 @@ async def superuser_users_list(update: Update, context: ContextTypes.DEFAULT_TYP
         last_name=update.effective_user.last_name,
         language_code=update.effective_user.language_code,
     )
-    u = profile.user
-    if not (u and u.is_platform_superuser()):
-        return await update.message.reply_text("Недостаточно прав.")
-    users = CustomUser.objects.order_by("-created_at")[:10]
-    if not users:
-        return await update.message.reply_text("Пользователей нет.")
-    for usr in users:
-        role_label = usr.get_role_display()
-        text = f"{usr.username or usr.email}\nРоль: {role_label} | {'Активен' if usr.is_active else 'Неактивен'}"
+
+    users_data, error = await _get_users_list_data(profile)
+    if error:
+        return await update.message.reply_text(error)
+
+    for usr_data in users_data:
+        text = f"{usr_data['username'] or usr_data['email']}\nРоль: {usr_data['role_label']} | {'Активен' if usr_data['is_active'] else 'Неактивен'}"
         # Role buttons
         role_buttons = [
-            InlineKeyboardButton("Гость", callback_data=f"urole:{usr.id}:guest"),
-            InlineKeyboardButton("Риелтор", callback_data=f"urole:{usr.id}:realtor"),
+            InlineKeyboardButton("Гость", callback_data=f"urole:{usr_data['id']}:guest"),
+            InlineKeyboardButton("Риелтор", callback_data=f"urole:{usr_data['id']}:realtor"),
         ]
         role_buttons2 = [
-            InlineKeyboardButton("Супер Админ", callback_data=f"urole:{usr.id}:super_admin"),
-            InlineKeyboardButton("Суперпользователь", callback_data=f"urole:{usr.id}:superuser"),
+            InlineKeyboardButton("Супер Админ", callback_data=f"urole:{usr_data['id']}:super_admin"),
+            InlineKeyboardButton("Суперпользователь", callback_data=f"urole:{usr_data['id']}:superuser"),
         ]
         toggle = InlineKeyboardButton(
-            "Деактивировать" if usr.is_active else "Активировать",
-            callback_data=f"user:toggle:{usr.id}"
+            "Деактивировать" if usr_data['is_active'] else "Активировать",
+            callback_data=f"user:toggle:{usr_data['id']}"
         )
         kb = InlineKeyboardMarkup([role_buttons, role_buttons2, [toggle]])
         await update.message.reply_text(text, reply_markup=kb)
 
 
-async def superuser_user_set_role(query, context, user_id: str, role: str):
-    profile = await get_or_create_profile_from_update(query)
+@sync_to_async
+def _set_user_role(profile, user_id, role):
+    """Set user role if authorized."""
     u = profile.user
     if not (u and u.is_platform_superuser()):
-        return await query.edit_message_text("Недостаточно прав.")
+        return False, "Недостаточно прав."
+
     try:
         target = CustomUser.objects.get(id=int(user_id))
     except CustomUser.DoesNotExist:
-        return await query.edit_message_text("Пользователь не найден.")
+        return False, "Пользователь не найден."
+
     valid_roles = {c[0] for c in CustomUser.RoleChoices.choices}
     if role not in valid_roles:
-        return await query.edit_message_text("Некорректная роль.")
+        return False, "Некорректная роль."
+
     target.role = role
     target.save(update_fields=["role"])
-    await query.edit_message_text("Роль изменена.")
+    return True, "Роль изменена."
+
+
+async def superuser_user_set_role(query, context, user_id: str, role: str):
+    profile = await get_or_create_profile_from_update(query)
+    success, message = await _set_user_role(profile, user_id, role)
+    await query.edit_message_text(message)
 
 
 async def superuser_realtors_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -2658,8 +3113,7 @@ async def superuser_realtors_list(update: Update, context: ContextTypes.DEFAULT_
         last_name=update.effective_user.last_name,
         language_code=update.effective_user.language_code,
     )
-    u = profile.user
-    if not (u and u.is_platform_superuser()):
+    if not await _check_is_superuser(profile):
         return await update.message.reply_text("Недостаточно прав.")
     # Initialize filters if not set
     filters = context.user_data.get("su_realtor_filters", {"status": "any", "city": "", "agency_id": None})
@@ -2667,32 +3121,55 @@ async def superuser_realtors_list(update: Update, context: ContextTypes.DEFAULT_
     await su_realtor_render_list(update, context, page=1, edit=False)
 
 
-async def su_realtor_render_list(update_or_query, context: ContextTypes.DEFAULT_TYPE, page: int = 1, edit: bool = False):
-    # Read filters
-    filters = context.user_data.get("su_realtor_filters", {"status": "any", "city": "", "agency_id": None})
+@sync_to_async
+def _get_realtor_list_data(filters, page):
+    """Get paginated realtor list with filters."""
     qs = CustomUser.objects.filter(role=CustomUser.RoleChoices.REALTOR).select_related("agency").order_by("-created_at")
     if filters.get("status") == "active":
         qs = qs.filter(is_active=True)
     elif filters.get("status") == "inactive":
         qs = qs.filter(is_active=False)
     if filters.get("city"):
-        qs = qs.filter(agency__city__icontains=filters["city"]) | qs.filter(username__icontains=filters["city"])  # fallback
+        qs = qs.filter(agency__city__icontains=filters["city"]) | qs.filter(username__icontains=filters["city"])
     if filters.get("agency_id"):
         qs = qs.filter(agency_id=filters["agency_id"])
 
     total = qs.count()
+    if total == 0:
+        return None, 0, 0, []
+
+    # Pagination
+    pages = max((total + PAGE_SIZE - 1) // PAGE_SIZE, 1)
+    page = max(1, min(page, pages))
+    offset = (page - 1) * PAGE_SIZE
+    items_qs = qs[offset: offset + PAGE_SIZE]
+
+    # Convert to list of dicts to avoid lazy loading
+    items = []
+    for r in items_qs:
+        items.append({
+            'id': r.id,
+            'username': r.username,
+            'email': r.email,
+            'is_active': r.is_active,
+            'agency_name': r.agency.name if r.agency else "—",
+        })
+
+    return total, pages, page, items
+
+
+async def su_realtor_render_list(update_or_query, context: ContextTypes.DEFAULT_TYPE, page: int = 1, edit: bool = False):
+    # Read filters
+    filters = context.user_data.get("su_realtor_filters", {"status": "any", "city": "", "agency_id": None})
+
+    total, pages, page, items = await _get_realtor_list_data(filters, page)
+
     if total == 0:
         msg = "Риелторов не найдено по текущему фильтру."
         if hasattr(update_or_query, "edit_message_text") and edit:
             return await update_or_query.edit_message_text(msg)
         else:
             return await update_or_query.message.reply_text(msg)
-
-    # Pagination
-    pages = max((total + PAGE_SIZE - 1) // PAGE_SIZE, 1)
-    page = max(1, min(page, pages))
-    offset = (page - 1) * PAGE_SIZE
-    items = list(qs[offset: offset + PAGE_SIZE])
 
     header = (
         f"👨‍💼 Риелторы — страница {page}/{pages}\n"
@@ -2714,14 +3191,13 @@ async def su_realtor_render_list(update_or_query, context: ContextTypes.DEFAULT_
 
     # Items
     for r in items:
-        agency_name = r.agency.name if r.agency else "—"
-        text = f"{r.username or r.email}\nАгентство: {agency_name}\nСтатус: {'Активен' if r.is_active else 'Неактивен'}"
+        text = f"{r['username'] or r['email']}\nАгентство: {r['agency_name']}\nСтатус: {'Активен' if r['is_active'] else 'Неактивен'}"
         toggle = InlineKeyboardButton(
-            "Деактивировать" if r.is_active else "Активировать",
-            callback_data=f"su_realtor:toggle:{r.id}"
+            "Деактивировать" if r['is_active'] else "Активировать",
+            callback_data=f"su_realtor:toggle:{r['id']}"
         )
-        clear_btn = InlineKeyboardButton("Убрать агентство", callback_data=f"su_realtor:clear_agency:{r.id}")
-        assign_btn = InlineKeyboardButton("Сменить агентство", callback_data=f"su_realtor:assign:{r.id}")
+        clear_btn = InlineKeyboardButton("Убрать агентство", callback_data=f"su_realtor:clear_agency:{r['id']}")
+        assign_btn = InlineKeyboardButton("Сменить агентство", callback_data=f"su_realtor:assign:{r['id']}")
         kb = InlineKeyboardMarkup([[assign_btn, clear_btn], [toggle]])
         # always send as separate messages (simpler UX)
         if hasattr(update_or_query, "edit_message_text") and edit:
@@ -2837,30 +3313,44 @@ async def su_realtor_filter_agency_set(query, context: ContextTypes.DEFAULT_TYPE
     await su_realtor_filter_menu(query, context)
 
 
-async def su_realtor_toggle(query, context, realtor_id: str):
-    profile = await get_or_create_profile_from_update(query)
+@sync_to_async
+def _toggle_realtor_status(profile, realtor_id):
+    """Toggle realtor active status."""
     if not (profile.user and profile.user.is_platform_superuser()):
-        return await query.edit_message_text("Недостаточно прав.")
+        return False, "Недостаточно прав."
     try:
         r = CustomUser.objects.get(id=int(realtor_id), role=CustomUser.RoleChoices.REALTOR)
     except CustomUser.DoesNotExist:
-        return await query.edit_message_text("Риелтор не найден.")
+        return False, "Риелтор не найден."
     r.is_active = not r.is_active
     r.save(update_fields=["is_active"])
-    await query.edit_message_text("Статус риелтора изменён.")
+    return True, "Статус риелтора изменён."
+
+
+async def su_realtor_toggle(query, context, realtor_id: str):
+    profile = await get_or_create_profile_from_update(query)
+    success, message = await _toggle_realtor_status(profile, realtor_id)
+    await query.edit_message_text(message)
+
+
+@sync_to_async
+def _clear_realtor_agency(profile, realtor_id):
+    """Clear realtor's agency assignment."""
+    if not (profile.user and profile.user.is_platform_superuser()):
+        return False, "Недостаточно прав."
+    try:
+        r = CustomUser.objects.get(id=int(realtor_id), role=CustomUser.RoleChoices.REALTOR)
+    except CustomUser.DoesNotExist:
+        return False, "Риелтор не найден."
+    r.agency = None
+    r.save(update_fields=["agency"])
+    return True, "Агентство снято."
 
 
 async def su_realtor_clear_agency(query, context, realtor_id: str):
     profile = await get_or_create_profile_from_update(query)
-    if not (profile.user and profile.user.is_platform_superuser()):
-        return await query.edit_message_text("Недостаточно прав.")
-    try:
-        r = CustomUser.objects.get(id=int(realtor_id), role=CustomUser.RoleChoices.REALTOR)
-    except CustomUser.DoesNotExist:
-        return await query.edit_message_text("Риелтор не найден.")
-    r.agency = None
-    r.save(update_fields=["agency"])
-    await query.edit_message_text("Агентство снято.")
+    success, message = await _clear_realtor_agency(profile, realtor_id)
+    await query.edit_message_text(message)
 
 
 async def su_realtor_assign_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -2910,36 +3400,45 @@ async def su_realtor_assign_to(update, context, realtor_id: str, agency_id: str)
     return ConversationHandler.END
 
 
-async def _assign_realtor_to_agency(update_or_query, context, agency: RealEstateAgency):
-    profile = await get_or_create_profile_from_update(update_or_query if hasattr(update_or_query, "from_user") else update_or_query)
+@sync_to_async
+def _do_assign_realtor(profile, realtor_id, agency):
+    """Assign realtor to agency."""
     if not (profile.user and profile.user.is_platform_superuser()):
-        if hasattr(update_or_query, "edit_message_text"):
-            return await update_or_query.edit_message_text("Недостаточно прав.")
-        else:
-            return await update_or_query.message.reply_text("Недостаточно прав.")
-    realtor_id = context.user_data.get("su_assign_realtor_id")
+        return False, "Недостаточно прав."
     try:
         r = CustomUser.objects.get(id=int(realtor_id), role=CustomUser.RoleChoices.REALTOR)
     except CustomUser.DoesNotExist:
-        if hasattr(update_or_query, "edit_message_text"):
-            return await update_or_query.edit_message_text("Риелтор не найден.")
-        else:
-            return await update_or_query.message.reply_text("Риелтор не найден.")
+        return False, "Риелтор не найден."
     r.agency = agency
     r.save(update_fields=["agency"])
     text = f"Риелтор {r.username or r.email} назначен в агентство {agency.name}."
+    return True, text
+
+
+async def _assign_realtor_to_agency(update_or_query, context, agency: RealEstateAgency):
+    profile = await get_or_create_profile_from_update(update_or_query if hasattr(update_or_query, "from_user") else update_or_query)
+    realtor_id = context.user_data.get("su_assign_realtor_id")
+
+    success, message = await _do_assign_realtor(profile, realtor_id, agency)
+
     if hasattr(update_or_query, "edit_message_text"):
-        return await update_or_query.edit_message_text(text)
+        return await update_or_query.edit_message_text(message)
     else:
-        return await update_or_query.message.reply_text(text)
+        return await update_or_query.message.reply_text(message)
 
 
 def run_bot() -> None:
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     application = build_application(token)
     logger.info("=== BOT STARTING ===")
-    logger.info(f"ADDPROP_TITLE={ADDPROP_TITLE}, ADDPROP_CITY={ADDPROP_CITY}, ADDPROP_DISTRICT={ADDPROP_DISTRICT}")
-    logger.info(f"ADDPROP_PRICE={ADDPROP_PRICE}, ADDPROP_GUESTS={ADDPROP_GUESTS}, ADDPROP_DESC={ADDPROP_DESC}")
+    logger.info(
+        f"ADDPROP_TITLE={ADDPROP_TITLE}, ADDPROP_CITY={ADDPROP_CITY}, ADDPROP_DISTRICT={ADDPROP_DISTRICT}, "
+        f"ADDPROP_ADDRESS={ADDPROP_ADDRESS}"
+    )
+    logger.info(
+        f"ADDPROP_PRICE={ADDPROP_PRICE}, ADDPROP_GUESTS={ADDPROP_GUESTS}, "
+        f"ADDPROP_ROOMS={ADDPROP_ROOMS}, ADDPROP_SLEEPING={ADDPROP_SLEEPING}, ADDPROP_DESC={ADDPROP_DESC}"
+    )
     logger.info(f"BLOCK_START={BLOCK_START}, BLOCK_END={BLOCK_END}, BLOCK_REASON={BLOCK_REASON}")
     logger.info("Starting Telegram bot polling...")
     application.run_polling()

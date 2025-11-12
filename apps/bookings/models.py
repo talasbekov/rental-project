@@ -135,14 +135,13 @@ class Booking(models.Model):
         if not self.nightly_rate:
             self.nightly_rate = self.property.base_price
 
-        self.cleaning_fee = self.property.cleaning_fee
         self.currency = self.property.currency
         subtotal = Decimal(self.total_nights) * self.nightly_rate
         subtotal += self.cleaning_fee + self.service_fee
         subtotal -= self.discount_amount
         self.total_price = max(subtotal, Decimal("0.00"))
 
-        if self.guests_count > self.property.max_guests:
+        if self.guests_count > self.property.sleeping_places:
             raise ValidationError(
                 _("Количество гостей превышает допустимое для выбранного объекта.")
             )
